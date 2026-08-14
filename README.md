@@ -86,6 +86,50 @@ This MVP has no user authentication. Run it only in a trusted environment until
 authentication, authorization, rate limiting, retention controls, and a
 production database are added.
 
+## Inspecting the database
+
+The application stores its records in `data/research-captcha.db`. This is a
+binary SQLite database and should not be opened as a normal text file.
+
+The easiest way to browse it is with Drizzle Studio:
+
+```bash
+npx drizzle-kit studio
+```
+
+Open the URL printed in the terminal and select the `quizzes` table.
+
+On Windows, you can alternatively install and use the SQLite command-line
+client:
+
+```powershell
+winget install SQLite.SQLite
+sqlite3 ".\data\research-captcha.db"
+```
+
+After opening SQLite, this query displays a summary of all attempts:
+
+```sql
+.headers on
+.mode column
+
+SELECT
+  id,
+  paper_name,
+  model_id,
+  pdf_engine,
+  score,
+  passed,
+  status,
+  created_at
+FROM quizzes
+ORDER BY created_at DESC;
+```
+
+Use `.quit` to exit. The `questions_json` column contains the generated
+questions and answer key, while `answers_json` contains the submitted answers.
+These columns can be lengthy and may contain sensitive research data.
+
 ## Useful commands
 
 ```bash
