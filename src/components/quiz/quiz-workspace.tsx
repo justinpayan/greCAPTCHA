@@ -12,31 +12,14 @@ import {
 } from "@dnd-kit/core";
 import { CSSProperties, useMemo, useState } from "react";
 
-import type { PublicQuestion, PublicQuiz, QuizChoice } from "@/lib/quiz";
+import type {
+  AssessmentResult,
+  AttemptView,
+  PublicFillQuestion,
+  QuizChoice,
+} from "@/lib/quiz";
 
-type AnswerMap = Record<string, string | null>;
-type GradeResult = {
-  score: number;
-  percentage: number;
-  passed: boolean;
-  correct: number;
-  total: number;
-  threshold: number;
-  feedback: Array<{
-    questionNumber: number;
-    correct: boolean;
-    blanks: Array<{
-      blankId: string;
-      selectedAnswer: string | null;
-      correctAnswer: string;
-      correct: boolean;
-    }>;
-  }>;
-};
-
-function answerKey(question: PublicQuestion, blankId: string) {
-  return `${question.id}:${blankId}`;
-}
+type FillSelections = Record<string, string | null>;
 
 function DraggableChoice({
   choice,
@@ -54,15 +37,14 @@ function DraggableChoice({
     transform: transform
       ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
       : undefined,
-    opacity: isDragging ? 0.55 : undefined,
+    opacity: isDragging ? 0.55 : selected ? 0.32 : undefined,
     position: "relative",
     zIndex: isDragging ? 30 : undefined,
   };
-
   return (
     <button
       ref={setNodeRef}
-      className={`choice ${selected ? "selected" : ""}`}
+      className="choice"
       type="button"
       style={style}
       onClick={onChoose}
@@ -91,118 +73,142 @@ function BlankSlot({
       className={`blank-slot ${isOver ? "drag-over" : ""}`}
       type="button"
       onClick={onClear}
-      aria-label={label ? `Blank filled with ${label}. Click to clear.` : "Empty answer blank"}
+      aria-label={label ? `Filled with ${label}. Select to clear.` : "Empty answer blank"}
     >
       {label ?? "Drop answer"}
     </button>
   );
 }
 
-function WordBank({
+function FillQuestionEditor({
   question,
-  answers,
-  onChoose,
+  selections,
+  onChange,
 }: {
-  question: PublicQuestion;
-  answers: AnswerMap;
-  onChoose: (choiceId: string) => void;
+  question: PublicFillQuestion;
+  selections: FillSelections;
+  onChange: (next: FillSelections) => void;
 }) {
-  const { isOver, setNodeRef } = useDroppable({ id: "word-bank" });
-  const usedChoices = new Set(
-    question.blankIds.map((blankId) => answers[answerKey(question, blankId)]).filter(Boolean),
-  );
-  return (
-    <div ref={setNodeRef} className={`word-bank ${isOver ? "drag-over" : ""}`}>
-      <span className="word-bank-label">Word bank · drag or select an answer</span>
-      <div className="choices">
-        {question.choices.map((choice) => (
-          <DraggableChoice
-            key={choice.id}
-            choice={choice}
-            selected={usedChoices.has(choice.id)}
-            onChoose={() => onChoose(choice.id)}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export function QuizWorkspace({ quiz }: { quiz: PublicQuiz }) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [answers, setAnswers] = useState<AnswerMap>({});
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<GradeResult | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor),
   );
-  const question = quiz.questions[currentIndex];
-
-  const choiceLabels = useMemo(
+  const labels = useMemo(
     () => new Map(question.choices.map((choice) => [choice.id, choice.label])),
     [question],
   );
+  const used = new Set(Object.values(selections).filter(Boolean));
 
   function setBlank(blankId: string, choiceId: string | null) {
-    setAnswers((current) => {
-      const next = { ...current };
-      for (const candidateBlankId of question.blankIds) {
-        const key = answerKey(question, candidateBlankId);
-        if (choiceId && next[key] === choiceId) next[key] = null;
-      }
-      next[answerKey(question, blankId)] = choiceId;
-      return next;
-    });
-  }
-
-  function chooseFirstAvailableBlank(choiceId: string) {
-    const currentlyUsedIn = question.blankIds.find(
-      (blankId) => answers[answerKey(question, blankId)] === choiceId,
-    );
-    if (currentlyUsedIn) {
-      setBlank(currentlyUsedIn, null);
-      return;
+    const next = { ...selections };
+    for (const candidate of question.blankIds) {
+      if (choiceId && next[candidate] === choiceId) next[candidate] = null;
     }
-    const blankId =
-      question.blankIds.find((candidate) => !answers[answerKey(question, candidate)]) ??
-      question.blankIds[0];
-    if (blankId) setBlank(blankId, choiceId);
+    next[blankId] = choiceId;
+    onChange(next);
   }
 
-  function handleDragEnd(event: DragEndEvent) {
-    const choiceId = String(event.active.id);
+  function choose(choiceId: string) {
+    const existing = question.blankIds.find((blankId) => selections[blankId] === choiceId);
+    if (existing) return setBlank(existing, null);
+    const target = question.blankIds.find((blankId) => !selections[blankId]) ?? question.blankIds[0];
+    if (target) setBlank(target, choiceId);
+  }
+
+  function onDragEnd(event: DragEndEvent) {
     const destination = event.over?.id ? String(event.over.id) : "";
     if (destination.startsWith("blank:")) {
-      setBlank(destination.slice("blank:".length), choiceId);
-    } else if (destination === "word-bank") {
-      const existingBlank = question.blankIds.find(
-        (blankId) => answers[answerKey(question, blankId)] === choiceId,
-      );
-      if (existingBlank) setBlank(existingBlank, null);
+      setBlank(destination.slice(6), String(event.active.id));
     }
   }
 
-  function isQuestionAnswered(candidate: PublicQuestion) {
-    return candidate.blankIds.every((blankId) => answers[answerKey(candidate, blankId)]);
-  }
+  return (
+    <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+      <div className="question-copy">
+        {question.segments.map((segment, index) =>
+          segment.type === "text" ? (
+            <span key={`${index}-${segment.value}`}>{segment.value}</span>
+          ) : (
+            <BlankSlot
+              key={segment.blankId}
+              id={segment.blankId}
+              label={labels.get(selections[segment.blankId] ?? "")}
+              onClear={() => setBlank(segment.blankId, null)}
+            />
+          ),
+        )}
+      </div>
+      <div className="word-bank">
+        <span className="word-bank-label">Word bank · drag or select an answer</span>
+        <div className="choices">
+          {question.choices.map((choice) => (
+            <DraggableChoice
+              key={choice.id}
+              choice={choice}
+              selected={used.has(choice.id)}
+              onChoose={() => choose(choice.id)}
+            />
+          ))}
+        </div>
+      </div>
+    </DndContext>
+  );
+}
 
-  async function submitAnswers() {
+function SetIdBadge({ id }: { id: string }) {
+  return (
+    <div className="set-id-badge" title="Reusable question-set row ID">
+      Question set <code>{id}</code>
+    </div>
+  );
+}
+
+function formatDuration(durationMs: number) {
+  const seconds = Math.round(durationMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  return minutes ? `${minutes}m ${seconds % 60}s` : `${seconds}s`;
+}
+
+export function QuizWorkspace({ initialAttempt }: { initialAttempt: AttemptView }) {
+  const [attempt, setAttempt] = useState(initialAttempt);
+  const [fillSelections, setFillSelections] = useState<FillSelections>({});
+  const [freeResponse, setFreeResponse] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<AssessmentResult | null>(null);
+  const question = attempt.question;
+
+  const answerComplete =
+    question.type === "fill_blank"
+      ? question.blankIds.every((blankId) => fillSelections[blankId])
+      : freeResponse.trim().length > 0;
+
+  async function submitCurrentAnswer() {
+    if (!answerComplete) return;
     setSubmitting(true);
     setError("");
     try {
-      const response = await fetch(`/api/quizzes/${quiz.id}/submit`, {
+      const answer =
+        question.type === "fill_blank"
+          ? { type: "fill_blank", selections: fillSelections }
+          : { type: "free_response", response: freeResponse };
+      const response = await fetch(`/api/attempts/${attempt.attemptId}/answers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ answers }),
+        body: JSON.stringify(answer),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "Unable to grade answers.");
-      setResult(payload.result as GradeResult);
+      if (!response.ok) throw new Error(payload.error ?? "Unable to submit answer.");
+      if (payload.result) {
+        setResult(payload.result as AssessmentResult);
+      } else {
+        setAttempt(payload.attempt as AttemptView);
+        setFillSelections({});
+        setFreeResponse("");
+      }
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to grade answers.");
+      setError(caught instanceof Error ? caught.message : "Unable to submit answer.");
     } finally {
       setSubmitting(false);
     }
@@ -215,56 +221,43 @@ export function QuizWorkspace({ quiz }: { quiz: PublicQuiz }) {
           <span className="brand-mark">R</span>
           ResearchCAPTCHA
         </div>
-        <section className="card result">
+        <section className="card result neutral-result">
           <p className="eyebrow">Assessment complete</p>
-          <h1 className={result.passed ? "pass" : "fail"}>
-            {result.passed ? "You passed." : "Not quite."}
-          </h1>
-          <div className="score-ring">{result.percentage}%</div>
-          <p className="lede" style={{ marginInline: "auto" }}>
-            You answered {result.correct} of {result.total} blanks correctly.
-            The passing threshold is {result.threshold}%.
+          <h1>Overall score</h1>
+          <div className="score-ring neutral-score">{result.overallScore}%</div>
+          <p className="lede" style={{ marginInline: "auto", marginBottom: 0 }}>
+            Scores are shown as an equal-weight average across all questions.
           </p>
         </section>
 
-        <section className="review-section" aria-labelledby="answer-review-heading">
+        <section className="review-section">
           <div className="review-heading">
             <div>
               <p className="eyebrow">Read-only review</p>
-              <h2 id="answer-review-heading">Compare your answers</h2>
+              <h2>Answers and feedback</h2>
             </div>
-            <p>Answers are locked after submission.</p>
+            <p>All submitted answers are locked.</p>
           </div>
-
-          {result.feedback.map((item, questionIndex) => {
-            const reviewQuestion = quiz.questions[questionIndex];
-            const feedbackByBlank = new Map(
-              item.blanks.map((blank) => [blank.blankId, blank]),
-            );
-
-            return (
-              <article className="card review-card" key={item.questionNumber}>
-                <header className="review-card-header">
-                  <span className="question-number">Question {item.questionNumber}</span>
-                  <span className={item.correct ? "pass" : "fail"}>
-                    {item.blanks.filter((blank) => blank.correct).length}/{item.blanks.length}{" "}
-                    blanks correct
-                  </span>
-                </header>
+          {result.questions.map((review, index) => (
+            <article className="card review-card" key={review.questionId}>
+              <header className="review-card-header">
+                <span className="question-number">Question {index + 1}</span>
+                <span>
+                  {Math.round(review.score * 10) / 10}% ·{" "}
+                  {formatDuration(review.durationMs)}
+                </span>
+              </header>
+              {review.type === "fill_blank" ? (
                 <div className="review-question-copy">
-                  {reviewQuestion.segments.map((segment, segmentIndex) => {
+                  {review.segments.map((segment, segmentIndex) => {
                     if (segment.type === "text") {
-                      return (
-                        <span key={`${segmentIndex}-${segment.value}`}>{segment.value}</span>
-                      );
+                      return <span key={`${segmentIndex}-${segment.value}`}>{segment.value}</span>;
                     }
-
-                    const blank = feedbackByBlank.get(segment.blankId);
+                    const blank = review.blanks.find(
+                      (candidate) => candidate.blankId === segment.blankId,
+                    );
                     return (
-                      <span
-                        className={`review-blank ${blank?.correct ? "correct" : "incorrect"}`}
-                        key={segment.blankId}
-                      >
+                      <span className="review-blank" key={segment.blankId}>
                         <span className="review-answer-row">
                           <small>Your answer</small>
                           <strong>{blank?.selectedAnswer ?? "No answer"}</strong>
@@ -277,10 +270,37 @@ export function QuizWorkspace({ quiz }: { quiz: PublicQuiz }) {
                     );
                   })}
                 </div>
-              </article>
-            );
-          })}
+              ) : (
+                <div className="free-review">
+                  <h3>{review.prompt}</h3>
+                  <div>
+                    <span className="review-label">Your response</span>
+                    <p>{review.response}</p>
+                  </div>
+                  <div>
+                    <span className="review-label">Rubric</span>
+                    <p>{review.rubric.summary}</p>
+                    <ul>
+                      {review.rubric.criteria.map((criterion) => (
+                        <li key={criterion.criterion}>
+                          <strong>
+                            {criterion.criterion} ({criterion.points} points)
+                          </strong>
+                          <span>{criterion.guidance}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <span className="review-label">Grading feedback</span>
+                    <p>{review.feedback}</p>
+                  </div>
+                </div>
+              )}
+            </article>
+          ))}
         </section>
+        <SetIdBadge id={result.questionSetId} />
       </main>
     );
   }
@@ -291,92 +311,62 @@ export function QuizWorkspace({ quiz }: { quiz: PublicQuiz }) {
         <span className="brand-mark">R</span>
         ResearchCAPTCHA
       </div>
-
-      <header className="quiz-header">
+      <header className="quiz-header sequential-header">
         <div>
           <p className="eyebrow">Understanding assessment</p>
-          <h1>{quiz.paperName}</h1>
-          <div className="quiz-meta">
-            {quiz.modelId} · {quiz.pdfEngine}
-          </div>
+          <h1>{attempt.paperName}</h1>
+          <div className="quiz-meta">{attempt.modelId}</div>
         </div>
-        <nav className="progress-grid" aria-label="Questions">
-          {quiz.questions.map((candidate, index) => (
-            <button
-              key={candidate.id}
-              type="button"
-              className={`progress-dot ${isQuestionAnswered(candidate) ? "answered" : ""} ${
-                index === currentIndex ? "current" : ""
-              }`}
-              onClick={() => setCurrentIndex(index)}
-              aria-label={`Go to question ${index + 1}`}
-            >
-              {index + 1}
-            </button>
-          ))}
-        </nav>
+        <div className="sequence-progress">
+          Question {attempt.currentIndex + 1} of {attempt.totalQuestions}
+        </div>
       </header>
 
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <section className="card question-card">
-          <span className="question-number">
-            Question {currentIndex + 1} of {quiz.questions.length}
-          </span>
-          <div className="question-copy">
-            {question.segments.map((segment, index) =>
-              segment.type === "text" ? (
-                <span key={`${index}-${segment.value}`}>{segment.value}</span>
-              ) : (
-                <BlankSlot
-                  key={segment.blankId}
-                  id={segment.blankId}
-                  label={
-                    choiceLabels.get(answers[answerKey(question, segment.blankId)] ?? "") ??
-                    undefined
-                  }
-                  onClear={() => setBlank(segment.blankId, null)}
-                />
-              ),
-            )}
-          </div>
-          <WordBank
+      <section className="card question-card">
+        <span className="question-number">
+          {question.type === "fill_blank" ? "Fill in the blank" : "Free response"}
+        </span>
+        {question.type === "fill_blank" ? (
+          <FillQuestionEditor
             question={question}
-            answers={answers}
-            onChoose={chooseFirstAvailableBlank}
+            selections={fillSelections}
+            onChange={setFillSelections}
           />
-        </section>
-      </DndContext>
+        ) : (
+          <div className="free-response-question">
+            <h2>{question.prompt}</h2>
+            <label htmlFor="freeResponse">Your response</label>
+            <textarea
+              className="control"
+              id="freeResponse"
+              value={freeResponse}
+              onChange={(event) => setFreeResponse(event.target.value)}
+              placeholder="Write your answer here..."
+              maxLength={50_000}
+            />
+          </div>
+        )}
+      </section>
 
       {error && <p className="error" role="alert">{error}</p>}
-
-      <div className="quiz-actions">
+      <div className="quiz-actions sequential-actions">
+        <span className="hint">Submitting locks this answer permanently.</span>
         <button
-          className="secondary"
+          className="primary"
           type="button"
-          disabled={currentIndex === 0}
-          onClick={() => setCurrentIndex((index) => index - 1)}
+          disabled={!answerComplete || submitting}
+          onClick={submitCurrentAnswer}
         >
-          Previous
+          {submitting
+            ? attempt.currentIndex === attempt.totalQuestions - 1
+              ? "Grading assessment…"
+              : "Saving answer…"
+            : attempt.currentIndex === attempt.totalQuestions - 1
+              ? "Submit final answer and score"
+              : "Submit answer and continue"}
         </button>
-        {currentIndex === quiz.questions.length - 1 ? (
-          <button
-            className="primary"
-            type="button"
-            onClick={submitAnswers}
-            disabled={submitting}
-          >
-            {submitting ? "Grading…" : "Submit answers and grade me"}
-          </button>
-        ) : (
-          <button
-            className="primary"
-            type="button"
-            onClick={() => setCurrentIndex((index) => index + 1)}
-          >
-            Next question
-          </button>
-        )}
       </div>
+      <SetIdBadge id={attempt.questionSetId} />
     </main>
   );
 }

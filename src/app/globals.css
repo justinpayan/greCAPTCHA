@@ -288,6 +288,111 @@ textarea.control {
   border-top: 1px solid var(--line);
 }
 
+.mode-tabs {
+  display: inline-flex;
+  gap: 5px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 4px;
+  background: white;
+}
+
+.mode-tabs button {
+  border: 0;
+  border-radius: 8px;
+  padding: 9px 14px;
+  color: var(--muted);
+  background: transparent;
+  font-weight: 720;
+}
+
+.mode-tabs button.active {
+  color: white;
+  background: var(--green);
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 22px;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 680;
+}
+
+.toggle-row input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--green);
+}
+
+.section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 10px 0 14px;
+}
+
+.section-heading p {
+  margin: 4px 0 0;
+}
+
+.add-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.question-blocks {
+  display: grid;
+  gap: 14px;
+}
+
+.question-config {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 20px;
+  background: #f8faf8;
+}
+
+.question-config > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.question-config h3 {
+  margin: 4px 0 0;
+}
+
+.remove-button {
+  border: 0;
+  padding: 6px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.8rem;
+}
+
+.remove-button:hover {
+  color: var(--danger);
+}
+
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+textarea.prompt-control {
+  min-height: 190px;
+  font-size: 0.88rem;
+}
+
 .error {
   border-radius: 10px;
   padding: 11px 13px;
@@ -438,6 +543,64 @@ textarea.control {
   margin-top: 20px;
 }
 
+.sequential-actions {
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.sequential-actions .hint {
+  margin-right: auto;
+}
+
+.sequence-progress {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 9px 14px;
+  color: var(--muted);
+  background: white;
+  font-size: 0.84rem;
+  font-weight: 720;
+}
+
+.free-response-question {
+  display: grid;
+  gap: 14px;
+  margin-top: 30px;
+}
+
+.free-response-question h2 {
+  max-width: 850px;
+  font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+  line-height: 1.45;
+}
+
+.free-response-question textarea {
+  min-height: 260px;
+}
+
+.set-id-badge {
+  position: fixed;
+  z-index: 40;
+  right: 14px;
+  bottom: 12px;
+  max-width: calc(100vw - 28px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 7px 10px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 8px 25px rgba(20, 40, 32, 0.1);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.set-id-badge code {
+  margin-left: 5px;
+  color: var(--ink);
+}
+
 .result {
   padding: clamp(28px, 6vw, 64px);
   text-align: center;
@@ -454,6 +617,12 @@ textarea.control {
   border-radius: 50%;
   font-size: 2.6rem;
   font-weight: 800;
+}
+
+.neutral-score {
+  border-color: #e0e4e2;
+  border-top-color: #78817d;
+  color: var(--ink);
 }
 
 .review-section {
@@ -532,7 +701,7 @@ textarea.control {
 
 .review-answer-row + .review-answer-row {
   border-top: 1px solid var(--line);
-  background: var(--green-soft);
+  background: #eef1ef;
 }
 
 .review-answer-row small {
@@ -548,17 +717,47 @@ textarea.control {
   font-size: 0.88rem;
 }
 
-.pass {
-  color: var(--green);
+.free-review {
+  display: grid;
+  gap: 22px;
+  margin-top: 24px;
+  line-height: 1.6;
 }
 
-.fail {
-  color: var(--danger);
+.free-review h3,
+.free-review p {
+  margin-bottom: 0;
+}
+
+.free-review > div {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+.free-review ul {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 0;
+  padding-left: 20px;
+}
+
+.free-review li span {
+  display: block;
+  color: var(--muted);
+}
+
+.review-label {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 760;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 @media (max-width: 720px) {
   .form-grid,
-  .quiz-header {
+  .quiz-header,
+  .config-grid {
     grid-template-columns: 1fr;
   }
 
@@ -574,6 +773,15 @@ textarea.control {
   .review-heading {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .add-buttons {
+    display: grid;
   }
 
   .question-card {

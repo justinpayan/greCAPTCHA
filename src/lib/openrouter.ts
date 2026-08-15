@@ -1,6 +1,14 @@
 import "server-only";
 
-import { generatedQuizSchema, type PdfEngine } from "@/lib/quiz";
+import {
+  freeResponseGradesSchema,
+  generatedFillSetSchema,
+  generatedFreeResponseSetSchema,
+  type PdfEngine,
+  type QuestionBlockConfig,
+  type StoredFreeResponseQuestion,
+  type StoredQuestion,
+} from "@/lib/quiz";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1";
 
@@ -69,38 +77,8 @@ export async function getOpenRouterModels(): Promise<OpenRouterModel[]> {
   });
 }
 
-function buildPrompt(
-  contributions: string,
-  questionCount: number,
-  distractorsPerBlank: number,
-): string {
-  return `You are part of a system that verifies how well a claimed author understands a submitted manuscript.
-
-The author reports these contributions:
-${contributions}
-
-Generate exactly ${questionCount} fill-in-the-blank questions about the attached research article.
-
-Requirements:
-- Ask only questions this author should reasonably answer given the stated contributions.
-- The questions should be very difficult for someone who does not understand the research article, but should be fairly simple for someone who does.
-- Do not ask questions where the answer can be inferred from fairly obvious context clues in the question and/or common sense reasoning.
-- Every blank must have one objectively correct word or short phrase.
-- Multiple blanks in a question are allowed.
-- Require conceptual understanding, not mathematical calculations.
-- Do not make questions easy to answer through keyword search in the paper. You should not be able to just search terms in the question and find a sentence stating the answer. You should not be able to search the distractors and find that only one appears in the paper and must be the correct answer.
-- Do not telegraph answers through grammar or unrelated syntax; use "a/an" before a blank where needed.
-- For every correct answer, provide approximately ${distractorsPerBlank} plausible distractors.
-- Every distractor for a blank must fit grammatically but remain objectively wrong.
-- Do not repeat an answer as its own distractor.
-- Use a unique short ID for every blank within its question.
-- Insert each blank into the prompt exactly once using {{blank_id}} syntax.
-
-Return only JSON that conforms to the supplied schema.`;
-}
-
-const responseJsonSchema = {
-  name: "research_captcha_quiz",
+const fillResponseJsonSchema = {
+  name: "research_captcha_fill_questions",
   strict: true,
   schema: {
     type: "object",
@@ -135,6 +113,75 @@ const responseJsonSchema = {
   },
 };
 
+const freeResponseJsonSchema = {
+  name: "research_captcha_free_response_questions",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      questions: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            prompt: { type: "string" },
+            rubric: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                summary: { type: "string" },
+                criteria: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      criterion: { type: "string" },
+                      points: { type: "number" },
+                      guidance: { type: "string" },
+                    },
+                    required: ["criterion", "points", "guidance"],
+                  },
+                },
+              },
+              required: ["summary", "criteria"],
+            },
+          },
+          required: ["prompt", "rubric"],
+        },
+      },
+    },
+    required: ["questions"],
+  },
+};
+
+const gradingJsonSchema = {
+  name: "research_captcha_free_response_grades",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      grades: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            questionId: { type: "string" },
+            score: { type: "number", minimum: 0, maximum: 100 },
+            feedback: { type: "string" },
+          },
+          required: ["questionId", "score", "feedback"],
+        },
+      },
+    },
+    required: ["grades"],
+  },
+};
+
 function extractTextContent(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
@@ -154,21 +201,27 @@ function extractTextContent(content: unknown): string {
   throw new Error("The model returned no text content.");
 }
 
-export async function generateQuizWithOpenRouter(input: {
-  file: File;
-  contributions: string;
-  questionCount: number;
-  distractorsPerBlank: number;
+async function callOpenRouter(input: {
   modelId: string;
-  pdfEngine: PdfEngine;
+  prompt: string;
+  responseSchema: object;
+  file?: File;
+  pdfEngine?: PdfEngine;
 }) {
   const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENROUTER_API_KEY is not configured.");
-  }
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not configured.");
 
-  const fileBytes = Buffer.from(await input.file.arrayBuffer());
-  const fileData = `data:application/pdf;base64,${fileBytes.toString("base64")}`;
+  const content: Array<Record<string, unknown>> = [{ type: "text", text: input.prompt }];
+  if (input.file) {
+    const bytes = Buffer.from(await input.file.arrayBuffer());
+    content.push({
+      type: "file",
+      file: {
+        filename: input.file.name,
+        file_data: `data:application/pdf;base64,${bytes.toString("base64")}`,
+      },
+    });
+  }
 
   const response = await fetch(`${OPENROUTER_URL}/chat/completions`, {
     method: "POST",
@@ -180,39 +233,22 @@ export async function generateQuizWithOpenRouter(input: {
     },
     body: JSON.stringify({
       model: input.modelId,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: buildPrompt(
-                input.contributions,
-                input.questionCount,
-                input.distractorsPerBlank,
-              ),
-            },
-            {
-              type: "file",
-              file: {
-                filename: input.file.name,
-                file_data: fileData,
+      messages: [{ role: "user", content }],
+      ...(input.file
+        ? {
+            plugins: [
+              {
+                id: "file-parser",
+                pdf: { engine: input.pdfEngine },
               },
-            },
-          ],
-        },
-      ],
-      plugins: [
-        {
-          id: "file-parser",
-          pdf: { engine: input.pdfEngine },
-        },
-      ],
+            ],
+          }
+        : {}),
       response_format: {
         type: "json_schema",
-        json_schema: responseJsonSchema,
+        json_schema: input.responseSchema,
       },
-      temperature: 0.3,
+      temperature: 0.2,
     }),
     signal: AbortSignal.timeout(180_000),
   });
@@ -221,24 +257,129 @@ export async function generateQuizWithOpenRouter(input: {
     error?: { message?: string };
     choices?: Array<{ message?: { content?: unknown } }>;
   };
-
   if (!response.ok) {
     throw new Error(payload.error?.message ?? `OpenRouter returned ${response.status}.`);
   }
 
   const text = extractTextContent(payload.choices?.[0]?.message?.content);
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(text.replace(/^```json\s*|\s*```$/g, ""));
+    return JSON.parse(text.replace(/^```json\s*|\s*```$/g, "")) as unknown;
   } catch {
     throw new Error("The selected model returned malformed JSON.");
   }
+}
 
-  const validated = generatedQuizSchema.parse(parsed);
-  if (validated.questions.length !== input.questionCount) {
-    throw new Error(
-      `The model returned ${validated.questions.length} questions instead of ${input.questionCount}.`,
-    );
+export async function generateQuestionBlock(input: {
+  file: File;
+  contributions: string;
+  block: QuestionBlockConfig;
+  previousQuestions: StoredQuestion[];
+  modelId: string;
+  pdfEngine: PdfEngine;
+}) {
+  const previousQuestionContext = input.previousQuestions.map((question) => {
+    if (question.type === "fill_blank") {
+      return {
+        type: question.type,
+        prompt: question.segments
+          .map((segment) =>
+            segment.type === "text" ? segment.value : `{{${segment.blankId}}}`,
+          )
+          .join(""),
+        answers: question.blanks.map((blank) => ({
+          blankId: blank.id,
+          answer: blank.answer,
+        })),
+      };
+    }
+    return {
+      type: question.type,
+      prompt: question.prompt,
+      rubric: question.rubric,
+    };
+  });
+  const sharedContext = `You are part of a system that verifies how well a claimed author understands a submitted manuscript.
+
+The author reports these contributions:
+${input.contributions}
+
+User-authored generation instructions:
+${input.block.prompt}
+
+${
+  previousQuestionContext.length
+    ? `Questions and answer criteria already generated for this question set:
+${JSON.stringify(previousQuestionContext)}
+
+Generate questions that test meaningfully different concepts. Do not repeat or closely paraphrase any prior question, answer, or rubric criterion.`
+    : "No questions have been generated for this set yet."
+}`;
+
+  if (input.block.type === "fill_blank") {
+    const parsed = await callOpenRouter({
+      modelId: input.modelId,
+      file: input.file,
+      pdfEngine: input.pdfEngine,
+      responseSchema: fillResponseJsonSchema,
+      prompt: `${sharedContext}
+
+Generate exactly ${input.block.count} fill-in-the-blank questions. Provide approximately ${input.block.distractorsPerBlank} distractors per correct answer. Use a unique short ID for each blank and place it exactly once in the prompt as {{blank_id}}. Do not repeat a correct answer as its own distractor. Return only schema-conforming JSON.`,
+    });
+    const validated = generatedFillSetSchema.parse(parsed);
+    if (validated.questions.length !== input.block.count) {
+      throw new Error(`The model returned ${validated.questions.length} questions instead of ${input.block.count}.`);
+    }
+    return { type: "fill_blank" as const, generated: validated };
+  }
+
+  const parsed = await callOpenRouter({
+    modelId: input.modelId,
+    file: input.file,
+    pdfEngine: input.pdfEngine,
+    responseSchema: freeResponseJsonSchema,
+    prompt: `${sharedContext}
+
+Generate exactly ${input.block.count} free-response questions. Every rubric must total exactly 100 points across its criteria and permit substantively equivalent wording. Return only schema-conforming JSON.`,
+  });
+  const validated = generatedFreeResponseSetSchema.parse(parsed);
+  if (validated.questions.length !== input.block.count) {
+    throw new Error(`The model returned ${validated.questions.length} questions instead of ${input.block.count}.`);
+  }
+  for (const question of validated.questions) {
+    const total = question.rubric.criteria.reduce((sum, criterion) => sum + criterion.points, 0);
+    if (Math.abs(total - 100) > 0.01) {
+      throw new Error(`A generated free-response rubric totals ${total} points instead of 100.`);
+    }
+  }
+  return { type: "free_response" as const, generated: validated };
+}
+
+export async function gradeFreeResponseBlock(input: {
+  modelId: string;
+  questions: StoredFreeResponseQuestion[];
+  answers: Record<string, string>;
+}) {
+  const gradingItems = input.questions.map((question) => ({
+    questionId: question.id,
+    prompt: question.prompt,
+    rubric: question.rubric,
+    response: input.answers[question.id] ?? "",
+  }));
+  const parsed = await callOpenRouter({
+    modelId: input.modelId,
+    responseSchema: gradingJsonSchema,
+    prompt: `Grade each submitted response against only its supplied rubric. Apply criteria consistently, allow substantively equivalent wording, and provide concise actionable feedback. Return one 0–100 score and feedback string for every question ID. Do not omit or add IDs.
+
+Questions, rubrics, and responses:
+${JSON.stringify(gradingItems)}`,
+  });
+  const validated = freeResponseGradesSchema.parse(parsed);
+  const expectedIds = new Set(input.questions.map((question) => question.id));
+  if (
+    validated.grades.length !== expectedIds.size ||
+    validated.grades.some((grade) => !expectedIds.has(grade.questionId))
+  ) {
+    throw new Error("The grading model returned an incomplete or mismatched grade set.");
   }
   return validated;
 }
