@@ -37,6 +37,7 @@ Copy `.env.example` to `.env.local` and add your key:
 
 ```dotenv
 OPENROUTER_API_KEY=your_key_here
+GEMINI_API_KEY=optional_google_ai_studio_key
 DATABASE_URL=./data/research-captcha.db
 ```
 
@@ -84,6 +85,13 @@ upstream.
 The default is `google/gemini-3.1-pro-preview` when it is available in the live catalog.
 The exact model ID is stored with the reusable question set and the same model
 grades its free-response answers.
+
+If `GEMINI_API_KEY` is present and the selected model ID begins with
+`google/gemini-`, generation and free-response grading are sent directly to the
+Google Gemini API. PDFs use Gemini's native document input in that case. If the
+environment variable is absent, the same model is called through OpenRouter.
+The application does not fall back to OpenRouter when a configured Gemini key
+returns an API error, avoiding unexpected OpenRouter charges.
 
 ## PDF processing options
 

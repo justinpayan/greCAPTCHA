@@ -4,7 +4,11 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { questionSets } from "@/db/schema";
 import { createAttempt } from "@/lib/attempts";
-import { generateQuestionBlock, getOpenRouterModels } from "@/lib/openrouter";
+import {
+  generateQuestionBlock,
+  getOpenRouterModels,
+  usesDirectGemini,
+} from "@/lib/openrouter";
 import {
   generationConfigSchema,
   pdfEngineSchema,
@@ -47,7 +51,8 @@ export async function POST(request: Request) {
 
     const selectedModel = (await getOpenRouterModels()).find((model) => model.id === modelId);
     if (!selectedModel) throw new Error("Choose a model from the OpenRouter catalog.");
-    if (pdfEngine === "native" && !selectedModel.inputModalities.includes("file")) {
+    const effectivePdfEngine = usesDirectGemini(modelId) ? "native" : pdfEngine;
+    if (effectivePdfEngine === "native" && !selectedModel.inputModalities.includes("file")) {
       throw new Error("The selected model does not advertise native PDF support.");
     }
 
@@ -59,7 +64,7 @@ export async function POST(request: Request) {
         block,
         previousQuestions: questions,
         modelId,
-        pdfEngine,
+        pdfEngine: effectivePdfEngine,
       });
       questions.push(
         ...(result.type === "fill_blank"
@@ -75,7 +80,7 @@ export async function POST(request: Request) {
       paperName: file.name,
       contributions,
       modelId,
-      pdfEngine,
+      pdfEngine: effectivePdfEngine,
       configJson: JSON.stringify(blocks),
       questionsJson: JSON.stringify(questions),
       createdAt: new Date().toISOString(),

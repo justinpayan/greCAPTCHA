@@ -201,6 +201,75 @@ function extractTextContent(content: unknown): string {
   throw new Error("The model returned no text content.");
 }
 
+export function usesDirectGemini(modelId: string) {
+  return Boolean(process.env.GEMINI_API_KEY) && /^google\/gemini-/i.test(modelId);
+}
+
+async function callGeminiDirect(input: {
+  modelId: string;
+  prompt: string;
+  responseSchema: object;
+  file?: File;
+}) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured.");
+
+  const parts: Array<Record<string, unknown>> = [{ text: input.prompt }];
+  if (input.file) {
+    const bytes = Buffer.from(await input.file.arrayBuffer());
+    parts.unshift({
+      inlineData: {
+        mimeType: "application/pdf",
+        data: bytes.toString("base64"),
+      },
+    });
+  }
+
+  const directModelId = input.modelId
+    .slice("google/".length)
+    .replace(/:[a-z0-9_-]+$/i, "");
+  const schema =
+    "schema" in input.responseSchema
+      ? (input.responseSchema as { schema: object }).schema
+      : input.responseSchema;
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(directModelId)}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts }],
+        generationConfig: {
+          temperature: 0.2,
+          responseMimeType: "application/json",
+          responseJsonSchema: schema,
+        },
+      }),
+      signal: AbortSignal.timeout(180_000),
+    },
+  );
+
+  const payload = (await response.json()) as {
+    error?: { message?: string };
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+  if (!response.ok) {
+    throw new Error(payload.error?.message ?? `Gemini returned ${response.status}.`);
+  }
+  const text = (payload.candidates?.[0]?.content?.parts ?? [])
+    .map((part) => part.text ?? "")
+    .join("");
+  if (!text) throw new Error("Gemini returned no text content.");
+  try {
+    return JSON.parse(text.replace(/^```json\s*|\s*```$/g, "")) as unknown;
+  } catch {
+    throw new Error("Gemini returned malformed JSON.");
+  }
+}
+
 async function callOpenRouter(input: {
   modelId: string;
   prompt: string;
@@ -208,6 +277,10 @@ async function callOpenRouter(input: {
   file?: File;
   pdfEngine?: PdfEngine;
 }) {
+  if (usesDirectGemini(input.modelId)) {
+    return callGeminiDirect(input);
+  }
+
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY is not configured.");
 
