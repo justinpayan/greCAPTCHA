@@ -226,3 +226,4 @@ npm-debug.log*
 # ResearchCAPTCHA runtime data
 data/
 uploads/
+paper/
