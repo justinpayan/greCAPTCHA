@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { AssessmentResult, AttemptOutline, AttemptView } from "@/lib/quiz";
 
@@ -34,6 +34,23 @@ export function AttemptSummary({
 }) {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [participantLink, setParticipantLink] = useState("");
+
+  // Built in the browser so the host matches however this deployment is reached.
+  useEffect(() => {
+    setParticipantLink(`${window.location.origin}/attempt/${outline.attemptId}`);
+  }, [outline.attemptId]);
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(participantLink);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError("Could not copy automatically — select the link and copy it manually.");
+    }
+  }
 
   const started = outline.answeredCount > 0;
   const complete = outline.graded || outline.gradable;
@@ -99,6 +116,31 @@ export function AttemptSummary({
         This page is for the researcher. It names each item and what it probes, so do not
         leave it on screen once the assessment is handed over.
       </p>
+
+      {!outline.graded && (
+        <section className="card participant-link">
+          <div className="field">
+            <label htmlFor="participantLink">Participant link</label>
+            <div className="participant-link-row">
+              <input
+                className="control"
+                id="participantLink"
+                value={participantLink}
+                readOnly
+                onFocus={(event) => event.currentTarget.select()}
+              />
+              <button className="secondary" type="button" onClick={copyLink}>
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <small>
+              Send this for a remote session. It opens the assessment directly and needs no
+              password — anyone holding it can answer this attempt, so treat it as the key
+              to it. For an in-person session, use the button below instead.
+            </small>
+          </div>
+        </section>
+      )}
 
       <section className="summary-list">
         {outline.items.map((item) => (

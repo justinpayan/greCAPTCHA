@@ -483,6 +483,45 @@ textarea.control {
   margin-bottom: 6px;
 }
 
+.sign-out {
+  margin-left: auto;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 6px 12px;
+  color: var(--muted);
+  background: white;
+  font-size: 0.78rem;
+  font-weight: 720;
+}
+
+.sign-out:hover {
+  color: var(--ink);
+  border-color: var(--green);
+}
+
+.login-card {
+  max-width: 460px;
+}
+
+.participant-link {
+  margin-bottom: 18px;
+  padding: 18px 20px;
+}
+
+.participant-link-row {
+  display: flex;
+  gap: 10px;
+}
+
+.participant-link-row .control {
+  font-size: 0.85rem;
+}
+
+.participant-link-row .secondary {
+  flex-shrink: 0;
+  min-height: 48px;
+}
+
 .catalog-list {
   display: grid;
   gap: 8px;

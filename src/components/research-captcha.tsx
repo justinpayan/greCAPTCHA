@@ -517,6 +517,16 @@ export function ResearchCaptcha() {
       <div className="brand">
         <span className="brand-mark">R</span>
         ResearchCAPTCHA
+        <button
+          className="sign-out"
+          type="button"
+          onClick={async () => {
+            await fetch("/api/session", { method: "DELETE" });
+            window.location.href = "/login";
+          }}
+        >
+          Sign out
+        </button>
       </div>
       <section>
         <p className="eyebrow">Authorship understanding assessment</p>

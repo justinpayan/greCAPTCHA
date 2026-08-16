@@ -7,6 +7,7 @@ fresh, sequential attempts with rubric-based feedback.
 
 ## Features
 
+- Password-gated researcher interface with an unauthenticated participant link
 - PDF upload with a free-form contribution statement
 - Repeatable fill-in-the-blank, multiple-choice, and free-response configuration
   cards with editable generation prompts
@@ -48,6 +49,7 @@ Copy `.env.example` to `.env.local` and add your key:
 OPENROUTER_API_KEY=your_key_here
 GEMINI_API_KEY=optional_google_ai_studio_key
 DATABASE_URL=./data/research-captcha.db
+RESEARCHER_PASSWORD=required_for_any_deployment
 ```
 
 Start the development server:
@@ -298,6 +300,32 @@ PDFs are limited to 25 MB by the application. Password-protected, damaged, very
 large, or unusually structured manuscripts may fail. Extraction quality
 directly affects question quality.
 
+## Access control
+
+The interface has two audiences with different access.
+
+**The researcher interface is behind a password.** Set `RESEARCHER_PASSWORD` and sign in at
+`/login`; the session lasts 12 hours and **Sign out** clears it. The cookie holds a SHA-256
+derivation rather than the password, and is `httpOnly`. This covers the start screen and
+every endpoint that lists, generates, renames, grades, or plans — including
+`/api/attempts/<id>/outline`, which carries card names and item descriptions.
+
+Locally under `next dev` the password is optional, so development needs no sign-in. In a
+production build it is **required**: with the variable unset every researcher route returns
+503 rather than being served, so a deployment that forgets it is locked rather than open.
+
+**The participant assessment is not behind the password.** `/attempt/<id>` opens the
+assessment directly, along with the three endpoints it needs — reading the current
+question, submitting an answer, and reporting first interaction. The attempt ID in the URL
+is the capability, so treat a participant link like a key: anyone holding it can answer
+that attempt. IDs are UUIDs and are not listed anywhere unauthenticated.
+
+Copy the link from the **Participant link** field on the assessment plan page. For an
+in-person session, ignore it and use **Start assessment** on the same page instead.
+
+A participant who reloads their link resumes at the current question with its server-side
+timer intact, rather than losing the session.
+
 ## Data and security
 
 The browser uploads the PDF to the local Next.js server. The server sends it to
@@ -317,9 +345,10 @@ multiple-choice question receives 100 or 0; a free-response question receives a
 0–100 rubric score from the set's model.
 There is no passing threshold or pass/fail classification.
 
-This MVP has no user authentication. Run it only in a trusted environment until
-authentication, authorization, rate limiting, retention controls, and a
-production database are added.
+The researcher interface is password-gated (see **Access control**), but this MVP
+still has no per-user accounts, rate limiting, retention controls, or audit log,
+and it stores everything in a local SQLite file. Anyone with the researcher
+password has full access to every set and every attempt.
 
 ## Inspecting the database
 
