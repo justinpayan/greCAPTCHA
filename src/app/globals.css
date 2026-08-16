@@ -98,6 +98,8 @@ h2 {
   color: var(--muted);
   font-size: 1.08rem;
   line-height: 1.65;
+  /* Avoids a single short word being left alone on the last line. */
+  text-wrap: pretty;
 }
 
 .card {
@@ -124,12 +126,75 @@ h2 {
 .field {
   display: grid;
   gap: 9px;
+  /* Without this a field sharing a grid row with a taller one is stretched, and its rows
+     absorb the extra height — which pushes its control out of line with its neighbour. */
+  align-content: start;
 }
 
 .field label,
 .field-label {
   font-size: 0.88rem;
   font-weight: 720;
+}
+
+.field label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Hint bubble anchored to a field label, so helper text costs no vertical space and
+   cannot push neighbouring controls out of alignment. */
+.field-hint {
+  position: relative;
+  display: inline-flex;
+  cursor: help;
+}
+
+.field-hint-mark {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  color: var(--muted);
+  background: var(--line);
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.field-hint:hover .field-hint-mark,
+.field-hint:focus-visible .field-hint-mark {
+  color: white;
+  background: var(--green);
+}
+
+.field-hint-bubble {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  z-index: 50;
+  width: max-content;
+  max-width: 240px;
+  transform: translateX(-50%);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: white;
+  background: var(--ink);
+  box-shadow: 0 10px 24px rgba(20, 40, 32, 0.18);
+  font-size: 0.74rem;
+  font-weight: 560;
+  line-height: 1.45;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease;
+}
+
+.field-hint:hover .field-hint-bubble,
+.field-hint:focus-visible .field-hint-bubble {
+  opacity: 1;
+  visibility: visible;
 }
 
 .field small,
@@ -234,6 +299,56 @@ textarea.control {
   background: var(--green-soft);
   font-size: 0.7rem;
   font-weight: 760;
+}
+
+.template-card {
+  margin-bottom: 22px;
+  padding: clamp(18px, 3vw, 26px);
+}
+
+.template-heading {
+  margin-bottom: 16px;
+}
+
+.template-heading .hint {
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+
+.template-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+}
+
+.template-buttons {
+  display: flex;
+  gap: 10px;
+  padding-top: 26px;
+}
+
+.template-status {
+  margin-top: 14px;
+  margin-bottom: 0;
+  color: var(--green-dark);
+  font-size: 0.83rem;
+  font-weight: 640;
+}
+
+@media (max-width: 720px) {
+  .template-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .template-buttons {
+    padding-top: 0;
+  }
+}
+
+/* Both pills now sit inside a `.card-title-row`, which spaces its children with `gap`. */
+.review-card-header .card-title-row {
+  margin-bottom: 0;
 }
 
 .selected-model {
@@ -353,9 +468,19 @@ textarea.control {
 
 .question-config {
   border: 1px solid var(--line);
+  /* Type accent, so a long list of cards is scannable at a glance. */
+  border-left: 4px solid var(--type-accent, var(--line));
   border-radius: 16px;
   padding: 20px;
   background: #f8faf8;
+}
+
+.card-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
 }
 
 .question-config > header {
@@ -464,6 +589,52 @@ textarea.prompt-control {
   text-transform: uppercase;
 }
 
+/* One colour per question type, carried on a `type-<kind>` class. Colour is always paired
+   with the type's name, so nothing here is the sole carrier of meaning. */
+.type-fill_blank {
+  --type-ink: #0c4e35;
+  --type-soft: #e7f3ed;
+  --type-line: #9dc6b1;
+  --type-accent: #2f7d57;
+}
+
+.type-multiple_choice {
+  --type-ink: #27407d;
+  --type-soft: #e9edfa;
+  --type-line: #a8b6e2;
+  --type-accent: #4459a8;
+}
+
+.type-free_response {
+  --type-ink: #7a4a11;
+  --type-soft: #fbf0db;
+  --type-line: #e2c68f;
+  --type-accent: #a9761f;
+}
+
+.type-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--type-line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--type-ink);
+  background: var(--type-soft);
+  font-size: 0.7rem;
+  font-weight: 780;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.type-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--type-ink);
+}
+
 .question-copy {
   margin: 36px 0 44px;
   font-size: clamp(1.22rem, 2.5vw, 1.65rem);
@@ -552,6 +723,12 @@ textarea.prompt-control {
   margin-right: auto;
 }
 
+.sequence-status {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
 .sequence-progress {
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -560,6 +737,85 @@ textarea.prompt-control {
   background: white;
   font-size: 0.84rem;
   font-weight: 720;
+}
+
+.question-timer {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The soft limit has passed. Marked, never enforced. */
+.question-timer.over {
+  color: var(--danger);
+}
+
+.multiple-choice-question {
+  display: grid;
+  gap: 20px;
+  margin-top: 30px;
+}
+
+.multiple-choice-question h2 {
+  max-width: 850px;
+  margin-bottom: 0;
+  font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+  line-height: 1.45;
+}
+
+.option-list {
+  display: grid;
+  gap: 10px;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid #c6d1cb;
+  border-bottom-width: 3px;
+  border-radius: 10px;
+  padding: 14px 16px;
+  color: var(--ink);
+  background: white;
+  font-weight: 680;
+  line-height: 1.5;
+  text-align: left;
+}
+
+button.option:hover,
+button.option:focus {
+  border-color: var(--green);
+  outline: none;
+}
+
+button.option.selected {
+  border-color: var(--green);
+  background: var(--green-soft);
+}
+
+.review-option-list {
+  margin-top: 4px;
+}
+
+.review-option small {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.review-option.correct {
+  border-color: var(--green);
+  background: var(--green-soft);
+}
+
+.review-option.incorrect {
+  border-color: var(--danger);
 }
 
 .free-response-question {
@@ -576,29 +832,6 @@ textarea.prompt-control {
 
 .free-response-question textarea {
   min-height: 260px;
-}
-
-.set-id-badge {
-  position: fixed;
-  z-index: 40;
-  right: 14px;
-  bottom: 12px;
-  max-width: calc(100vw - 28px);
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 7px 10px;
-  color: var(--muted);
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 8px 25px rgba(20, 40, 32, 0.1);
-  font-size: 0.7rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.set-id-badge code {
-  margin-left: 5px;
-  color: var(--ink);
 }
 
 .result {
@@ -663,6 +896,13 @@ textarea.prompt-control {
 .review-card-header > span:last-child {
   font-size: 0.82rem;
   font-weight: 740;
+}
+
+.review-timing {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .review-question-copy {

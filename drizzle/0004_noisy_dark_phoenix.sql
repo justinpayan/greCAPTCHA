@@ -1,0 +1,1 @@
+ALTER TABLE `attempt_answers` ADD `block_name` text;

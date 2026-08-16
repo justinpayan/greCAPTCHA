@@ -1,0 +1,1 @@
+ALTER TABLE `attempts` ADD `countdown_hidden` integer DEFAULT false NOT NULL;

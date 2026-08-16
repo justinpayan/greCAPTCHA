@@ -10,8 +10,15 @@ export async function POST(
 ) {
   try {
     const { id } = await context.params;
-    const body = (await request.json()) as { randomize?: unknown };
-    const state = await createAttempt(id, body.randomize === true);
+    const body = (await request.json()) as {
+      randomize?: unknown;
+      countdownHidden?: unknown;
+    };
+    const state = await createAttempt({
+      questionSetId: id,
+      randomize: body.randomize === true,
+      countdownHidden: body.countdownHidden === true,
+    });
     return NextResponse.json(state, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load question set.";

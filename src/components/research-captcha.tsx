@@ -6,9 +6,12 @@ import { QuizWorkspace } from "@/components/quiz/quiz-workspace";
 import {
   DEFAULT_FILL_PROMPT,
   DEFAULT_FREE_RESPONSE_PROMPT,
+  DEFAULT_MULTIPLE_CHOICE_PROMPT,
   type AttemptView,
   type PdfEngine,
   type QuestionBlockConfig,
+  type StudyTemplateConfig,
+  type StudyTemplateSummary,
 } from "@/lib/quiz";
 
 type CatalogModel = {
@@ -19,21 +22,90 @@ type CatalogModel = {
   recommended: boolean;
 };
 
+const BLOCK_LABELS: Record<QuestionBlockConfig["type"], string> = {
+  fill_blank: "Fill in the blank",
+  multiple_choice: "Multiple choice",
+  free_response: "Free response",
+};
+
 function newBlock(type: QuestionBlockConfig["type"]): QuestionBlockConfig {
-  return type === "fill_blank"
-    ? {
-        id: crypto.randomUUID(),
-        type,
-        count: 5,
-        distractorsPerBlank: 3,
-        prompt: DEFAULT_FILL_PROMPT,
-      }
-    : {
-        id: crypto.randomUUID(),
-        type,
-        count: 2,
-        prompt: DEFAULT_FREE_RESPONSE_PROMPT,
-      };
+  const id = crypto.randomUUID();
+  if (type === "fill_blank") {
+    return {
+      id,
+      type,
+      name: "",
+      count: 5,
+      distractorsPerBlank: 3,
+      timeLimitSeconds: null,
+      warmup: false,
+      prompt: DEFAULT_FILL_PROMPT,
+    };
+  }
+  if (type === "multiple_choice") {
+    return {
+      id,
+      type,
+      name: "",
+      count: 5,
+      optionsPerQuestion: 4,
+      timeLimitSeconds: null,
+      warmup: false,
+      prompt: DEFAULT_MULTIPLE_CHOICE_PROMPT,
+    };
+  }
+  return {
+    id,
+    type,
+    name: "",
+    count: 2,
+    timeLimitSeconds: null,
+    warmup: false,
+    prompt: DEFAULT_FREE_RESPONSE_PROMPT,
+  };
+}
+
+/**
+ * Helper text for a field that shares a grid row with another field. Rendered as a bubble
+ * anchored to the label so it takes no vertical space and cannot misalign its neighbour.
+ */
+function FieldHint({ text }: { text: string }) {
+  return (
+    <span className="field-hint" tabIndex={0}>
+      <span className="field-hint-mark" aria-hidden="true">
+        ?
+      </span>
+      <span className="field-hint-bubble" role="tooltip">
+        {text}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * Suppresses the timer in the test-taking interface. Soft limits still apply to the
+ * attempt and every duration is still recorded server-side; only the display changes.
+ * Fixed for the whole attempt so all of its questions are answered under one condition.
+ */
+function CountdownToggle({
+  className,
+  hidden,
+  onChange,
+}: {
+  className?: string;
+  hidden: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <label className={`toggle-row ${className ?? ""}`.trim()}>
+      <input
+        type="checkbox"
+        checked={hidden}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      Hide the on-screen countdown — every timing is still recorded
+    </label>
+  );
 }
 
 export function ResearchCaptcha() {
@@ -47,41 +119,124 @@ export function ResearchCaptcha() {
     {
       id: "initial-fill-block",
       type: "fill_blank",
+      name: "",
       count: 5,
       distractorsPerBlank: 3,
+      timeLimitSeconds: null,
+      warmup: false,
       prompt: DEFAULT_FILL_PROMPT,
     },
   ]);
   const [randomize, setRandomize] = useState(false);
+  const [countdownHidden, setCountdownHidden] = useState(false);
   const [loadingModels, setLoadingModels] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState<AttemptView | null>(null);
+  const [templates, setTemplates] = useState<StudyTemplateSummary[]>([]);
+  const [templateId, setTemplateId] = useState("");
+  const [templateName, setTemplateName] = useState("");
+  const [templateStatus, setTemplateStatus] = useState("");
+  // Blocks autosaving until the stored draft has been applied, so the restore is never
+  // overwritten by the component's own initial state.
+  const [restored, setRestored] = useState(false);
+
+  const currentConfig = useMemo<StudyTemplateConfig>(
+    () => ({
+      modelId: selectedModel?.id ?? "",
+      pdfEngine,
+      blocks,
+      randomize,
+      countdownHidden,
+    }),
+    [selectedModel, pdfEngine, blocks, randomize, countdownHidden],
+  );
+
+  function applyConfig(config: StudyTemplateConfig, catalog: CatalogModel[]) {
+    setPdfEngine(config.pdfEngine);
+    setBlocks(config.blocks);
+    setRandomize(config.randomize);
+    setCountdownHidden(config.countdownHidden);
+    const match = catalog.find((model) => model.id === config.modelId);
+    if (match) {
+      setSelectedModel(match);
+      setModelSearch(match.name);
+    }
+    return Boolean(match);
+  }
 
   useEffect(() => {
     let active = true;
-    fetch("/api/openrouter/models")
-      .then(async (response) => {
+    Promise.allSettled([
+      fetch("/api/openrouter/models").then(async (response) => {
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error ?? "Unable to load models.");
+        return payload.models as CatalogModel[];
+      }),
+      fetch("/api/templates").then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? "Unable to load templates.");
+        return payload as {
+          templates: StudyTemplateSummary[];
+          draft: StudyTemplateConfig | null;
+        };
+      }),
+    ])
+      .then(([modelResult, templateResult]) => {
         if (!active) return;
-        const loaded = payload.models as CatalogModel[];
-        setModels(loaded);
-        const preferred =
-          loaded.find((model) => model.id === "google/gemini-3.1-pro-preview") ??
-          loaded.find((model) => /anthropic\/claude.*sonnet/i.test(model.id)) ??
-          loaded.find((model) => model.recommended) ??
-          loaded[0] ??
-          null;
-        setSelectedModel(preferred);
-        setModelSearch(preferred?.name ?? "");
+        const catalog = modelResult.status === "fulfilled" ? modelResult.value : [];
+        setModels(catalog);
+        if (modelResult.status === "rejected") {
+          setError(
+            modelResult.reason instanceof Error
+              ? modelResult.reason.message
+              : "Unable to load models.",
+          );
+        }
+
+        const stored =
+          templateResult.status === "fulfilled" ? templateResult.value : null;
+        setTemplates(stored?.templates ?? []);
+
+        // Restoring the draft must win over the default model pick, so both fetches are
+        // resolved together rather than racing to set the selection.
+        const restoredModel = stored?.draft ? applyConfig(stored.draft, catalog) : false;
+        if (!restoredModel && catalog.length) {
+          const preferred =
+            catalog.find((model) => model.id === "google/gemini-3.1-pro-preview") ??
+            catalog.find((model) => /anthropic\/claude.*sonnet/i.test(model.id)) ??
+            catalog.find((model) => model.recommended) ??
+            catalog[0] ??
+            null;
+          setSelectedModel(preferred);
+          setModelSearch(preferred?.name ?? "");
+        }
+        if (stored?.draft) setTemplateStatus("Restored your last configuration.");
       })
-      .catch((caught: Error) => active && setError(caught.message))
-      .finally(() => active && setLoadingModels(false));
+      .finally(() => {
+        if (!active) return;
+        setLoadingModels(false);
+        setRestored(true);
+      });
     return () => {
       active = false;
     };
   }, []);
+
+  // Autosave the working configuration so a reload or a server restart resumes it.
+  useEffect(() => {
+    if (!restored) return;
+    const timer = window.setTimeout(() => {
+      void fetch("/api/templates", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: currentConfig }),
+      }).catch(() => {
+        // The draft is a convenience; a failed autosave must not interrupt setup.
+      });
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [currentConfig, restored]);
 
   useEffect(() => {
     if (
@@ -105,6 +260,72 @@ export function ResearchCaptcha() {
       .slice(0, 60);
   }, [modelSearch, models]);
 
+  async function saveTemplate() {
+    setTemplateStatus("");
+    setError("");
+    try {
+      const response = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: templateName, config: currentConfig }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to save the template.");
+      const saved = payload.template as StudyTemplateSummary;
+      setTemplates((current) => [saved, ...current.filter((one) => one.id !== saved.id)]);
+      setTemplateId(saved.id);
+      setTemplateName("");
+      setTemplateStatus(`Saved “${saved.name}”.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to save the template.");
+    }
+  }
+
+  async function loadTemplate(id: string) {
+    setTemplateId(id);
+    setTemplateStatus("");
+    if (!id) return;
+    setError("");
+    try {
+      const response = await fetch(`/api/templates/${encodeURIComponent(id)}`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to load the template.");
+      const template = payload.template as {
+        name: string;
+        config: StudyTemplateConfig;
+      };
+      const matchedModel = applyConfig(template.config, models);
+      setTemplateStatus(
+        matchedModel
+          ? `Loaded “${template.name}”.`
+          : `Loaded “${template.name}”. Its model is not in the current catalog, so the model selection was left unchanged.`,
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to load the template.");
+    }
+  }
+
+  async function deleteTemplate() {
+    const target = templates.find((one) => one.id === templateId);
+    if (!target) return;
+    if (!window.confirm(`Delete the template “${target.name}”? This cannot be undone.`)) {
+      return;
+    }
+    setError("");
+    try {
+      const response = await fetch(`/api/templates/${encodeURIComponent(target.id)}`, {
+        method: "DELETE",
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to delete the template.");
+      setTemplates((current) => current.filter((one) => one.id !== target.id));
+      setTemplateId("");
+      setTemplateStatus(`Deleted “${target.name}”. Your current setup is unchanged.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to delete the template.");
+    }
+  }
+
   function updateBlock(id: string, patch: Partial<QuestionBlockConfig>) {
     setBlocks((current) =>
       current.map((block) =>
@@ -124,6 +345,7 @@ export function ResearchCaptcha() {
     form.set("pdfEngine", pdfEngine);
     form.set("blocks", JSON.stringify(blocks));
     form.set("randomize", String(randomize));
+    form.set("countdownHidden", String(countdownHidden));
     try {
       const response = await fetch("/api/question-sets", { method: "POST", body: form });
       const payload = await response.json();
@@ -147,7 +369,7 @@ export function ResearchCaptcha() {
       const response = await fetch(`/api/question-sets/${encodeURIComponent(id)}/attempts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ randomize }),
+        body: JSON.stringify({ randomize, countdownHidden }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to load question set.");
@@ -173,7 +395,7 @@ export function ResearchCaptcha() {
         <h1>Build an assessment around the work.</h1>
         <p className="lede">
           Generate a reusable mixed-format question set or start a fresh attempt from
-          a saved set ID.
+          a saved set&nbsp;ID.
         </p>
       </section>
 
@@ -194,10 +416,77 @@ export function ResearchCaptcha() {
         </button>
       </div>
 
+      {mode === "generate" && (
+        <section className="card template-card">
+          <div className="template-heading">
+            <div>
+              <span className="field-label">Study set template</span>
+              <p className="hint">
+                Everything below except the PDF and the contribution statement. Your current
+                setup is saved automatically and restored on the next visit.
+              </p>
+            </div>
+          </div>
+          <div className="template-controls">
+            <div className="field">
+              <label htmlFor="templatePicker">Saved templates</label>
+              <select
+                className="control"
+                id="templatePicker"
+                value={templateId}
+                onChange={(event) => loadTemplate(event.target.value)}
+              >
+                <option value="">
+                  {templates.length ? "Select a template to load…" : "No saved templates"}
+                </option>
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="templateName">
+                Save current setup as
+                <FieldHint text="Saving under a name that already exists replaces that template." />
+              </label>
+              <input
+                className="control"
+                id="templateName"
+                value={templateName}
+                placeholder="Template name"
+                maxLength={120}
+                onChange={(event) => setTemplateName(event.target.value)}
+              />
+            </div>
+            <div className="template-buttons">
+              <button
+                className="secondary"
+                type="button"
+                disabled={!templateName.trim()}
+                onClick={saveTemplate}
+              >
+                Save template
+              </button>
+              <button
+                className="secondary"
+                type="button"
+                disabled={!templateId}
+                onClick={deleteTemplate}
+              >
+                Delete selected
+              </button>
+            </div>
+          </div>
+          {templateStatus && <p className="template-status">{templateStatus}</p>}
+        </section>
+      )}
+
       {mode === "load" ? (
         <form className="card form-card" onSubmit={loadSet}>
           <div className="field">
-            <label htmlFor="questionSetId">Question-set row ID</label>
+            <label htmlFor="questionSetId">Question-set row&nbsp;ID</label>
             <input
               className="control"
               id="questionSetId"
@@ -215,6 +504,7 @@ export function ResearchCaptcha() {
             />
             Randomize question order for this attempt
           </label>
+          <CountdownToggle hidden={countdownHidden} onChange={setCountdownHidden} />
           {error && <p className="error" role="alert">{error}</p>}
           <div className="submit-row">
             <span className="hint">The saved questions and rubrics are reused unchanged.</span>
@@ -316,17 +606,29 @@ export function ResearchCaptcha() {
                 </div>
                 <div className="add-buttons">
                   <button
-                    className="secondary"
+                    className="secondary type-fill_blank"
                     type="button"
                     onClick={() => setBlocks((current) => [...current, newBlock("fill_blank")])}
                   >
+                    <span className="type-dot" aria-hidden="true" />
                     Add fill-in-the-blank
                   </button>
                   <button
-                    className="secondary"
+                    className="secondary type-multiple_choice"
+                    type="button"
+                    onClick={() =>
+                      setBlocks((current) => [...current, newBlock("multiple_choice")])
+                    }
+                  >
+                    <span className="type-dot" aria-hidden="true" />
+                    Add multiple-choice
+                  </button>
+                  <button
+                    className="secondary type-free_response"
                     type="button"
                     onClick={() => setBlocks((current) => [...current, newBlock("free_response")])}
                   >
+                    <span className="type-dot" aria-hidden="true" />
                     Add free-response
                   </button>
                 </div>
@@ -334,15 +636,20 @@ export function ResearchCaptcha() {
 
               <div className="question-blocks">
                 {blocks.map((block, index) => (
-                  <article className="question-config" key={block.id}>
+                  <article
+                    className={`question-config type-${block.type}`}
+                    key={block.id}
+                  >
                     <header>
                       <div>
-                        <span className="question-number">Type {index + 1}</span>
-                        <h3>
-                          {block.type === "fill_blank"
-                            ? "Fill in the blank"
-                            : "Free response"}
-                        </h3>
+                        <div className="card-title-row">
+                          <span className="question-number">Type {index + 1}</span>
+                          <span className={`type-chip type-${block.type}`}>
+                            {BLOCK_LABELS[block.type]}
+                          </span>
+                          {block.warmup && <span className="pill">Warm-up</span>}
+                        </div>
+                        <h3>{block.name.trim() || BLOCK_LABELS[block.type]}</h3>
                       </div>
                       <button
                         className="remove-button"
@@ -357,6 +664,22 @@ export function ResearchCaptcha() {
                       </button>
                     </header>
                     <div className="config-grid">
+                      <div className="field">
+                        <label htmlFor={`${block.id}-name`}>
+                          Card name
+                          <FieldHint text="Researcher-facing only. Stored with every question this card generates so answers can be grouped by family. Never shown to the participant." />
+                        </label>
+                        <input
+                          className="control"
+                          id={`${block.id}-name`}
+                          value={block.name}
+                          maxLength={80}
+                          placeholder={`e.g. F1 planted error`}
+                          onChange={(event) =>
+                            updateBlock(block.id, { name: event.target.value })
+                          }
+                        />
+                      </div>
                       <div className="field">
                         <label htmlFor={`${block.id}-count`}>Number of questions</label>
                         <input
@@ -391,6 +714,60 @@ export function ResearchCaptcha() {
                           />
                         </div>
                       )}
+                      {block.type === "multiple_choice" && (
+                        <div className="field">
+                          <label htmlFor={`${block.id}-options`}>
+                            Options per question
+                            <FieldHint text="Set 2 for true/false items." />
+                          </label>
+                          <input
+                            className="control"
+                            id={`${block.id}-options`}
+                            type="number"
+                            min={2}
+                            max={10}
+                            value={block.optionsPerQuestion}
+                            onChange={(event) =>
+                              updateBlock(block.id, {
+                                optionsPerQuestion: Number(event.target.value),
+                              })
+                            }
+                          />
+                        </div>
+                      )}
+                      <div className="field">
+                        <label htmlFor={`${block.id}-time-limit`}>
+                          Soft time limit (seconds)
+                          <FieldHint text="Shown as a countdown and recorded as an overrun. Answers are never cut off or penalised." />
+                        </label>
+                        <input
+                          className="control"
+                          id={`${block.id}-time-limit`}
+                          type="number"
+                          min={5}
+                          max={3600}
+                          value={block.timeLimitSeconds ?? ""}
+                          placeholder="Leave blank for untimed"
+                          onChange={(event) =>
+                            updateBlock(block.id, {
+                              timeLimitSeconds:
+                                event.target.value === ""
+                                  ? null
+                                  : Number(event.target.value),
+                            })
+                          }
+                        />
+                      </div>
+                      <label className="toggle-row full">
+                        <input
+                          type="checkbox"
+                          checked={block.warmup}
+                          onChange={(event) =>
+                            updateBlock(block.id, { warmup: event.target.checked })
+                          }
+                        />
+                        Warm-up card — asked first and excluded from the overall score
+                      </label>
                       <div className="field full">
                         <label htmlFor={`${block.id}-prompt`}>
                           Question {block.type === "free_response" ? "and rubric " : ""}
@@ -419,6 +796,11 @@ export function ResearchCaptcha() {
               />
               Randomize question order for the first attempt
             </label>
+            <CountdownToggle
+              className="full"
+              hidden={countdownHidden}
+              onChange={setCountdownHidden}
+            />
           </div>
 
           {error && <p className="error" role="alert">{error}</p>}

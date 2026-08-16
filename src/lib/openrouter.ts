@@ -4,6 +4,7 @@ import {
   freeResponseGradesSchema,
   generatedFillSetSchema,
   generatedFreeResponseSetSchema,
+  generatedMultipleChoiceSetSchema,
   type PdfEngine,
   type QuestionBlockConfig,
   type StoredFreeResponseQuestion,
@@ -150,6 +151,32 @@ const freeResponseJsonSchema = {
             },
           },
           required: ["prompt", "rubric"],
+        },
+      },
+    },
+    required: ["questions"],
+  },
+};
+
+const multipleChoiceJsonSchema = {
+  name: "research_captcha_multiple_choice_questions",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      questions: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            prompt: { type: "string" },
+            answer: { type: "string" },
+            distractors: { type: "array", items: { type: "string" } },
+            rationale: { type: "string" },
+          },
+          required: ["prompt", "answer", "distractors", "rationale"],
         },
       },
     },
@@ -365,6 +392,17 @@ export async function generateQuestionBlock(input: {
         })),
       };
     }
+    if (question.type === "multiple_choice") {
+      return {
+        type: question.type,
+        prompt: question.prompt,
+        answer: question.options.find((option) => option.id === question.correctOptionId)
+          ?.label,
+        distractors: question.options
+          .filter((option) => option.id !== question.correctOptionId)
+          .map((option) => option.label),
+      };
+    }
     return {
       type: question.type,
       prompt: question.prompt,
@@ -403,6 +441,31 @@ Generate exactly ${input.block.count} fill-in-the-blank questions. Provide appro
       throw new Error(`The model returned ${validated.questions.length} questions instead of ${input.block.count}.`);
     }
     return { type: "fill_blank" as const, generated: validated };
+  }
+
+  if (input.block.type === "multiple_choice") {
+    const optionCount = input.block.optionsPerQuestion;
+    const parsed = await callOpenRouter({
+      modelId: input.modelId,
+      file: input.file,
+      pdfEngine: input.pdfEngine,
+      responseSchema: multipleChoiceJsonSchema,
+      prompt: `${sharedContext}
+
+Generate exactly ${input.block.count} multiple-choice questions with exactly one correct answer each. Supply the correct answer plus exactly ${optionCount - 1} distractors, so each question offers ${optionCount} options in total. Never repeat the correct answer as a distractor and never give two options the same meaning. Do not number, letter, or otherwise order the options in their text, and do not refer to options by position in the prompt. Also supply a rationale of one or two sentences explaining why the correct answer is correct; it is shown to the participant only after grading. Return only schema-conforming JSON.`,
+    });
+    const validated = generatedMultipleChoiceSetSchema.parse(parsed);
+    if (validated.questions.length !== input.block.count) {
+      throw new Error(`The model returned ${validated.questions.length} questions instead of ${input.block.count}.`);
+    }
+    for (const question of validated.questions) {
+      if (question.distractors.length !== optionCount - 1) {
+        throw new Error(
+          `A generated question offers ${question.distractors.length + 1} options instead of ${optionCount}.`,
+        );
+      }
+    }
+    return { type: "multiple_choice" as const, generated: validated };
   }
 
   const parsed = await callOpenRouter({

@@ -126,14 +126,23 @@ export async function POST(
       0,
       submittedAt.getTime() - new Date(answerRow.startedAt).getTime(),
     );
+    // Soft timer: an overrun is recorded, never enforced. The limit comes from the row
+    // stamped when the question was first served, not from the current question set.
+    const timeLimitSeconds = answerRow.timeLimitSeconds;
+    const overrunMs =
+      timeLimitSeconds === null
+        ? null
+        : Math.max(0, durationMs - timeLimitSeconds * 1000);
     let answerJson: string;
     let score: number | null = null;
     let feedbackJson: string | null = null;
 
     if (quiz.currentQuestion.type === "fill_blank" && submission.type === "fill_blank") {
-      const blankFeedback: FillReview["blanks"] = quiz.currentQuestion.blanks.map((blank) => {
+      // Bind the narrowed question to a const so the type survives into the callback below.
+      const fillQuestion = quiz.currentQuestion;
+      const blankFeedback: FillReview["blanks"] = fillQuestion.blanks.map((blank) => {
         const selectedChoiceId = submission.selections[blank.id] ?? null;
-        const selectedChoice = quiz.currentQuestion.choices.find(
+        const selectedChoice = fillQuestion.choices.find(
           (choice) => choice.id === selectedChoiceId,
         );
         const selectedAnswer = selectedChoice?.label ?? null;
@@ -154,6 +163,18 @@ export async function POST(
       answerJson = JSON.stringify({ selections: submission.selections });
       feedbackJson = JSON.stringify({ blanks: blankFeedback });
     } else if (
+      quiz.currentQuestion.type === "multiple_choice" &&
+      submission.type === "multiple_choice"
+    ) {
+      const question = quiz.currentQuestion;
+      if (!question.options.some((option) => option.id === submission.optionId)) {
+        throw new Error("The selected option does not belong to this question.");
+      }
+      const correct = submission.optionId === question.correctOptionId;
+      score = correct ? 100 : 0;
+      answerJson = JSON.stringify({ optionId: submission.optionId });
+      feedbackJson = JSON.stringify({ correct });
+    } else if (
       quiz.currentQuestion.type === "free_response" &&
       submission.type === "free_response"
     ) {
@@ -168,6 +189,7 @@ export async function POST(
         answerJson,
         submittedAt: submittedAt.toISOString(),
         durationMs,
+        overrunMs,
         score,
         feedbackJson,
       })

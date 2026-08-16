@@ -12,10 +12,23 @@ export const DEFAULT_FREE_RESPONSE_PROMPT = `Generate free-response questions th
 
 Questions should be difficult for someone who did not contribute to or deeply understand the work, but answerable without calculations by a genuine contributor. Avoid requests that can be answered by copying a sentence from the paper. For each question, construct an objective 100-point rubric with explicit criteria, point allocations, and guidance about what evidence earns full, partial, or no credit. Allow substantively equivalent wording and multiple valid explanations where appropriate. The rubric must support consistent grading without requiring exact phrasing.`;
 
+export const DEFAULT_MULTIPLE_CHOICE_PROMPT = `Generate multiple-choice questions that test whether a claimed author can recognise subtly incorrect statements about their own manuscript.
+
+Each question presents a specific claim about the paper's methods, results, or design decisions. Exactly one option must accurately state what the paper reports; every other option must be a plausible but objectively false variant of it. Perturb a value, a referent, or an attribution, never a qualitative direction, which is too easy to spot. Never perturb something the paper restates elsewhere, and never let an option be checked by matching a single keyword. Options must be mutually exclusive, similar in length and specificity, and grammatically consistent with the question. Someone who understands the work should recognise the correct option immediately; someone who does not should have to verify every option against the paper.`;
+
 const blockBase = {
   id: z.string().min(1).max(100),
+  // Researcher-facing label for the card, e.g. "F1 planted error". Never shown to the
+  // participant; snapshotted onto each answer row so exports can group by family.
+  name: z.string().max(80).default(""),
   count: z.number().int().min(1).max(30),
   prompt: z.string().min(20).max(20_000),
+  // Soft timer: displayed to the participant and used to flag overruns, never enforced.
+  // null means the questions from this card are untimed.
+  timeLimitSeconds: z.number().int().min(5).max(3_600).nullable().default(null),
+  // Warm-up items are graded and reviewed but excluded from the overall score, and they
+  // always lead the attempt in card order even when the rest is randomized.
+  warmup: z.boolean().default(false),
 };
 
 export const questionBlockSchema = z.discriminatedUnion("type", [
@@ -28,10 +41,38 @@ export const questionBlockSchema = z.discriminatedUnion("type", [
     ...blockBase,
     type: z.literal("free_response"),
   }),
+  z.object({
+    ...blockBase,
+    type: z.literal("multiple_choice"),
+    optionsPerQuestion: z.number().int().min(2).max(10),
+  }),
 ]);
 
 export const generationConfigSchema = z.array(questionBlockSchema).min(1).max(20);
 export type QuestionBlockConfig = z.infer<typeof questionBlockSchema>;
+
+/**
+ * Everything on the generation screen except the PDF and the contribution statement, so
+ * one template runs across every participant's manuscript.
+ *
+ * Deliberately more permissive than `generationConfigSchema`: a draft is autosaved while
+ * the screen is mid-edit, and an empty card list or an unchosen model must not make the
+ * save fail. The stricter schema still gates generation itself.
+ */
+export const studyTemplateConfigSchema = z.object({
+  modelId: z.string().max(200).default(""),
+  pdfEngine: pdfEngineSchema.default("native"),
+  blocks: z.array(questionBlockSchema).max(20).default([]),
+  randomize: z.boolean().default(false),
+  countdownHidden: z.boolean().default(false),
+});
+export type StudyTemplateConfig = z.infer<typeof studyTemplateConfigSchema>;
+
+export type StudyTemplateSummary = {
+  id: string;
+  name: string;
+  updatedAt: string;
+};
 
 const generatedBlankSchema = z.object({
   id: z.string().min(1),
@@ -66,6 +107,19 @@ export const generatedFreeResponseSetSchema = z.object({
   ),
 });
 
+// The model supplies the correct answer plus distractors rather than an index into an
+// option list, so a miscounted index can never mislabel the key.
+export const generatedMultipleChoiceSetSchema = z.object({
+  questions: z.array(
+    z.object({
+      prompt: z.string().min(1),
+      answer: z.string().min(1),
+      distractors: z.array(z.string().min(1)).min(1),
+      rationale: z.string().min(1),
+    }),
+  ),
+});
+
 export const freeResponseGradesSchema = z.object({
   grades: z.array(
     z.object({
@@ -78,6 +132,7 @@ export const freeResponseGradesSchema = z.object({
 
 export type GeneratedFillSet = z.infer<typeof generatedFillSetSchema>;
 export type GeneratedFreeResponseSet = z.infer<typeof generatedFreeResponseSetSchema>;
+export type GeneratedMultipleChoiceSet = z.infer<typeof generatedMultipleChoiceSetSchema>;
 export type FreeResponseGrades = z.infer<typeof freeResponseGradesSchema>;
 
 export type QuizChoice = { id: string; label: string };
@@ -96,6 +151,10 @@ export type StoredFillQuestion = {
   type: "fill_blank";
   id: string;
   blockId: string;
+  // Optional because question sets generated before soft timers existed have no limit stored.
+  timeLimitSeconds?: number | null;
+  warmup?: boolean;
+  blockName?: string;
   segments: QuestionSegment[];
   choices: QuizChoice[];
   blanks: StoredBlank[];
@@ -110,18 +169,52 @@ export type StoredFreeResponseQuestion = {
   type: "free_response";
   id: string;
   blockId: string;
+  timeLimitSeconds?: number | null;
+  warmup?: boolean;
+  blockName?: string;
   prompt: string;
   rubric: Rubric;
 };
 
-export type StoredQuestion = StoredFillQuestion | StoredFreeResponseQuestion;
+export type StoredMultipleChoiceQuestion = {
+  type: "multiple_choice";
+  id: string;
+  blockId: string;
+  timeLimitSeconds?: number | null;
+  warmup?: boolean;
+  blockName?: string;
+  prompt: string;
+  /** Already shuffled at generation, so every attempt on this set sees the same order. */
+  options: QuizChoice[];
+  correctOptionId: string;
+  /** Withheld until the review screen. */
+  rationale: string;
+};
 
-export type PublicFillQuestion = Omit<StoredFillQuestion, "blanks"> & {
+export type StoredQuestion =
+  | StoredFillQuestion
+  | StoredFreeResponseQuestion
+  | StoredMultipleChoiceQuestion;
+
+// `warmup` is stripped from every public shape. Telling the participant an item does not
+// count would undermine its use as a per-participant latency baseline (§3.2 F6); the review
+// screen labels warm-ups after scoring instead.
+export type PublicFillQuestion = Omit<StoredFillQuestion, "blanks" | "warmup" | "blockName"> & {
   blankIds: string[];
 };
 
-export type PublicFreeResponseQuestion = Omit<StoredFreeResponseQuestion, "rubric">;
-export type PublicQuestion = PublicFillQuestion | PublicFreeResponseQuestion;
+export type PublicFreeResponseQuestion = Omit<
+  StoredFreeResponseQuestion,
+  "rubric" | "warmup" | "blockName"
+>;
+export type PublicMultipleChoiceQuestion = Omit<
+  StoredMultipleChoiceQuestion,
+  "correctOptionId" | "rationale" | "warmup" | "blockName"
+>;
+export type PublicQuestion =
+  | PublicFillQuestion
+  | PublicFreeResponseQuestion
+  | PublicMultipleChoiceQuestion;
 
 export type AttemptView = {
   attemptId: string;
@@ -131,6 +224,12 @@ export type AttemptView = {
   currentIndex: number;
   totalQuestions: number;
   question: PublicQuestion;
+  /** Fixed for the whole attempt: suppresses the on-screen timer without affecting recording. */
+  countdownHidden: boolean;
+  /** Server-measured time already spent on this question, so a refresh resumes the display. */
+  elapsedMs: number;
+  /** True once the server has stamped a first interaction, so a refresh does not re-ping. */
+  firstInteractionRecorded: boolean;
 };
 
 export const answerSubmissionSchema = z.discriminatedUnion("type", [
@@ -142,15 +241,34 @@ export const answerSubmissionSchema = z.discriminatedUnion("type", [
     type: z.literal("free_response"),
     response: z.string().trim().min(1).max(50_000),
   }),
+  z.object({
+    type: z.literal("multiple_choice"),
+    optionId: z.string().min(1),
+  }),
 ]);
 export type AnswerSubmission = z.infer<typeof answerSubmissionSchema>;
 
-export type FillReview = {
+/** Per-item timing telemetry carried into the graded result and the review screen. */
+export type QuestionTiming = {
+  durationMs: number;
+  /** Time from the question first being served to the first answer interaction. */
+  firstInteractionMs: number | null;
+  /** The soft limit in force when the question was served, or null if untimed. */
+  timeLimitSeconds: number | null;
+  /** Milliseconds spent beyond the soft limit; 0 within the limit, null if untimed. */
+  overrunMs: number | null;
+};
+
+type ReviewBase = QuestionTiming & {
+  /** Graded and shown, but excluded from the overall score. */
+  warmup: boolean;
+};
+
+export type FillReview = ReviewBase & {
   type: "fill_blank";
   questionId: string;
   segments: QuestionSegment[];
   score: number;
-  durationMs: number;
   blanks: Array<{
     blankId: string;
     selectedAnswer: string | null;
@@ -159,7 +277,7 @@ export type FillReview = {
   }>;
 };
 
-export type FreeResponseReview = {
+export type FreeResponseReview = ReviewBase & {
   type: "free_response";
   questionId: string;
   prompt: string;
@@ -167,15 +285,31 @@ export type FreeResponseReview = {
   rubric: Rubric;
   score: number;
   feedback: string;
-  durationMs: number;
 };
+
+export type MultipleChoiceReview = ReviewBase & {
+  type: "multiple_choice";
+  questionId: string;
+  prompt: string;
+  options: QuizChoice[];
+  selectedOptionId: string | null;
+  correctOptionId: string;
+  correct: boolean;
+  rationale: string;
+  score: number;
+};
+
+export type QuestionReview = FillReview | FreeResponseReview | MultipleChoiceReview;
 
 export type AssessmentResult = {
   attemptId: string;
   questionSetId: string;
   paperName: string;
+  /** Equal-weight average across scored questions only; warm-ups are excluded. */
   overallScore: number;
-  questions: Array<FillReview | FreeResponseReview>;
+  scoredQuestionCount: number;
+  warmupQuestionCount: number;
+  questions: QuestionReview[];
 };
 
 export function shuffled<T>(values: T[]): T[] {
@@ -219,7 +353,7 @@ function parseSegments(prompt: string, blankIds: Set<string>): QuestionSegment[]
 
 export function prepareFillQuestions(
   generated: GeneratedFillSet,
-  blockId: string,
+  block: QuestionBlockConfig,
 ): StoredFillQuestion[] {
   return generated.questions.map((question) => {
     const ids = question.blanks.map((blank) => blank.id);
@@ -242,7 +376,10 @@ export function prepareFillQuestions(
     return {
       type: "fill_blank" as const,
       id: globalThis.crypto.randomUUID(),
-      blockId,
+      blockId: block.id,
+      timeLimitSeconds: block.timeLimitSeconds,
+      warmup: block.warmup,
+      blockName: block.name,
       segments: parseSegments(question.prompt, new Set(ids)),
       choices: shuffled(choices),
       blanks,
@@ -252,22 +389,106 @@ export function prepareFillQuestions(
 
 export function prepareFreeResponseQuestions(
   generated: GeneratedFreeResponseSet,
-  blockId: string,
+  block: QuestionBlockConfig,
 ): StoredFreeResponseQuestion[] {
   return generated.questions.map((question) => ({
     type: "free_response",
     id: globalThis.crypto.randomUUID(),
-    blockId,
+    blockId: block.id,
+    timeLimitSeconds: block.timeLimitSeconds,
+    warmup: block.warmup,
+    blockName: block.name,
     prompt: question.prompt.trim(),
     rubric: question.rubric,
   }));
 }
 
+/** Compares option text the same way fill-in-the-blank grading compares answers. */
+function sameOptionText(a: string, b: string) {
+  return (
+    a.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US") ===
+    b.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US")
+  );
+}
+
+export function prepareMultipleChoiceQuestions(
+  generated: GeneratedMultipleChoiceSet,
+  block: QuestionBlockConfig,
+): StoredMultipleChoiceQuestion[] {
+  return generated.questions.map((question) => {
+    const answer = question.answer.trim();
+    const distractors = question.distractors.map((distractor) => distractor.trim());
+
+    // A distractor equal to the key leaves the item with two correct options, so reject
+    // the whole generation rather than storing an unanswerable question.
+    if (distractors.some((distractor) => sameOptionText(distractor, answer))) {
+      throw new Error("A generated question repeats its correct answer as a distractor.");
+    }
+    for (let index = 1; index < distractors.length; index += 1) {
+      if (
+        distractors
+          .slice(0, index)
+          .some((earlier) => sameOptionText(earlier, distractors[index]))
+      ) {
+        throw new Error("A generated question contains duplicate options.");
+      }
+    }
+
+    const correctOption = { id: globalThis.crypto.randomUUID(), label: answer };
+    const options = shuffled([
+      correctOption,
+      ...distractors.map((label) => ({ id: globalThis.crypto.randomUUID(), label })),
+    ]);
+    return {
+      type: "multiple_choice" as const,
+      id: globalThis.crypto.randomUUID(),
+      blockId: block.id,
+      timeLimitSeconds: block.timeLimitSeconds,
+      warmup: block.warmup,
+      blockName: block.name,
+      prompt: question.prompt.trim(),
+      options,
+      correctOptionId: correctOption.id,
+      rationale: question.rationale.trim(),
+    };
+  });
+}
+
+/** Normalizes the limit for question sets stored before soft timers existed. */
+export function questionTimeLimit(question: StoredQuestion): number | null {
+  return question.timeLimitSeconds ?? null;
+}
+
+/** Researcher-facing card label, blank for questions generated before names existed. */
+export function questionBlockName(question: StoredQuestion): string {
+  return question.blockName?.trim() ?? "";
+}
+
+/** Normalizes the flag for question sets stored before warm-ups existed. */
+export function isWarmup(question: StoredQuestion): boolean {
+  return question.warmup === true;
+}
+
 export function toPublicQuestion(question: StoredQuestion): PublicQuestion {
+  const timeLimitSeconds = questionTimeLimit(question);
   if (question.type === "free_response") {
-    const { rubric: _rubric, ...publicQuestion } = question;
-    return publicQuestion;
+    const { rubric: _r, warmup: _w, blockName: _b, ...publicQuestion } = question;
+    return { ...publicQuestion, timeLimitSeconds };
   }
-  const { blanks, ...publicQuestion } = question;
-  return { ...publicQuestion, blankIds: blanks.map((blank) => blank.id) };
+  if (question.type === "multiple_choice") {
+    const {
+      correctOptionId: _correctOptionId,
+      rationale: _rationale,
+      warmup: _warmup,
+      blockName: _blockName,
+      ...publicQuestion
+    } = question;
+    return { ...publicQuestion, timeLimitSeconds };
+  }
+  const { blanks, warmup: _w, blockName: _b, ...publicQuestion } = question;
+  return {
+    ...publicQuestion,
+    timeLimitSeconds,
+    blankIds: blanks.map((blank) => blank.id),
+  };
 }

@@ -8,6 +8,34 @@
       "when": 1786752000000,
       "tag": "0000_mixed_assessments",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786885177998,
+      "tag": "0001_stormy_bloodstorm",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786885714108,
+      "tag": "0002_wonderful_secret_warriors",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1786919103662,
+      "tag": "0003_dizzy_mentallo",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1786920121846,
+      "tag": "0004_noisy_dark_phoenix",
+      "breakpoints": true
     }
   ]
 }

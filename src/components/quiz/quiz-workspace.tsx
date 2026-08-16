@@ -10,14 +10,22 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { CSSProperties, useMemo, useState } from "react";
+import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   AssessmentResult,
   AttemptView,
   PublicFillQuestion,
+  PublicMultipleChoiceQuestion,
+  QuestionTiming,
   QuizChoice,
 } from "@/lib/quiz";
+
+const QUESTION_LABELS = {
+  fill_blank: "Fill in the blank",
+  multiple_choice: "Multiple choice",
+  free_response: "Free response",
+} as const;
 
 type FillSelections = Record<string, string | null>;
 
@@ -48,9 +56,10 @@ function DraggableChoice({
       type="button"
       style={style}
       onClick={onChoose}
-      aria-pressed={selected}
       {...listeners}
       {...attributes}
+      // After the spread: dnd-kit also sets aria-pressed, and the selection state wins.
+      aria-pressed={selected}
     >
       {choice.label}
     </button>
@@ -155,10 +164,32 @@ function FillQuestionEditor({
   );
 }
 
-function SetIdBadge({ id }: { id: string }) {
+function MultipleChoiceQuestion({
+  question,
+  selectedOptionId,
+  onSelect,
+}: {
+  question: PublicMultipleChoiceQuestion;
+  selectedOptionId: string | null;
+  onSelect: (optionId: string) => void;
+}) {
   return (
-    <div className="set-id-badge" title="Reusable question-set row ID">
-      Question set <code>{id}</code>
+    <div className="multiple-choice-question">
+      <h2>{question.prompt}</h2>
+      <div className="option-list" role="radiogroup" aria-label="Answer options">
+        {question.options.map((option) => (
+          <button
+            key={option.id}
+            className={`option ${selectedOptionId === option.id ? "selected" : ""}`}
+            type="button"
+            role="radio"
+            aria-checked={selectedOptionId === option.id}
+            onClick={() => onSelect(option.id)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -169,19 +200,97 @@ function formatDuration(durationMs: number) {
   return minutes ? `${minutes}m ${seconds % 60}s` : `${seconds}s`;
 }
 
+function formatClock(durationMs: number) {
+  const seconds = Math.max(0, Math.round(durationMs / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Soft countdown. It reports the remaining time against the question's limit and keeps
+ * counting once that limit passes; nothing about the attempt changes when it does. The
+ * authoritative duration is measured on the server, so this display is informational.
+ */
+function QuestionTimer({
+  elapsedMs,
+  timeLimitSeconds,
+}: {
+  elapsedMs: number;
+  timeLimitSeconds: number | null;
+}) {
+  if (timeLimitSeconds === null) {
+    return <div className="question-timer">{formatClock(elapsedMs)} elapsed</div>;
+  }
+  const remainingMs = timeLimitSeconds * 1000 - elapsedMs;
+  const over = remainingMs < 0;
+  return (
+    <div className={`question-timer ${over ? "over" : ""}`}>
+      {over
+        ? `${formatClock(-remainingMs)} over ${formatDuration(timeLimitSeconds * 1000)}`
+        : `${formatClock(remainingMs)} left of ${formatDuration(timeLimitSeconds * 1000)}`}
+    </div>
+  );
+}
+
+function ReviewTiming({ timing }: { timing: QuestionTiming }) {
+  const parts = [`Answered in ${formatDuration(timing.durationMs)}`];
+  if (timing.firstInteractionMs !== null) {
+    parts.push(`first input after ${formatDuration(timing.firstInteractionMs)}`);
+  }
+  if (timing.timeLimitSeconds !== null) {
+    parts.push(
+      timing.overrunMs
+        ? `${formatDuration(timing.overrunMs)} over the ${formatDuration(timing.timeLimitSeconds * 1000)} soft limit`
+        : `within the ${formatDuration(timing.timeLimitSeconds * 1000)} soft limit`,
+    );
+  }
+  return <p className="review-timing">{parts.join(" · ")}</p>;
+}
+
 export function QuizWorkspace({ initialAttempt }: { initialAttempt: AttemptView }) {
   const [attempt, setAttempt] = useState(initialAttempt);
   const [fillSelections, setFillSelections] = useState<FillSelections>({});
   const [freeResponse, setFreeResponse] = useState("");
+  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<AssessmentResult | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(initialAttempt.elapsedMs);
+  const interactionReported = useRef(initialAttempt.firstInteractionRecorded);
   const question = attempt.question;
+
+  // The server tells us how long this question has already been open, so the display
+  // resumes correctly after a refresh instead of restarting at zero.
+  useEffect(() => {
+    const servedAt = Date.now() - attempt.elapsedMs;
+    setElapsedMs(attempt.elapsedMs);
+    interactionReported.current = attempt.firstInteractionRecorded;
+    // Nothing renders the clock when it is hidden, so do not re-render once a second.
+    if (attempt.countdownHidden) return;
+    const ticker = window.setInterval(() => setElapsedMs(Date.now() - servedAt), 1000);
+    return () => window.clearInterval(ticker);
+  }, [attempt]);
+
+  /**
+   * Tells the server the participant has touched the answer for the first time. The
+   * browser sends no timestamp — the server stamps its own clock and ignores repeats.
+   */
+  function reportFirstInteraction() {
+    if (interactionReported.current) return;
+    interactionReported.current = true;
+    void fetch(`/api/attempts/${attempt.attemptId}/interaction`, {
+      method: "POST",
+      keepalive: true,
+    }).catch(() => {
+      // Telemetry only: a failed ping must never interrupt the attempt.
+    });
+  }
 
   const answerComplete =
     question.type === "fill_blank"
       ? question.blankIds.every((blankId) => fillSelections[blankId])
-      : freeResponse.trim().length > 0;
+      : question.type === "multiple_choice"
+        ? selectedOptionId !== null
+        : freeResponse.trim().length > 0;
 
   async function submitCurrentAnswer() {
     if (!answerComplete) return;
@@ -191,7 +300,9 @@ export function QuizWorkspace({ initialAttempt }: { initialAttempt: AttemptView 
       const answer =
         question.type === "fill_blank"
           ? { type: "fill_blank", selections: fillSelections }
-          : { type: "free_response", response: freeResponse };
+          : question.type === "multiple_choice"
+            ? { type: "multiple_choice", optionId: selectedOptionId }
+            : { type: "free_response", response: freeResponse };
       const response = await fetch(`/api/attempts/${attempt.attemptId}/answers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -205,6 +316,7 @@ export function QuizWorkspace({ initialAttempt }: { initialAttempt: AttemptView 
         setAttempt(payload.attempt as AttemptView);
         setFillSelections({});
         setFreeResponse("");
+        setSelectedOptionId(null);
       }
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (caught) {
@@ -226,7 +338,12 @@ export function QuizWorkspace({ initialAttempt }: { initialAttempt: AttemptView 
           <h1>Overall score</h1>
           <div className="score-ring neutral-score">{result.overallScore}%</div>
           <p className="lede" style={{ marginInline: "auto", marginBottom: 0 }}>
-            Scores are shown as an equal-weight average across all questions.
+            An equal-weight average across the {result.scoredQuestionCount} scored{" "}
+            {result.scoredQuestionCount === 1 ? "question" : "questions"}.
+            {result.warmupQuestionCount > 0 &&
+              ` ${result.warmupQuestionCount} warm-up ${
+                result.warmupQuestionCount === 1 ? "question is" : "questions are"
+              } shown below but not counted.`}
           </p>
         </section>
 
@@ -241,12 +358,16 @@ export function QuizWorkspace({ initialAttempt }: { initialAttempt: AttemptView 
           {result.questions.map((review, index) => (
             <article className="card review-card" key={review.questionId}>
               <header className="review-card-header">
-                <span className="question-number">Question {index + 1}</span>
-                <span>
-                  {Math.round(review.score * 10) / 10}% ·{" "}
-                  {formatDuration(review.durationMs)}
+                <span className="card-title-row">
+                  <span className="question-number">Question {index + 1}</span>
+                  <span className={`type-chip type-${review.type}`}>
+                    {QUESTION_LABELS[review.type]}
+                  </span>
+                  {review.warmup && <span className="pill">Warm-up · not counted</span>}
                 </span>
+                <span>{Math.round(review.score * 10) / 10}%</span>
               </header>
+              <ReviewTiming timing={review} />
               {review.type === "fill_blank" ? (
                 <div className="review-question-copy">
                   {review.segments.map((segment, segmentIndex) => {
@@ -269,6 +390,39 @@ export function QuizWorkspace({ initialAttempt }: { initialAttempt: AttemptView 
                       </span>
                     );
                   })}
+                </div>
+              ) : review.type === "multiple_choice" ? (
+                <div className="free-review">
+                  <h3>{review.prompt}</h3>
+                  <div className="option-list review-option-list">
+                    {review.options.map((option) => {
+                      const isCorrect = option.id === review.correctOptionId;
+                      const isSelected = option.id === review.selectedOptionId;
+                      return (
+                        <div
+                          className={`option review-option ${isCorrect ? "correct" : ""} ${
+                            isSelected && !isCorrect ? "incorrect" : ""
+                          }`}
+                          key={option.id}
+                        >
+                          <span>{option.label}</span>
+                          <small>
+                            {isCorrect && isSelected
+                              ? "Correct answer · your answer"
+                              : isCorrect
+                                ? "Correct answer"
+                                : isSelected
+                                  ? "Your answer"
+                                  : ""}
+                          </small>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div>
+                    <span className="review-label">Why</span>
+                    <p>{review.rationale}</p>
+                  </div>
                 </div>
               ) : (
                 <div className="free-review">
@@ -300,7 +454,6 @@ export function QuizWorkspace({ initialAttempt }: { initialAttempt: AttemptView 
             </article>
           ))}
         </section>
-        <SetIdBadge id={result.questionSetId} />
       </main>
     );
   }
@@ -317,20 +470,41 @@ export function QuizWorkspace({ initialAttempt }: { initialAttempt: AttemptView 
           <h1>{attempt.paperName}</h1>
           <div className="quiz-meta">{attempt.modelId}</div>
         </div>
-        <div className="sequence-progress">
-          Question {attempt.currentIndex + 1} of {attempt.totalQuestions}
+        <div className="sequence-status">
+          <div className="sequence-progress">
+            Question {attempt.currentIndex + 1} of {attempt.totalQuestions}
+          </div>
+          {/* Display only: hiding this changes nothing about what the server records. */}
+          {!attempt.countdownHidden && (
+            <QuestionTimer
+              elapsedMs={elapsedMs}
+              timeLimitSeconds={question.timeLimitSeconds ?? null}
+            />
+          )}
         </div>
       </header>
 
       <section className="card question-card">
-        <span className="question-number">
-          {question.type === "fill_blank" ? "Fill in the blank" : "Free response"}
+        <span className={`type-chip type-${question.type}`}>
+          {QUESTION_LABELS[question.type]}
         </span>
         {question.type === "fill_blank" ? (
           <FillQuestionEditor
             question={question}
             selections={fillSelections}
-            onChange={setFillSelections}
+            onChange={(next) => {
+              reportFirstInteraction();
+              setFillSelections(next);
+            }}
+          />
+        ) : question.type === "multiple_choice" ? (
+          <MultipleChoiceQuestion
+            question={question}
+            selectedOptionId={selectedOptionId}
+            onSelect={(optionId) => {
+              reportFirstInteraction();
+              setSelectedOptionId(optionId);
+            }}
           />
         ) : (
           <div className="free-response-question">
@@ -340,7 +514,10 @@ export function QuizWorkspace({ initialAttempt }: { initialAttempt: AttemptView 
               className="control"
               id="freeResponse"
               value={freeResponse}
-              onChange={(event) => setFreeResponse(event.target.value)}
+              onChange={(event) => {
+                reportFirstInteraction();
+                setFreeResponse(event.target.value);
+              }}
               placeholder="Write your answer here..."
               maxLength={50_000}
             />
@@ -366,7 +543,6 @@ export function QuizWorkspace({ initialAttempt }: { initialAttempt: AttemptView 
               : "Submit answer and continue"}
         </button>
       </div>
-      <SetIdBadge id={attempt.questionSetId} />
     </main>
   );
 }

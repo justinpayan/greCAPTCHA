@@ -14,6 +14,7 @@ import {
   pdfEngineSchema,
   prepareFillQuestions,
   prepareFreeResponseQuestions,
+  prepareMultipleChoiceQuestions,
   type StoredQuestion,
 } from "@/lib/quiz";
 
@@ -30,6 +31,7 @@ export async function POST(request: Request) {
     const modelId = String(form.get("modelId") ?? "").trim();
     const pdfEngine = pdfEngineSchema.parse(form.get("pdfEngine"));
     const randomize = form.get("randomize") === "true";
+    const countdownHidden = form.get("countdownHidden") === "true";
     const blocks = generationConfigSchema.parse(
       JSON.parse(String(form.get("blocks") ?? "[]")),
     );
@@ -66,11 +68,13 @@ export async function POST(request: Request) {
         modelId,
         pdfEngine: effectivePdfEngine,
       });
-      questions.push(
-        ...(result.type === "fill_blank"
-          ? prepareFillQuestions(result.generated, block.id)
-          : prepareFreeResponseQuestions(result.generated, block.id)),
-      );
+      if (result.type === "fill_blank") {
+        questions.push(...prepareFillQuestions(result.generated, block));
+      } else if (result.type === "multiple_choice") {
+        questions.push(...prepareMultipleChoiceQuestions(result.generated, block));
+      } else {
+        questions.push(...prepareFreeResponseQuestions(result.generated, block));
+      }
     }
 
     const questionSetId = randomUUID();
@@ -86,7 +90,7 @@ export async function POST(request: Request) {
       createdAt: new Date().toISOString(),
     });
 
-    const state = await createAttempt(questionSetId, randomize);
+    const state = await createAttempt({ questionSetId, randomize, countdownHidden });
     return NextResponse.json(state, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Question generation failed.";

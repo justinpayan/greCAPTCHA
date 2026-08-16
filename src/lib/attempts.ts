@@ -6,32 +6,50 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { attemptAnswers, attempts, questionSets } from "@/db/schema";
 import {
+  isWarmup,
+  questionBlockName,
+  questionTimeLimit,
   shuffled,
   toPublicQuestion,
   type AssessmentResult,
   type AttemptView,
   type FillReview,
-  type FreeResponseReview,
+  type QuestionReview,
+  type QuestionTiming,
   type StoredQuestion,
 } from "@/lib/quiz";
 
-export async function createAttempt(questionSetId: string, randomize: boolean) {
+export async function createAttempt(input: {
+  questionSetId: string;
+  randomize: boolean;
+  countdownHidden: boolean;
+}) {
   const set = await db
     .select()
     .from(questionSets)
-    .where(eq(questionSets.id, questionSetId))
+    .where(eq(questionSets.id, input.questionSetId))
     .get();
   if (!set) throw new Error("Question set not found.");
 
   const questions = JSON.parse(set.questionsJson) as StoredQuestion[];
-  const canonicalOrder = questions.map((question) => question.id);
-  const order = randomize ? shuffled(canonicalOrder) : canonicalOrder;
+  // Warm-ups lead the attempt in card order and are never shuffled into the sequence, so
+  // every participant meets the same orientation items first and their latencies stay
+  // comparable. Randomization applies to the scored questions only.
+  const warmupOrder = questions.filter(isWarmup).map((question) => question.id);
+  const scoredOrder = questions
+    .filter((question) => !isWarmup(question))
+    .map((question) => question.id);
+  const order = [
+    ...warmupOrder,
+    ...(input.randomize ? shuffled(scoredOrder) : scoredOrder),
+  ];
   const id = randomUUID();
 
   await db.insert(attempts).values({
     id,
-    questionSetId,
-    randomize,
+    questionSetId: input.questionSetId,
+    randomize: input.randomize,
+    countdownHidden: input.countdownHidden,
     questionOrderJson: JSON.stringify(order),
     currentIndex: 0,
     status: "active",
@@ -64,6 +82,8 @@ export async function getAttemptState(
   const question = questionById.get(questionId);
   if (!question) throw new Error("The attempt references a missing question.");
 
+  // The first serve stamps the clock start and snapshots the soft limit in force at that
+  // moment, so later edits to a question set cannot retroactively change recorded timings.
   await db
     .insert(attemptAnswers)
     .values({
@@ -71,10 +91,14 @@ export async function getAttemptState(
       attemptId,
       questionId,
       questionType: question.type,
+      blockName: questionBlockName(question),
       startedAt: new Date().toISOString(),
+      timeLimitSeconds: questionTimeLimit(question),
     })
     .onConflictDoNothing()
     .run();
+
+  const answerRow = await getCurrentAnswer(attemptId, questionId);
 
   return {
     attempt: {
@@ -85,6 +109,11 @@ export async function getAttemptState(
       currentIndex: attempt.currentIndex,
       totalQuestions: order.length,
       question: toPublicQuestion(question),
+      countdownHidden: attempt.countdownHidden,
+      elapsedMs: answerRow
+        ? Math.max(0, Date.now() - new Date(answerRow.startedAt).getTime())
+        : 0,
+      firstInteractionRecorded: Boolean(answerRow?.firstInteractionAt),
     },
   };
 }
@@ -130,26 +159,50 @@ export function buildResult(input: {
   const questionById = new Map(input.questions.map((question) => [question.id, question]));
   const answerByQuestion = new Map(input.answers.map((answer) => [answer.questionId, answer]));
 
-  const reviews = input.order.map((questionId): FillReview | FreeResponseReview => {
+  const reviews = input.order.map((questionId): QuestionReview => {
     const question = questionById.get(questionId);
     const answer = answerByQuestion.get(questionId);
     if (!question || !answer || answer.score === null) {
       throw new Error("Attempt grading is incomplete.");
     }
+    const timing: QuestionTiming & { warmup: boolean } = {
+      durationMs: answer.durationMs ?? 0,
+      firstInteractionMs: answer.firstInteractionMs ?? null,
+      timeLimitSeconds: answer.timeLimitSeconds ?? null,
+      overrunMs: answer.overrunMs ?? null,
+      warmup: isWarmup(question),
+    };
     if (question.type === "fill_blank") {
       const feedback = JSON.parse(answer.feedbackJson ?? "{}") as {
         blanks?: FillReview["blanks"];
       };
       return {
+        ...timing,
         type: "fill_blank",
         questionId,
         segments: question.segments,
         score: answer.score,
-        durationMs: answer.durationMs ?? 0,
         blanks: feedback.blanks ?? [],
       };
     }
+    if (question.type === "multiple_choice") {
+      const selectedOptionId =
+        (JSON.parse(answer.answerJson ?? "{}") as { optionId?: string }).optionId ?? null;
+      return {
+        ...timing,
+        type: "multiple_choice",
+        questionId,
+        prompt: question.prompt,
+        options: question.options,
+        selectedOptionId,
+        correctOptionId: question.correctOptionId,
+        correct: selectedOptionId === question.correctOptionId,
+        rationale: question.rationale,
+        score: answer.score,
+      };
+    }
     return {
+      ...timing,
       type: "free_response",
       questionId,
       prompt: question.prompt,
@@ -158,17 +211,22 @@ export function buildResult(input: {
       score: answer.score,
       feedback:
         (JSON.parse(answer.feedbackJson ?? "{}") as { feedback?: string }).feedback ?? "",
-      durationMs: answer.durationMs ?? 0,
     };
   });
 
+  // Warm-ups are graded and reviewed but contribute nothing to the headline number, so a
+  // near-certain 100 cannot inflate the score or compress the between-condition gap.
+  const scoredReviews = reviews.filter((review) => !review.warmup);
   const overallScore =
-    reviews.reduce((sum, review) => sum + review.score, 0) / Math.max(reviews.length, 1);
+    scoredReviews.reduce((sum, review) => sum + review.score, 0) /
+    Math.max(scoredReviews.length, 1);
   return {
     attemptId: input.attemptId,
     questionSetId: input.questionSetId,
     paperName: input.paperName,
-    overallScore: Math.round(overallScore * 10) / 10,
+    overallScore: scoredReviews.length ? Math.round(overallScore * 10) / 10 : 0,
+    scoredQuestionCount: scoredReviews.length,
+    warmupQuestionCount: reviews.length - scoredReviews.length,
     questions: reviews,
   };
 }
