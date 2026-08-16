@@ -391,6 +391,16 @@ columns may contain sensitive research data.
 `src/db/schema.ts` is the schema definition, and checked-in SQL migrations live
 under `drizzle/`. Generate a migration after changing the schema:
 
+Migrations run when `src/db/index.ts` is first imported, and `next build` imports it from
+several worker processes at once. Both the WAL switch and the migrations need brief
+exclusive access to the database, so both run under a cross-process file lock
+(`src/db/migration-lock.ts`), which writes `<database>.migrate.lock` beside the database
+for the duration. Whoever acquires it second finds the work already done and does nothing.
+A lock left behind by a killed process is reclaimed after 60 seconds; waiting on a live one
+times out after 30. If you ever see the timeout and no migration is running, delete the
+lock file.
+
+
 ```bash
 npm run db:generate
 ```
