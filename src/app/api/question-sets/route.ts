@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { questionSets } from "@/db/schema";
 import { createAttempt } from "@/lib/attempts";
+import { listQuestionSets } from "@/lib/catalog";
 import {
   generateQuestionBlock,
   getOpenRouterModels,
@@ -21,6 +22,16 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
+/** Saved sets for the start screen's searchable list. */
+export async function GET() {
+  try {
+    return NextResponse.json({ sets: await listQuestionSets() });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to list question sets.";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+}
+
 const MAX_PDF_BYTES = 25 * 1024 * 1024;
 
 export async function POST(request: Request) {
@@ -28,6 +39,7 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const file = form.get("paper");
     const contributions = String(form.get("contributions") ?? "").trim();
+    const setName = String(form.get("name") ?? "").trim().slice(0, 120);
     const modelId = String(form.get("modelId") ?? "").trim();
     const pdfEngine = pdfEngineSchema.parse(form.get("pdfEngine"));
     const randomize = form.get("randomize") === "true";
@@ -81,6 +93,7 @@ export async function POST(request: Request) {
     await db.insert(questionSets).values({
       id: questionSetId,
       schemaVersion: 1,
+      name: setName || null,
       paperName: file.name,
       contributions,
       modelId,

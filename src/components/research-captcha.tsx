@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { AttemptSummary } from "@/components/quiz/attempt-summary";
 import { QuizWorkspace, ResultView } from "@/components/quiz/quiz-workspace";
@@ -9,8 +9,10 @@ import {
   DEFAULT_FREE_RESPONSE_PROMPT,
   DEFAULT_MULTIPLE_CHOICE_PROMPT,
   type AssessmentResult,
+  type AttemptListEntry,
   type AttemptOutline,
   type AttemptView,
+  type QuestionSetListEntry,
   type PdfEngine,
   type QuestionBlockConfig,
   type StudyTemplateConfig,
@@ -138,6 +140,12 @@ export function ResearchCaptcha() {
   const [attempt, setAttempt] = useState<AttemptView | null>(null);
   const [outline, setOutline] = useState<AttemptOutline | null>(null);
   const [result, setResult] = useState<AssessmentResult | null>(null);
+  const [setName, setSetName] = useState("");
+  const [savedSets, setSavedSets] = useState<QuestionSetListEntry[]>([]);
+  const [attemptList, setAttemptList] = useState<AttemptListEntry[]>([]);
+  const [catalogSearch, setCatalogSearch] = useState("");
+  const [renamingId, setRenamingId] = useState("");
+  const [renameValue, setRenameValue] = useState("");
   const [templates, setTemplates] = useState<StudyTemplateSummary[]>([]);
   const [templateId, setTemplateId] = useState("");
   const [templateName, setTemplateName] = useState("");
@@ -265,6 +273,85 @@ export function ResearchCaptcha() {
       .slice(0, 60);
   }, [modelSearch, models]);
 
+  const refreshCatalog = useCallback(async () => {
+    const [setsResult, attemptsResult] = await Promise.allSettled([
+      fetch("/api/question-sets").then((response) => response.json()),
+      fetch("/api/attempts").then((response) => response.json()),
+    ]);
+    if (setsResult.status === "fulfilled" && setsResult.value.sets) {
+      setSavedSets(setsResult.value.sets as QuestionSetListEntry[]);
+    }
+    if (attemptsResult.status === "fulfilled" && attemptsResult.value.attempts) {
+      setAttemptList(attemptsResult.value.attempts as AttemptListEntry[]);
+    }
+  }, []);
+
+  // Reload the lists whenever a browsing tab is opened, so a set generated moments ago and
+  // an attempt just answered on this laptop both appear without a page refresh.
+  useEffect(() => {
+    if (mode === "generate") return;
+    void refreshCatalog();
+  }, [mode, refreshCatalog]);
+
+  const visibleSets = useMemo(() => {
+    const query = catalogSearch.trim().toLowerCase();
+    if (!query) return savedSets;
+    return savedSets.filter((set) =>
+      [set.label, set.paperName, set.modelId, set.id].some((field) =>
+        field.toLowerCase().includes(query),
+      ),
+    );
+  }, [catalogSearch, savedSets]);
+
+  const visibleAttempts = useMemo(() => {
+    const query = catalogSearch.trim().toLowerCase();
+    if (!query) return attemptList;
+    return attemptList.filter((entry) =>
+      [entry.setLabel, entry.paperName, entry.status, entry.id].some((field) =>
+        field.toLowerCase().includes(query),
+      ),
+    );
+  }, [catalogSearch, attemptList]);
+
+  async function startFromSet(questionSetId: string) {
+    setWorking(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/question-sets/${encodeURIComponent(questionSetId)}/attempts`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ randomize, countdownHidden }),
+        },
+      );
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to load question set.");
+      await showSummary((payload.attempt as AttemptView).attemptId);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to load question set.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function commitRename(id: string) {
+    const next = renameValue;
+    setRenamingId("");
+    try {
+      const response = await fetch(`/api/question-sets/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: next }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to rename the set.");
+      await refreshCatalog();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to rename the set.");
+    }
+  }
+
   /** Every entry point lands on the researcher-facing plan, never straight into a question. */
   async function showSummary(attemptId: string) {
     const response = await fetch(`/api/attempts/${encodeURIComponent(attemptId)}/outline`);
@@ -274,13 +361,11 @@ export function ResearchCaptcha() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  async function resumeAttempt(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function openAttempt(attemptId: string) {
     setWorking(true);
     setError("");
-    const form = new FormData(event.currentTarget);
     try {
-      await showSummary(String(form.get("attemptId") ?? "").trim());
+      await showSummary(attemptId);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to open the attempt.");
     } finally {
@@ -374,6 +459,7 @@ export function ResearchCaptcha() {
     form.set("blocks", JSON.stringify(blocks));
     form.set("randomize", String(randomize));
     form.set("countdownHidden", String(countdownHidden));
+    form.set("name", setName);
     try {
       const response = await fetch("/api/question-sets", { method: "POST", body: form });
       const payload = await response.json();
@@ -532,66 +618,165 @@ export function ResearchCaptcha() {
         </section>
       )}
 
-      {mode === "resume" ? (
-        <form className="card form-card" onSubmit={resumeAttempt}>
+      {mode === "resume" || mode === "load" ? (
+        <section className="card form-card">
           <div className="field">
-            <label htmlFor="attemptId">Attempt row&nbsp;ID</label>
+            <label htmlFor="catalogSearch">
+              {mode === "load" ? "Search saved sets" : "Search attempts"}
+            </label>
             <input
               className="control"
-              id="attemptId"
-              name="attemptId"
-              placeholder="Paste an attempt UUID"
-              required
+              id="catalogSearch"
+              value={catalogSearch}
+              placeholder={
+                mode === "load"
+                  ? "Filter by set name, paper, or model"
+                  : "Filter by set name, paper, or status"
+              }
+              onChange={(event) => setCatalogSearch(event.target.value)}
             />
-            <small>
-              Reopens an attempt that is already under way, keeping its answers and timings.
-            </small>
           </div>
-          {error && (
-            <p className="error" role="alert">
-              {error}
-            </p>
+
+          {mode === "load" ? (
+            <>
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={randomize}
+                  onChange={(event) => setRandomize(event.target.checked)}
+                />
+                Randomize question order for this attempt
+              </label>
+              <CountdownToggle hidden={countdownHidden} onChange={setCountdownHidden} />
+              {error && (
+                <p className="error" role="alert">
+                  {error}
+                </p>
+              )}
+              <div className="catalog-list">
+                {visibleSets.length === 0 && (
+                  <p className="hint catalog-empty">
+                    {savedSets.length
+                      ? "No set matches that search."
+                      : "No question sets have been generated yet."}
+                  </p>
+                )}
+                {visibleSets.map((set) => (
+                  <article className="catalog-row" key={set.id}>
+                    <div className="catalog-main">
+                      {renamingId === set.id ? (
+                        <input
+                          className="control catalog-rename"
+                          value={renameValue}
+                          autoFocus
+                          maxLength={120}
+                          placeholder={set.paperName}
+                          onChange={(event) => setRenameValue(event.target.value)}
+                          onBlur={() => void commitRename(set.id)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") void commitRename(set.id);
+                            if (event.key === "Escape") setRenamingId("");
+                          }}
+                        />
+                      ) : (
+                        <strong>{set.label}</strong>
+                      )}
+                      <span className="catalog-meta">
+                        {set.paperName} · {set.questionCount}{" "}
+                        {set.questionCount === 1 ? "question" : "questions"} ·{" "}
+                        {set.attemptCount}{" "}
+                        {set.attemptCount === 1 ? "attempt" : "attempts"} · {set.modelId}
+                      </span>
+                    </div>
+                    <div className="catalog-actions">
+                      <button
+                        className="secondary"
+                        type="button"
+                        onClick={() => {
+                          setRenamingId(set.id);
+                          setRenameValue(set.name);
+                        }}
+                      >
+                        Rename
+                      </button>
+                      <button
+                        className="primary"
+                        type="button"
+                        disabled={working}
+                        onClick={() => void startFromSet(set.id)}
+                      >
+                        Start attempt
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              {error && (
+                <p className="error" role="alert">
+                  {error}
+                </p>
+              )}
+              <div className="catalog-list">
+                {visibleAttempts.length === 0 && (
+                  <p className="hint catalog-empty">
+                    {attemptList.length
+                      ? "No attempt matches that search."
+                      : "No attempts have been started yet."}
+                  </p>
+                )}
+                {visibleAttempts.map((entry) => (
+                  <article className="catalog-row" key={entry.id}>
+                    <div className="catalog-main">
+                      <strong>{entry.setLabel}</strong>
+                      <span className="catalog-meta">
+                        {entry.answeredCount} of {entry.totalQuestions} answered ·{" "}
+                        {entry.status === "graded"
+                          ? `graded${entry.score === null ? "" : ` at ${entry.score}%`}`
+                          : "in progress"}
+                        {entry.randomize && " · randomized"} ·{" "}
+                        {new Date(entry.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="catalog-actions">
+                      <button
+                        className="primary"
+                        type="button"
+                        disabled={working}
+                        onClick={() => void openAttempt(entry.id)}
+                      >
+                        {entry.status === "graded"
+                          ? "Open"
+                          : entry.answeredCount
+                            ? "Resume"
+                            : "Open"}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </>
           )}
-          <div className="submit-row">
-            <span className="hint">Nothing is regenerated and no answer is reset.</span>
-            <button className="primary" type="submit" disabled={working}>
-              {working ? "Opening…" : "Open attempt"}
-            </button>
-          </div>
-        </form>
-      ) : mode === "load" ? (
-        <form className="card form-card" onSubmit={loadSet}>
-          <div className="field">
-            <label htmlFor="questionSetId">Question-set row&nbsp;ID</label>
-            <input
-              className="control"
-              id="questionSetId"
-              name="questionSetId"
-              placeholder="Paste a question-set UUID"
-              required
-            />
-            <small>A new attempt and new timing records will be created.</small>
-          </div>
-          <label className="toggle-row">
-            <input
-              type="checkbox"
-              checked={randomize}
-              onChange={(event) => setRandomize(event.target.checked)}
-            />
-            Randomize question order for this attempt
-          </label>
-          <CountdownToggle hidden={countdownHidden} onChange={setCountdownHidden} />
-          {error && <p className="error" role="alert">{error}</p>}
-          <div className="submit-row">
-            <span className="hint">The saved questions and rubrics are reused unchanged.</span>
-            <button className="primary" type="submit" disabled={working}>
-              {working ? "Loading…" : "Load set and begin"}
-            </button>
-          </div>
-        </form>
+        </section>
       ) : (
         <form className="card form-card" onSubmit={generateSet}>
           <div className="form-grid">
+            <div className="field full">
+              <label htmlFor="setName">
+                Test set name
+                <FieldHint text="Identifies this set in the saved-set list. Leave blank to use the PDF filename. You can rename it later." />
+              </label>
+              <input
+                className="control"
+                id="setName"
+                value={setName}
+                maxLength={120}
+                placeholder="e.g. Pilot form A — Gyevnar CHI submission"
+                onChange={(event) => setSetName(event.target.value)}
+              />
+            </div>
             <div className="field full">
               <label htmlFor="paper">Manuscript PDF</label>
               <input

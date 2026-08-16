@@ -68,6 +68,31 @@ export const studyTemplateConfigSchema = z.object({
 });
 export type StudyTemplateConfig = z.infer<typeof studyTemplateConfigSchema>;
 
+export type QuestionSetListEntry = {
+  id: string;
+  /** Empty when the set was never named; `label` is what to display. */
+  name: string;
+  label: string;
+  paperName: string;
+  modelId: string;
+  questionCount: number;
+  attemptCount: number;
+  createdAt: string;
+};
+
+export type AttemptListEntry = {
+  id: string;
+  questionSetId: string;
+  setLabel: string;
+  paperName: string;
+  status: string;
+  score: number | null;
+  randomize: boolean;
+  answeredCount: number;
+  totalQuestions: number;
+  createdAt: string;
+};
+
 export type StudyTemplateSummary = {
   id: string;
   name: string;

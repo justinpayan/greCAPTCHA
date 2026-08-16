@@ -30,6 +30,8 @@ export const appState = sqliteTable("app_state", {
 export const questionSets = sqliteTable("question_sets", {
   id: text("id").primaryKey(),
   schemaVersion: integer("schema_version").notNull().default(1),
+  /** Human-chosen label for the set. Falls back to the PDF filename when left blank. */
+  name: text("name"),
   paperName: text("paper_name").notNull(),
   contributions: text("contributions").notNull(),
   modelId: text("model_id").notNull(),

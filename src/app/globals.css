@@ -483,6 +483,62 @@ textarea.control {
   margin-bottom: 6px;
 }
 
+.catalog-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.catalog-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 13px 16px;
+  background: white;
+}
+
+.catalog-main {
+  display: grid;
+  gap: 4px;
+  min-width: min(100%, 260px);
+  flex: 1;
+}
+
+.catalog-main strong {
+  font-size: 0.95rem;
+}
+
+.catalog-meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.catalog-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.catalog-actions .primary,
+.catalog-actions .secondary {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+}
+
+.catalog-rename {
+  min-height: 40px;
+  padding: 8px 12px;
+}
+
+.catalog-empty {
+  margin: 4px 0;
+}
+
 .summary-notice {
   max-width: 720px;
   margin-bottom: 24px;
