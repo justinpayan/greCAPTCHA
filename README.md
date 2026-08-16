@@ -15,6 +15,7 @@ fresh, sequential attempts with rubric-based feedback.
   native file support
 - Reusable saved question sets that can start multiple fresh attempts by ID
 - Optional per-attempt question randomization
+- Researcher-facing assessment plan page with per-item descriptions and progress
 - Nameable question cards for per-family grouping in analysis
 - Warm-up cards asked first and excluded from the overall score
 - Named, reusable study set templates with autosave and restore across restarts
@@ -126,6 +127,40 @@ it is stored in SQLite rather than in the browser — `study_templates` holds th
 templates, and `app_state` holds the single autosaved draft under the key `template_draft`.
 Both export with the rest of the study data, so the exact configuration used on a session
 day is part of the record.
+
+## The assessment plan page
+
+Generating a set, loading a saved set, or resuming an attempt all land on a **plan page**
+rather than the first question. It lists every item in the order it will be asked, with its
+position, type colour and label, card name, soft limit, warm-up marker, an
+**Answered / Pending** state, and a one-sentence description of what the item probes,
+generated with the question and stored with it.
+
+This page is for the researcher, not the participant. It names what each item is testing,
+so it must not be left on screen once the assessment is handed over — the page says so
+itself. The test-taking screens continue to receive none of it: the payload for a question
+carries only `blockId`, `id`, `options`, `prompt`, `timeLimitSeconds`, and `type`.
+
+The button adapts to the attempt's state:
+
+| State | Button |
+| --- | --- |
+| Nothing answered | **Start assessment** |
+| Partly answered | **Resume assessment**, continuing at the next unanswered question |
+| All answered, not graded | **Grade and show results** |
+| Graded | **Show results**, loading the stored result |
+
+The third row matters for recovery. If the grading call fails when the last answer is
+submitted, the answers stay locked and the attempt stays ungraded; opening its plan page and
+pressing the button grades it without re-answering anything. This is the offline-fallback
+path §11.1 of the research plan asks for.
+
+**Resume attempt** on the start screen takes an attempt ID and reopens an assessment already
+under way, keeping every answer and timing. Read the ID from the database:
+
+```sql
+SELECT id, question_set_id, status, created_at FROM attempts ORDER BY created_at DESC;
+```
 
 ## Question type colours
 

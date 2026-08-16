@@ -92,6 +92,7 @@ const fillResponseJsonSchema = {
           additionalProperties: false,
           properties: {
             prompt: { type: "string" },
+            description: { type: "string" },
             blanks: {
               type: "array",
               items: {
@@ -106,7 +107,7 @@ const fillResponseJsonSchema = {
               },
             },
           },
-          required: ["prompt", "blanks"],
+          required: ["prompt", "description", "blanks"],
         },
       },
     },
@@ -128,6 +129,7 @@ const freeResponseJsonSchema = {
           additionalProperties: false,
           properties: {
             prompt: { type: "string" },
+            description: { type: "string" },
             rubric: {
               type: "object",
               additionalProperties: false,
@@ -150,7 +152,7 @@ const freeResponseJsonSchema = {
               required: ["summary", "criteria"],
             },
           },
-          required: ["prompt", "rubric"],
+          required: ["prompt", "description", "rubric"],
         },
       },
     },
@@ -172,11 +174,12 @@ const multipleChoiceJsonSchema = {
           additionalProperties: false,
           properties: {
             prompt: { type: "string" },
+            description: { type: "string" },
             answer: { type: "string" },
             distractors: { type: "array", items: { type: "string" } },
             rationale: { type: "string" },
           },
-          required: ["prompt", "answer", "distractors", "rationale"],
+          required: ["prompt", "description", "answer", "distractors", "rationale"],
         },
       },
     },
@@ -416,6 +419,8 @@ ${input.contributions}
 
 User-authored generation instructions:
 ${input.block.prompt}
+
+For every question also supply a "description": one sentence, at most 25 words, naming what the question probes and which part of the manuscript it draws on. It is read only by the researcher reviewing the item bank and is never shown to the person taking the assessment, so state the target plainly rather than hinting at it. Do not reveal the correct answer in the description.
 
 ${
   previousQuestionContext.length

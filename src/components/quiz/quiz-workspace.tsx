@@ -246,6 +246,139 @@ function ReviewTiming({ timing }: { timing: QuestionTiming }) {
   return <p className="review-timing">{parts.join(" · ")}</p>;
 }
 
+/** Read-only review of a graded attempt. Rendered on its own once grading has run. */
+export function ResultView({ result }: { result: AssessmentResult }) {
+  return (
+    <main className="app-shell">
+      <div className="brand">
+        <span className="brand-mark">R</span>
+        ResearchCAPTCHA
+      </div>
+      <section className="card result neutral-result">
+        <p className="eyebrow">Assessment complete</p>
+        <h1>Overall score</h1>
+        <div className="score-ring neutral-score">{result.overallScore}%</div>
+        <p className="lede" style={{ marginInline: "auto", marginBottom: 0 }}>
+          An equal-weight average across the {result.scoredQuestionCount} scored{" "}
+          {result.scoredQuestionCount === 1 ? "question" : "questions"}.
+          {result.warmupQuestionCount > 0 &&
+            ` ${result.warmupQuestionCount} warm-up ${
+              result.warmupQuestionCount === 1 ? "question is" : "questions are"
+            } shown below but not counted.`}
+        </p>
+      </section>
+
+      <section className="review-section">
+        <div className="review-heading">
+          <div>
+            <p className="eyebrow">Read-only review</p>
+            <h2>Answers and feedback</h2>
+          </div>
+          <p>All submitted answers are locked.</p>
+        </div>
+        {result.questions.map((review, index) => (
+          <article className="card review-card" key={review.questionId}>
+            <header className="review-card-header">
+              <span className="card-title-row">
+                <span className="question-number">Question {index + 1}</span>
+                <span className={`type-chip type-${review.type}`}>
+                  {QUESTION_LABELS[review.type]}
+                </span>
+                {review.warmup && <span className="pill">Warm-up · not counted</span>}
+              </span>
+              <span>{Math.round(review.score * 10) / 10}%</span>
+            </header>
+            <ReviewTiming timing={review} />
+            {review.type === "fill_blank" ? (
+              <div className="review-question-copy">
+                {review.segments.map((segment, segmentIndex) => {
+                  if (segment.type === "text") {
+                    return <span key={`${segmentIndex}-${segment.value}`}>{segment.value}</span>;
+                  }
+                  const blank = review.blanks.find(
+                    (candidate) => candidate.blankId === segment.blankId,
+                  );
+                  return (
+                    <span className="review-blank" key={segment.blankId}>
+                      <span className="review-answer-row">
+                        <small>Your answer</small>
+                        <strong>{blank?.selectedAnswer ?? "No answer"}</strong>
+                      </span>
+                      <span className="review-answer-row">
+                        <small>Correct answer</small>
+                        <strong>{blank?.correctAnswer ?? "Unavailable"}</strong>
+                      </span>
+                    </span>
+                  );
+                })}
+              </div>
+            ) : review.type === "multiple_choice" ? (
+              <div className="free-review">
+                <h3>{review.prompt}</h3>
+                <div className="option-list review-option-list">
+                  {review.options.map((option) => {
+                    const isCorrect = option.id === review.correctOptionId;
+                    const isSelected = option.id === review.selectedOptionId;
+                    return (
+                      <div
+                        className={`option review-option ${isCorrect ? "correct" : ""} ${
+                          isSelected && !isCorrect ? "incorrect" : ""
+                        }`}
+                        key={option.id}
+                      >
+                        <span>{option.label}</span>
+                        <small>
+                          {isCorrect && isSelected
+                            ? "Correct answer · your answer"
+                            : isCorrect
+                              ? "Correct answer"
+                              : isSelected
+                                ? "Your answer"
+                                : ""}
+                        </small>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div>
+                  <span className="review-label">Why</span>
+                  <p>{review.rationale}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="free-review">
+                <h3>{review.prompt}</h3>
+                <div>
+                  <span className="review-label">Your response</span>
+                  <p>{review.response}</p>
+                </div>
+                <div>
+                  <span className="review-label">Rubric</span>
+                  <p>{review.rubric.summary}</p>
+                  <ul>
+                    {review.rubric.criteria.map((criterion) => (
+                      <li key={criterion.criterion}>
+                        <strong>
+                          {criterion.criterion} ({criterion.points} points)
+                        </strong>
+                        <span>{criterion.guidance}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <span className="review-label">Grading feedback</span>
+                  <p>{review.feedback}</p>
+                </div>
+              </div>
+            )}
+          </article>
+        ))}
+      </section>
+    </main>
+  );
+}
+
 export function QuizWorkspace({ initialAttempt }: { initialAttempt: AttemptView }) {
   const [attempt, setAttempt] = useState(initialAttempt);
   const [fillSelections, setFillSelections] = useState<FillSelections>({});
@@ -326,137 +459,7 @@ export function QuizWorkspace({ initialAttempt }: { initialAttempt: AttemptView 
     }
   }
 
-  if (result) {
-    return (
-      <main className="app-shell">
-        <div className="brand">
-          <span className="brand-mark">R</span>
-          ResearchCAPTCHA
-        </div>
-        <section className="card result neutral-result">
-          <p className="eyebrow">Assessment complete</p>
-          <h1>Overall score</h1>
-          <div className="score-ring neutral-score">{result.overallScore}%</div>
-          <p className="lede" style={{ marginInline: "auto", marginBottom: 0 }}>
-            An equal-weight average across the {result.scoredQuestionCount} scored{" "}
-            {result.scoredQuestionCount === 1 ? "question" : "questions"}.
-            {result.warmupQuestionCount > 0 &&
-              ` ${result.warmupQuestionCount} warm-up ${
-                result.warmupQuestionCount === 1 ? "question is" : "questions are"
-              } shown below but not counted.`}
-          </p>
-        </section>
-
-        <section className="review-section">
-          <div className="review-heading">
-            <div>
-              <p className="eyebrow">Read-only review</p>
-              <h2>Answers and feedback</h2>
-            </div>
-            <p>All submitted answers are locked.</p>
-          </div>
-          {result.questions.map((review, index) => (
-            <article className="card review-card" key={review.questionId}>
-              <header className="review-card-header">
-                <span className="card-title-row">
-                  <span className="question-number">Question {index + 1}</span>
-                  <span className={`type-chip type-${review.type}`}>
-                    {QUESTION_LABELS[review.type]}
-                  </span>
-                  {review.warmup && <span className="pill">Warm-up · not counted</span>}
-                </span>
-                <span>{Math.round(review.score * 10) / 10}%</span>
-              </header>
-              <ReviewTiming timing={review} />
-              {review.type === "fill_blank" ? (
-                <div className="review-question-copy">
-                  {review.segments.map((segment, segmentIndex) => {
-                    if (segment.type === "text") {
-                      return <span key={`${segmentIndex}-${segment.value}`}>{segment.value}</span>;
-                    }
-                    const blank = review.blanks.find(
-                      (candidate) => candidate.blankId === segment.blankId,
-                    );
-                    return (
-                      <span className="review-blank" key={segment.blankId}>
-                        <span className="review-answer-row">
-                          <small>Your answer</small>
-                          <strong>{blank?.selectedAnswer ?? "No answer"}</strong>
-                        </span>
-                        <span className="review-answer-row">
-                          <small>Correct answer</small>
-                          <strong>{blank?.correctAnswer ?? "Unavailable"}</strong>
-                        </span>
-                      </span>
-                    );
-                  })}
-                </div>
-              ) : review.type === "multiple_choice" ? (
-                <div className="free-review">
-                  <h3>{review.prompt}</h3>
-                  <div className="option-list review-option-list">
-                    {review.options.map((option) => {
-                      const isCorrect = option.id === review.correctOptionId;
-                      const isSelected = option.id === review.selectedOptionId;
-                      return (
-                        <div
-                          className={`option review-option ${isCorrect ? "correct" : ""} ${
-                            isSelected && !isCorrect ? "incorrect" : ""
-                          }`}
-                          key={option.id}
-                        >
-                          <span>{option.label}</span>
-                          <small>
-                            {isCorrect && isSelected
-                              ? "Correct answer · your answer"
-                              : isCorrect
-                                ? "Correct answer"
-                                : isSelected
-                                  ? "Your answer"
-                                  : ""}
-                          </small>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div>
-                    <span className="review-label">Why</span>
-                    <p>{review.rationale}</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="free-review">
-                  <h3>{review.prompt}</h3>
-                  <div>
-                    <span className="review-label">Your response</span>
-                    <p>{review.response}</p>
-                  </div>
-                  <div>
-                    <span className="review-label">Rubric</span>
-                    <p>{review.rubric.summary}</p>
-                    <ul>
-                      {review.rubric.criteria.map((criterion) => (
-                        <li key={criterion.criterion}>
-                          <strong>
-                            {criterion.criterion} ({criterion.points} points)
-                          </strong>
-                          <span>{criterion.guidance}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div>
-                    <span className="review-label">Grading feedback</span>
-                    <p>{review.feedback}</p>
-                  </div>
-                </div>
-              )}
-            </article>
-          ))}
-        </section>
-      </main>
-    );
-  }
+  if (result) return <ResultView result={result} />;
 
   return (
     <main className="app-shell">

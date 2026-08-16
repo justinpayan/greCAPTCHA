@@ -3,92 +3,15 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/db";
 import { attemptAnswers, attempts } from "@/db/schema";
-import {
-  buildResult,
-  getAttemptState,
-  getCurrentAnswer,
-  loadAttemptContext,
-} from "@/lib/attempts";
-import { gradeFreeResponseBlock } from "@/lib/openrouter";
-import {
-  answerSubmissionSchema,
-  type FillReview,
-  type StoredFreeResponseQuestion,
-} from "@/lib/quiz";
+import { getAttemptState, getCurrentAnswer, loadAttemptContext } from "@/lib/attempts";
+import { finalizeAttempt } from "@/lib/grading";
+import { answerSubmissionSchema, type FillReview } from "@/lib/quiz";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 function normalizeAnswer(value: string) {
   return value.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US");
-}
-
-async function finalizeAttempt(input: Awaited<ReturnType<typeof loadAttemptContext>>) {
-  const allAnswers = await db
-    .select()
-    .from(attemptAnswers)
-    .where(eq(attemptAnswers.attemptId, input.attempt.id));
-
-  const answerByQuestion = new Map(allAnswers.map((answer) => [answer.questionId, answer]));
-  const freeByBlock = new Map<string, StoredFreeResponseQuestion[]>();
-  for (const question of input.questions) {
-    if (question.type !== "free_response") continue;
-    freeByBlock.set(question.blockId, [...(freeByBlock.get(question.blockId) ?? []), question]);
-  }
-
-  for (const questions of freeByBlock.values()) {
-    const responses: Record<string, string> = {};
-    for (const question of questions) {
-      const answer = answerByQuestion.get(question.id);
-      responses[question.id] = answer
-        ? ((JSON.parse(answer.answerJson ?? "{}") as { response?: string }).response ?? "")
-        : "";
-    }
-    const grades = await gradeFreeResponseBlock({
-      modelId: input.set.modelId,
-      questions,
-      answers: responses,
-    });
-    for (const grade of grades.grades) {
-      await db
-        .update(attemptAnswers)
-        .set({
-          score: grade.score,
-          feedbackJson: JSON.stringify({ feedback: grade.feedback }),
-        })
-        .where(
-          and(
-            eq(attemptAnswers.attemptId, input.attempt.id),
-            eq(attemptAnswers.questionId, grade.questionId),
-          ),
-        )
-        .run();
-    }
-  }
-
-  const gradedAnswers = await db
-    .select()
-    .from(attemptAnswers)
-    .where(eq(attemptAnswers.attemptId, input.attempt.id));
-  const result = buildResult({
-    attemptId: input.attempt.id,
-    questionSetId: input.set.id,
-    paperName: input.set.paperName,
-    order: input.order,
-    questions: input.questions,
-    answers: gradedAnswers,
-  });
-  await db
-    .update(attempts)
-    .set({
-      status: "graded",
-      score: result.overallScore,
-      gradingJson: JSON.stringify(result),
-      completedAt: new Date().toISOString(),
-    })
-    .where(eq(attempts.id, input.attempt.id))
-    .run();
-  return result;
 }
 
 export async function POST(

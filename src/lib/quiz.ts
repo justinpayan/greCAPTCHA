@@ -84,6 +84,7 @@ export const generatedFillSetSchema = z.object({
   questions: z.array(
     z.object({
       prompt: z.string().min(1),
+      description: z.string().min(1),
       blanks: z.array(generatedBlankSchema).min(1),
     }),
   ),
@@ -99,6 +100,7 @@ export const generatedFreeResponseSetSchema = z.object({
   questions: z.array(
     z.object({
       prompt: z.string().min(1),
+      description: z.string().min(1),
       rubric: z.object({
         summary: z.string().min(1),
         criteria: z.array(rubricCriterionSchema).min(1),
@@ -113,6 +115,7 @@ export const generatedMultipleChoiceSetSchema = z.object({
   questions: z.array(
     z.object({
       prompt: z.string().min(1),
+      description: z.string().min(1),
       answer: z.string().min(1),
       distractors: z.array(z.string().min(1)).min(1),
       rationale: z.string().min(1),
@@ -155,6 +158,7 @@ export type StoredFillQuestion = {
   timeLimitSeconds?: number | null;
   warmup?: boolean;
   blockName?: string;
+  description?: string;
   segments: QuestionSegment[];
   choices: QuizChoice[];
   blanks: StoredBlank[];
@@ -172,6 +176,7 @@ export type StoredFreeResponseQuestion = {
   timeLimitSeconds?: number | null;
   warmup?: boolean;
   blockName?: string;
+  description?: string;
   prompt: string;
   rubric: Rubric;
 };
@@ -183,6 +188,7 @@ export type StoredMultipleChoiceQuestion = {
   timeLimitSeconds?: number | null;
   warmup?: boolean;
   blockName?: string;
+  description?: string;
   prompt: string;
   /** Already shuffled at generation, so every attempt on this set sees the same order. */
   options: QuizChoice[];
@@ -199,17 +205,17 @@ export type StoredQuestion =
 // `warmup` is stripped from every public shape. Telling the participant an item does not
 // count would undermine its use as a per-participant latency baseline (§3.2 F6); the review
 // screen labels warm-ups after scoring instead.
-export type PublicFillQuestion = Omit<StoredFillQuestion, "blanks" | "warmup" | "blockName"> & {
+export type PublicFillQuestion = Omit<StoredFillQuestion, "blanks" | "warmup" | "blockName" | "description"> & {
   blankIds: string[];
 };
 
 export type PublicFreeResponseQuestion = Omit<
   StoredFreeResponseQuestion,
-  "rubric" | "warmup" | "blockName"
+  "rubric" | "warmup" | "blockName" | "description"
 >;
 export type PublicMultipleChoiceQuestion = Omit<
   StoredMultipleChoiceQuestion,
-  "correctOptionId" | "rationale" | "warmup" | "blockName"
+  "correctOptionId" | "rationale" | "warmup" | "blockName" | "description"
 >;
 export type PublicQuestion =
   | PublicFillQuestion
@@ -230,6 +236,36 @@ export type AttemptView = {
   elapsedMs: number;
   /** True once the server has stamped a first interaction, so a refresh does not re-ping. */
   firstInteractionRecorded: boolean;
+};
+
+/**
+ * Researcher-facing plan of an attempt. Carries card names and generated descriptions,
+ * so it must only ever back the summary screen, never the test-taking screens.
+ */
+export type AttemptOutlineItem = {
+  position: number;
+  questionId: string;
+  type: StoredQuestion["type"];
+  blockName: string;
+  description: string;
+  timeLimitSeconds: number | null;
+  warmup: boolean;
+  answered: boolean;
+};
+
+export type AttemptOutline = {
+  attemptId: string;
+  questionSetId: string;
+  paperName: string;
+  modelId: string;
+  status: string;
+  totalQuestions: number;
+  answeredCount: number;
+  scoredQuestionCount: number;
+  graded: boolean;
+  /** Every question answered but no result stored yet, so grading can still be run. */
+  gradable: boolean;
+  items: AttemptOutlineItem[];
 };
 
 export const answerSubmissionSchema = z.discriminatedUnion("type", [
@@ -380,6 +416,7 @@ export function prepareFillQuestions(
       timeLimitSeconds: block.timeLimitSeconds,
       warmup: block.warmup,
       blockName: block.name,
+      description: question.description.trim(),
       segments: parseSegments(question.prompt, new Set(ids)),
       choices: shuffled(choices),
       blanks,
@@ -398,6 +435,7 @@ export function prepareFreeResponseQuestions(
     timeLimitSeconds: block.timeLimitSeconds,
     warmup: block.warmup,
     blockName: block.name,
+    description: question.description.trim(),
     prompt: question.prompt.trim(),
     rubric: question.rubric,
   }));
@@ -446,6 +484,7 @@ export function prepareMultipleChoiceQuestions(
       timeLimitSeconds: block.timeLimitSeconds,
       warmup: block.warmup,
       blockName: block.name,
+      description: question.description.trim(),
       prompt: question.prompt.trim(),
       options,
       correctOptionId: correctOption.id,
@@ -472,7 +511,8 @@ export function isWarmup(question: StoredQuestion): boolean {
 export function toPublicQuestion(question: StoredQuestion): PublicQuestion {
   const timeLimitSeconds = questionTimeLimit(question);
   if (question.type === "free_response") {
-    const { rubric: _r, warmup: _w, blockName: _b, ...publicQuestion } = question;
+    const { rubric: _r, warmup: _w, blockName: _b, description: _d, ...publicQuestion } =
+      question;
     return { ...publicQuestion, timeLimitSeconds };
   }
   if (question.type === "multiple_choice") {
@@ -481,11 +521,13 @@ export function toPublicQuestion(question: StoredQuestion): PublicQuestion {
       rationale: _rationale,
       warmup: _warmup,
       blockName: _blockName,
+      description: _description,
       ...publicQuestion
     } = question;
     return { ...publicQuestion, timeLimitSeconds };
   }
-  const { blanks, warmup: _w, blockName: _b, ...publicQuestion } = question;
+  const { blanks, warmup: _w, blockName: _b, description: _d, ...publicQuestion } =
+    question;
   return {
     ...publicQuestion,
     timeLimitSeconds,

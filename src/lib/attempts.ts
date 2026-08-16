@@ -12,6 +12,8 @@ import {
   shuffled,
   toPublicQuestion,
   type AssessmentResult,
+  type AttemptOutline,
+  type AttemptOutlineItem,
   type AttemptView,
   type FillReview,
   type QuestionReview,
@@ -118,7 +120,8 @@ export async function getAttemptState(
   };
 }
 
-export async function loadAttemptContext(attemptId: string) {
+/** Attempt plus its question set, without requiring a servable current question. */
+async function loadAttemptContextLoose(attemptId: string) {
   const attempt = await db.select().from(attempts).where(eq(attempts.id, attemptId)).get();
   if (!attempt) throw new Error("Attempt not found.");
   const set = await db
@@ -130,9 +133,63 @@ export async function loadAttemptContext(attemptId: string) {
   const questions = JSON.parse(set.questionsJson) as StoredQuestion[];
   const order = JSON.parse(attempt.questionOrderJson) as string[];
   const questionById = new Map(questions.map((question) => [question.id, question]));
-  const currentQuestion = questionById.get(order[attempt.currentIndex]);
+  return { attempt, set, questions, order, questionById };
+}
+
+export async function loadAttemptContext(attemptId: string) {
+  const context = await loadAttemptContextLoose(attemptId);
+  const currentQuestion = context.questionById.get(
+    context.order[context.attempt.currentIndex],
+  );
   if (!currentQuestion) throw new Error("The attempt references a missing question.");
-  return { attempt, set, questions, order, questionById, currentQuestion };
+  return { ...context, currentQuestion };
+}
+
+/**
+ * Builds the researcher-facing plan of an attempt: what each question is, in what order,
+ * and which are already answered. Includes card names and generated descriptions, so this
+ * must not be surfaced to the person taking the assessment.
+ */
+export async function getAttemptOutline(attemptId: string): Promise<AttemptOutline> {
+  const quiz = await loadAttemptContextLoose(attemptId);
+  const answers = await db
+    .select()
+    .from(attemptAnswers)
+    .where(eq(attemptAnswers.attemptId, attemptId));
+  const answeredIds = new Set(
+    answers.filter((answer) => answer.submittedAt).map((answer) => answer.questionId),
+  );
+
+  const items = quiz.order.map((questionId, index): AttemptOutlineItem => {
+    const question = quiz.questionById.get(questionId);
+    if (!question) throw new Error("The attempt references a missing question.");
+    return {
+      position: index + 1,
+      questionId,
+      type: question.type,
+      blockName: questionBlockName(question),
+      description: question.description?.trim() ?? "",
+      timeLimitSeconds: questionTimeLimit(question),
+      warmup: isWarmup(question),
+      answered: answeredIds.has(questionId),
+    };
+  });
+
+  const answeredCount = items.filter((item) => item.answered).length;
+  const graded = quiz.attempt.status === "graded" && Boolean(quiz.attempt.gradingJson);
+  return {
+    attemptId,
+    questionSetId: quiz.set.id,
+    paperName: quiz.set.paperName,
+    modelId: quiz.set.modelId,
+    status: quiz.attempt.status,
+    totalQuestions: items.length,
+    answeredCount,
+    scoredQuestionCount: items.filter((item) => !item.warmup).length,
+    graded,
+    gradable: !graded && answeredCount === items.length && items.length > 0,
+    items,
+  };
 }
 
 export async function getCurrentAnswer(attemptId: string, questionId: string) {

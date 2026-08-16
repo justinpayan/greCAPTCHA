@@ -2,11 +2,14 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import { QuizWorkspace } from "@/components/quiz/quiz-workspace";
+import { AttemptSummary } from "@/components/quiz/attempt-summary";
+import { QuizWorkspace, ResultView } from "@/components/quiz/quiz-workspace";
 import {
   DEFAULT_FILL_PROMPT,
   DEFAULT_FREE_RESPONSE_PROMPT,
   DEFAULT_MULTIPLE_CHOICE_PROMPT,
+  type AssessmentResult,
+  type AttemptOutline,
   type AttemptView,
   type PdfEngine,
   type QuestionBlockConfig,
@@ -109,7 +112,7 @@ function CountdownToggle({
 }
 
 export function ResearchCaptcha() {
-  const [mode, setMode] = useState<"generate" | "load">("generate");
+  const [mode, setMode] = useState<"generate" | "load" | "resume">("generate");
   const [models, setModels] = useState<CatalogModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<CatalogModel | null>(null);
   const [modelSearch, setModelSearch] = useState("");
@@ -133,6 +136,8 @@ export function ResearchCaptcha() {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState<AttemptView | null>(null);
+  const [outline, setOutline] = useState<AttemptOutline | null>(null);
+  const [result, setResult] = useState<AssessmentResult | null>(null);
   const [templates, setTemplates] = useState<StudyTemplateSummary[]>([]);
   const [templateId, setTemplateId] = useState("");
   const [templateName, setTemplateName] = useState("");
@@ -260,6 +265,29 @@ export function ResearchCaptcha() {
       .slice(0, 60);
   }, [modelSearch, models]);
 
+  /** Every entry point lands on the researcher-facing plan, never straight into a question. */
+  async function showSummary(attemptId: string) {
+    const response = await fetch(`/api/attempts/${encodeURIComponent(attemptId)}/outline`);
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error ?? "Unable to load the attempt summary.");
+    setOutline(payload.outline as AttemptOutline);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function resumeAttempt(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setWorking(true);
+    setError("");
+    const form = new FormData(event.currentTarget);
+    try {
+      await showSummary(String(form.get("attemptId") ?? "").trim());
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to open the attempt.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
   async function saveTemplate() {
     setTemplateStatus("");
     setError("");
@@ -350,8 +378,7 @@ export function ResearchCaptcha() {
       const response = await fetch("/api/question-sets", { method: "POST", body: form });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to generate questions.");
-      setAttempt(payload.attempt as AttemptView);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      await showSummary((payload.attempt as AttemptView).attemptId);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Question generation failed.");
     } finally {
@@ -373,8 +400,7 @@ export function ResearchCaptcha() {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to load question set.");
-      setAttempt(payload.attempt as AttemptView);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      await showSummary((payload.attempt as AttemptView).attemptId);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load question set.");
     } finally {
@@ -382,7 +408,23 @@ export function ResearchCaptcha() {
     }
   }
 
+  if (result) return <ResultView result={result} />;
   if (attempt) return <QuizWorkspace initialAttempt={attempt} />;
+  if (outline) {
+    return (
+      <AttemptSummary
+        outline={outline}
+        onStart={(next) => {
+          setAttempt(next);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+        onResult={(next) => {
+          setResult(next);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+      />
+    );
+  }
 
   return (
     <main className="app-shell">
@@ -413,6 +455,13 @@ export function ResearchCaptcha() {
           onClick={() => setMode("load")}
         >
           Load saved set
+        </button>
+        <button
+          type="button"
+          className={mode === "resume" ? "active" : ""}
+          onClick={() => setMode("resume")}
+        >
+          Resume attempt
         </button>
       </div>
 
@@ -483,7 +532,34 @@ export function ResearchCaptcha() {
         </section>
       )}
 
-      {mode === "load" ? (
+      {mode === "resume" ? (
+        <form className="card form-card" onSubmit={resumeAttempt}>
+          <div className="field">
+            <label htmlFor="attemptId">Attempt row&nbsp;ID</label>
+            <input
+              className="control"
+              id="attemptId"
+              name="attemptId"
+              placeholder="Paste an attempt UUID"
+              required
+            />
+            <small>
+              Reopens an attempt that is already under way, keeping its answers and timings.
+            </small>
+          </div>
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="submit-row">
+            <span className="hint">Nothing is regenerated and no answer is reset.</span>
+            <button className="primary" type="submit" disabled={working}>
+              {working ? "Opening…" : "Open attempt"}
+            </button>
+          </div>
+        </form>
+      ) : mode === "load" ? (
         <form className="card form-card" onSubmit={loadSet}>
           <div className="field">
             <label htmlFor="questionSetId">Question-set row&nbsp;ID</label>
