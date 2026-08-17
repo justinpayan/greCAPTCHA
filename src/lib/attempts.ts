@@ -154,7 +154,6 @@ export async function getAttemptIntro(attemptId: string): Promise<AttemptIntro> 
 
   return {
     attemptId,
-    paperName: quiz.set.paperName,
     totalQuestions: quiz.order.length,
     timedQuestionCount: inOrder.filter((question) => questionTimeLimit(question) !== null).length,
     started: served.length > 0,

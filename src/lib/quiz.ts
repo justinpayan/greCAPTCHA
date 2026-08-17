@@ -328,7 +328,8 @@ export type PublicQuestion =
  */
 export type AttemptIntro = {
   attemptId: string;
-  paperName: string;
+  // No paper name. The landing page does not show one, and a filename can betray which of an
+  // experiment's two papers is the participant's own, so it is not sent to their browser.
   totalQuestions: number;
   /** How many carry a soft limit, so the page can say whether the set is timed at all. */
   timedQuestionCount: number;

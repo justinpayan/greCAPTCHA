@@ -12,8 +12,9 @@ import type { AttemptIntro } from "@/lib/quiz";
  * the start of timing to a moment the participant chooses, instead of whenever the page
  * happened to load or the laptop happened to be handed over.
  *
- * Participant-facing, so the copy stays neutral: it names the paper and the shape of the set,
- * and never which paper this is in the study design.
+ * Participant-facing, and deliberately says very little. The paper is not named here: a
+ * filename can hint at which of the two papers is the participant's own, which is exactly what
+ * the study design must not reveal.
  */
 export function AttemptIntroPage({
   intro,
@@ -51,8 +52,6 @@ export function AttemptIntroPage({
       </div>
 
       <section className="card intro-card">
-        <p className="eyebrow">Understanding assessment</p>
-        <h1>{intro.paperName}</h1>
         {blockProgress && (
           <p className="block-progress intro-block">
             Paper {blockProgress.index} of {blockProgress.total}
@@ -61,19 +60,16 @@ export function AttemptIntroPage({
 
         <ul className="intro-facts">
           <li>
-            <strong>
-              {intro.totalQuestions} {intro.totalQuestions === 1 ? "question" : "questions"}
-            </strong>
-            , shown one at a time.
+            {intro.totalQuestions} {intro.totalQuestions === 1 ? "question" : "questions"}, shown
+            one at a time.
           </li>
           <li>
-            Each answer is <strong>locked once submitted</strong>, and you cannot return to an
-            earlier question.
+            Each answer is locked once submitted, and you cannot return to an earlier question.
           </li>
           {mentionTiming && (
             <li>
-              Some questions show a <strong>soft time limit</strong>. Running over it is
-              recorded, but nothing cuts you off and nothing is taken away.
+              Some questions show a soft time limit. Running over it is recorded, but nothing
+              cuts you off and nothing is taken away.
             </li>
           )}
           <li>
