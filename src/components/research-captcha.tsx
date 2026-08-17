@@ -844,46 +844,68 @@ export function ResearchCaptcha() {
         </section>
       ) : (
         <form className="card form-card" onSubmit={generateSet}>
-          <div className="form-grid">
-            <div className="field full">
-              <label htmlFor="setName">
-                Test set name
-                <FieldHint text="Identifies this set in the saved-set list. Leave blank to use the PDF filename. You can rename it later." />
-              </label>
-              <input
-                className="control"
-                id="setName"
-                value={setName}
-                maxLength={120}
-                placeholder="e.g. Pilot form A — Gyevnar CHI submission"
-                onChange={(event) => setSetName(event.target.value)}
-              />
+          <div className="form-section">
+            <div className="section-heading">
+              <div>
+                <span className="field-label">This paper</span>
+                <p className="hint">
+                  Specific to one manuscript and one claimed author. Everything below is
+                  reusable, so the same question configuration can be run against any paper.
+                </p>
+              </div>
             </div>
-            <div className="field full">
-              <label htmlFor="paper">Manuscript PDF</label>
-              <input
-                className="control file-control"
-                id="paper"
-                name="paper"
-                type="file"
-                accept="application/pdf,.pdf"
-                required
-              />
-              <small>PDF only, up to 25 MB.</small>
+            <div className="form-grid">
+              <div className="field full">
+                <label htmlFor="setName">
+                  Test set name
+                  <FieldHint text="Identifies this set in the saved-set list. Leave blank to use the PDF filename. You can rename it later." />
+                </label>
+                <input
+                  className="control"
+                  id="setName"
+                  value={setName}
+                  maxLength={120}
+                  placeholder="e.g. Pilot form A — Gyevnar CHI submission"
+                  onChange={(event) => setSetName(event.target.value)}
+                />
+              </div>
+              <div className="field full">
+                <label htmlFor="paper">Manuscript PDF</label>
+                <input
+                  className="control file-control"
+                  id="paper"
+                  name="paper"
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  required
+                />
+                <small>PDF only, up to 25 MB.</small>
+              </div>
+              <div className="field full">
+                <label htmlFor="contributions">Claimed author&apos;s stated contributions</label>
+                <textarea
+                  className="control"
+                  id="contributions"
+                  name="contributions"
+                  minLength={15}
+                  maxLength={10_000}
+                  required
+                  placeholder="Describe the experiments, theory, analysis, writing, or other work the claimed author has contributed..."
+                />
+              </div>
             </div>
-            <div className="field full">
-              <label htmlFor="contributions">Your stated contributions</label>
-              <textarea
-                className="control"
-                id="contributions"
-                name="contributions"
-                minLength={20}
-                maxLength={10_000}
-                required
-                placeholder="Describe the experiments, theory, analysis, writing, or other work you contributed..."
-              />
-            </div>
+          </div>
 
+          <div className="form-section">
+            <div className="section-heading">
+              <div>
+                <span className="field-label">Question configuration</span>
+                <p className="hint">
+                  Saved and restored by a study set template, independent of the manuscript.
+                </p>
+              </div>
+            </div>
+            <div className="form-grid">
             <div className="field full">
               <span className="field-label">Question-generation model</span>
               <div className="model-picker">
@@ -1142,7 +1164,7 @@ export function ResearchCaptcha() {
                 ))}
               </div>
             </div>
-
+            </div>
           </div>
 
           {error && <p className="error" role="alert">{error}</p>}
