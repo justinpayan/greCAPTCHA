@@ -57,6 +57,13 @@
       "when": 1787003175160,
       "tag": "0007_tidy_stardust",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1787007023184,
+      "tag": "0008_same_molly_hayes",
+      "breakpoints": true
     }
   ]
 }

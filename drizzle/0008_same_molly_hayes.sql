@@ -1,0 +1,1 @@
+ALTER TABLE `attempt_answers` ADD `skipped` integer DEFAULT false NOT NULL;

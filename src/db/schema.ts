@@ -132,6 +132,13 @@ export const attemptAnswers = sqliteTable(
     // without joining through questions_json.
     blockName: text("block_name"),
     answerJson: text("answer_json"),
+    /**
+     * The participant declined the question rather than answering it. Scored 0 and locked
+     * like any other submission, but recorded separately: "declined" and "attempted and got
+     * it wrong" are different behaviours, and only an explicit flag lets an analysis exclude
+     * the former. `answer_json` is null on a skipped row.
+     */
+    skipped: integer("skipped", { mode: "boolean" }).notNull().default(false),
     startedAt: text("started_at").notNull(),
     firstInteractionAt: text("first_interaction_at"),
     firstInteractionMs: integer("first_interaction_ms"),

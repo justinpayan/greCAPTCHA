@@ -51,6 +51,9 @@ const COLUMNS = [
   "duration_ms",
   "overrun_ms",
   "score",
+  // A skip scores 0 like a wrong answer, so without this column the two are indistinguishable
+  // in the data — and declining a question is a different behaviour from getting it wrong.
+  "skipped",
   "response",
   "correct_answer",
   "correct",
@@ -73,9 +76,16 @@ function parseJson<T>(raw: string | null, fallback: T): T {
   }
 }
 
-/** Resolves what the participant submitted, and the key, into readable text. */
+/**
+ * Resolves what the participant submitted, and the key, into readable text.
+ *
+ * A skipped question has no answer JSON. Its key is still reported — that is a property of the
+ * item, not of the answer — but `response` has to read as genuinely empty rather than as a set
+ * of empty blank selections, which would look like an answer that was given.
+ */
 function describeAnswer(question: StoredQuestion | undefined, answerJson: string | null) {
   if (!question) return { response: "", correctAnswer: "", correct: "" };
+  const answered = Boolean(answerJson);
 
   if (question.type === "free_response") {
     const parsed = parseJson<{ response?: string }>(answerJson, {});
@@ -96,9 +106,11 @@ function describeAnswer(question: StoredQuestion | undefined, answerJson: string
   const parsed = parseJson<{ selections?: Record<string, string | null> }>(answerJson, {});
   const labelFor = (choiceId: string | null | undefined) =>
     question.choices.find((choice) => choice.id === choiceId)?.label ?? "";
-  const chosen = question.blanks
-    .map((blank) => `${blank.id}=${labelFor(parsed.selections?.[blank.id])}`)
-    .join("; ");
+  const chosen = answered
+    ? question.blanks
+        .map((blank) => `${blank.id}=${labelFor(parsed.selections?.[blank.id])}`)
+        .join("; ")
+    : "";
   const key = question.blanks.map((blank) => `${blank.id}=${blank.answer}`).join("; ");
   return { response: chosen, correctAnswer: key, correct: "" };
 }
@@ -176,6 +188,7 @@ export async function buildAnswerCsv(): Promise<string> {
         answer.durationMs,
         answer.overrunMs,
         answer.score,
+        answer.skipped,
         described.response,
         described.correctAnswer,
         described.correct,

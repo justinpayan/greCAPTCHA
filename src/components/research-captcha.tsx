@@ -1,10 +1,17 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ParticipantId } from "@/components/participant-id";
+import {
+  loadAttemptEntry,
+  serveAttempt,
+  type AttemptEntry,
+} from "@/components/quiz/attempt-entry";
+import { AttemptIntroPage } from "@/components/quiz/attempt-intro";
 import { AttemptSummary } from "@/components/quiz/attempt-summary";
 import { QuizWorkspace, ResultView } from "@/components/quiz/quiz-workspace";
+import { SessionResults, type SessionBlock } from "@/components/quiz/session-results";
 import {
   CONDITION_LABELS,
   DEFAULT_FILL_PROMPT,
@@ -12,6 +19,7 @@ import {
   DEFAULT_MULTIPLE_CHOICE_PROMPT,
   FOREIGN_STRATUM_LABELS,
   type AssessmentResult,
+  type AttemptIntro,
   type AttemptListEntry,
   type AttemptOutline,
   type AttemptView,
@@ -145,6 +153,8 @@ export function ResearchCaptcha() {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState<AttemptView | null>(null);
+  /** Landing page for a question set that has not been served yet. */
+  const [intro, setIntro] = useState<AttemptIntro | null>(null);
   const [outline, setOutline] = useState<AttemptOutline | null>(null);
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [setName, setSetName] = useState("");
@@ -160,6 +170,22 @@ export function ResearchCaptcha() {
   const [ownSetId, setOwnSetId] = useState("");
   const [foreignSetId, setForeignSetId] = useState("");
   const [experimentSearch, setExperimentSearch] = useState("");
+  /** Both blocks' reveal, shown once a chained run finishes. */
+  const [sessionResults, setSessionResults] = useState<{
+    participantId: string;
+    blocks: SessionBlock[];
+  } | null>(null);
+  /**
+   * The in-flight chained run. A ref, not state: it is read inside the callback handed to the
+   * workspace, where a captured state value would be stale by the time the block ends.
+   */
+  const chain = useRef<{
+    participantId: string;
+    remaining: Array<{ attemptId: string; label: string }>;
+    current: { attemptId: string; label: string } | null;
+    done: SessionBlock[];
+    total: number;
+  } | null>(null);
   const [templates, setTemplates] = useState<StudyTemplateSummary[]>([]);
   const [templateId, setTemplateId] = useState("");
   const [templateName, setTemplateName] = useState("");
@@ -464,6 +490,118 @@ export function ResearchCaptcha() {
     }
   }
 
+  /**
+   * Runs an experiment's blocks back to back.
+   *
+   * The queue lives in a ref rather than in state: it is read from inside a callback handed to
+   * the workspace, and a ref cannot go stale between the render that created that callback and
+   * the moment the block finishes.
+   */
+  async function runExperiment(entry: ExperimentListEntry) {
+    const ordered = [...entry.attempts].sort((a, b) => a.blockPosition - b.blockPosition);
+    chain.current = {
+      participantId: entry.participantId,
+      remaining: ordered.map((row) => ({
+        attemptId: row.attemptId,
+        label: `Block ${row.blockPosition} · ${CONDITION_LABELS[row.condition]}`,
+      })),
+      current: null,
+      done: [],
+      total: ordered.length,
+    };
+    setWorking(true);
+    setError("");
+    try {
+      await openNextBlock();
+    } catch (caught) {
+      chain.current = null;
+      setError(caught instanceof Error ? caught.message : "Unable to start the experiment.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  /**
+   * Opens the next block that still needs answering, on its landing page. A block that is
+   * already graded is collected and stepped over, so the button resumes a half-finished session
+   * and doubles as the reveal for one that is complete.
+   */
+  async function openNextBlock() {
+    const session = chain.current;
+    if (!session) return;
+
+    while (session.remaining.length > 0) {
+      const next = session.remaining[0];
+      const entry = await loadAttemptEntry(next.attemptId);
+      if (entry.kind === "closed") throw new Error(entry.message);
+
+      session.remaining.shift();
+      if (entry.kind === "result") {
+        session.done.push({ label: next.label, result: entry.result });
+        continue;
+      }
+      // Held so the finished block can be labelled once it is graded.
+      session.current = next;
+      showEntry(entry);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    // Every block is graded: show the whole session's reveal.
+    setAttempt(null);
+    setIntro(null);
+    setSessionResults({ participantId: session.participantId, blocks: session.done });
+    chain.current = null;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  /** Shows whichever screen an attempt is due: its landing page, or the current question. */
+  function showEntry(entry: AttemptEntry) {
+    if (entry.kind === "intro") {
+      setAttempt(null);
+      setIntro(entry.intro);
+    } else if (entry.kind === "question") {
+      setIntro(null);
+      setAttempt(entry.attempt);
+    } else if (entry.kind === "result") {
+      setIntro(null);
+      setAttempt(null);
+      setResult(entry.result);
+    } else {
+      setError(entry.message);
+    }
+  }
+
+  /**
+   * Opens one attempt from its plan page. Lands on the Start page for an attempt nobody has
+   * begun, and resumes mid-question for one already under way, whose clock is already running.
+   */
+  async function beginAttempt(attemptId: string) {
+    const entry = await loadAttemptEntry(attemptId);
+    showEntry(entry);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  /** Start pressed on a landing page: this is the request that stamps question one's clock. */
+  async function startFromIntro(attemptId: string) {
+    const entry = await serveAttempt(attemptId);
+    showEntry(entry);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  /** A block finished. Its result is held back and the next paper starts immediately. */
+  async function advanceChain(graded: AssessmentResult) {
+    const session = chain.current;
+    if (!session) return setResult(graded);
+    session.done.push({ label: session.current?.label ?? "Assessment", result: graded });
+    session.current = null;
+    try {
+      await openNextBlock();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to open the next block.");
+    }
+  }
+
   async function createExperiment() {
     if (!ownSetId || !foreignSetId) {
       setError("Choose a question set for each paper.");
@@ -701,16 +839,54 @@ export function ResearchCaptcha() {
     }
   }
 
+  if (sessionResults) {
+    return (
+      <SessionResults
+        blocks={sessionResults.blocks}
+        participantId={sessionResults.participantId}
+        onDone={() => {
+          setSessionResults(null);
+          void refreshCatalog();
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+      />
+    );
+  }
   if (result) return <ResultView result={result} />;
-  if (attempt) return <QuizWorkspace initialAttempt={attempt} />;
+  if (intro) {
+    return (
+      <AttemptIntroPage
+        intro={intro}
+        blockProgress={
+          chain.current
+            ? { index: chain.current.done.length + 1, total: chain.current.total }
+            : undefined
+        }
+        onStart={() => startFromIntro(intro.attemptId)}
+      />
+    );
+  }
+  if (attempt) {
+    return (
+      <QuizWorkspace
+        // Keyed by attempt: a chained run swaps in the next block, and the question, timer
+        // and answer state all initialise from props, so it has to remount.
+        key={attempt.attemptId}
+        initialAttempt={attempt}
+        onFinish={chain.current ? (graded) => void advanceChain(graded) : undefined}
+        blockProgress={
+          chain.current
+            ? { index: chain.current.done.length + 1, total: chain.current.total }
+            : undefined
+        }
+      />
+    );
+  }
   if (outline) {
     return (
       <AttemptSummary
         outline={outline}
-        onStart={(next) => {
-          setAttempt(next);
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        }}
+        onStart={beginAttempt}
         onResult={(next) => {
           setResult(next);
           window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1000,6 +1176,14 @@ export function ResearchCaptcha() {
                     onClick={() => void deleteExperimentRow(entry)}
                   >
                     Delete
+                  </button>
+                  <button
+                    className="primary"
+                    type="button"
+                    disabled={working || entry.attempts.length < 2}
+                    onClick={() => void runExperiment(entry)}
+                  >
+                    Run both blocks
                   </button>
                 </div>
                 {entry.attempts.map((row) => (

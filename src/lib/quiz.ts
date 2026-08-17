@@ -319,6 +319,25 @@ export type PublicQuestion =
   | PublicFreeResponseQuestion
   | PublicMultipleChoiceQuestion;
 
+/**
+ * What the landing page shown before a question set needs, and nothing more.
+ *
+ * Reading this does **not** serve a question, which is the whole point: the first question's
+ * clock starts when the participant presses Start, not when the page loads. Deliberately free
+ * of card names, item descriptions and warm-up flags — it is participant-facing.
+ */
+export type AttemptIntro = {
+  attemptId: string;
+  paperName: string;
+  totalQuestions: number;
+  /** How many carry a soft limit, so the page can say whether the set is timed at all. */
+  timedQuestionCount: number;
+  /** True once a question has been served, meaning the clock is already running. */
+  started: boolean;
+  status: string;
+  countdownHidden: boolean;
+};
+
 export type AttemptView = {
   attemptId: string;
   questionSetId: string;
@@ -398,6 +417,9 @@ export const answerSubmissionSchema = z.discriminatedUnion("type", [
     type: z.literal("multiple_choice"),
     optionId: z.string().min(1),
   }),
+  // Declining the question. Carries no answer, and is accepted for any question type, so it
+  // is exempt from the check that a submission's type matches the question being served.
+  z.object({ type: z.literal("skip") }),
 ]);
 export type AnswerSubmission = z.infer<typeof answerSubmissionSchema>;
 
@@ -415,6 +437,8 @@ export type QuestionTiming = {
 type ReviewBase = QuestionTiming & {
   /** Graded and shown, but excluded from the overall score. */
   warmup: boolean;
+  /** Declined rather than answered. Scored 0, and labelled as skipped on the review. */
+  skipped: boolean;
 };
 
 export type FillReview = ReviewBase & {

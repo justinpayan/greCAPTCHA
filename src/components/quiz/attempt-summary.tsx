@@ -8,7 +8,6 @@ import {
   FOREIGN_STRATUM_LABELS,
   type AssessmentResult,
   type AttemptOutline,
-  type AttemptView,
 } from "@/lib/quiz";
 
 const TYPE_LABELS = {
@@ -37,7 +36,12 @@ export function AttemptSummary({
   onBack,
 }: {
   outline: AttemptOutline;
-  onStart: (attempt: AttemptView) => void;
+  /**
+   * Hands the attempt over rather than opening it here. The caller decides between the landing
+   * page and resuming mid-question, so pressing Start does not itself begin question one's
+   * clock — the participant does, from the landing page.
+   */
+  onStart: (attemptId: string) => Promise<void> | void;
   onResult: (result: AssessmentResult) => void;
   onBack: () => void;
 }) {
@@ -96,11 +100,7 @@ export function AttemptSummary({
     setWorking(true);
     setError("");
     try {
-      const response = await fetch(`/api/attempts/${outline.attemptId}`);
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "Unable to open the attempt.");
-      if (payload.result) onResult(payload.result as AssessmentResult);
-      else onStart(payload.attempt as AttemptView);
+      await onStart(outline.attemptId);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to open the attempt.");
     } finally {
@@ -251,7 +251,7 @@ export function AttemptSummary({
               : "Every question is answered. Grading has not run yet."
             : started
               ? "Answered questions stay locked; the assessment resumes at the next one."
-              : "Timing starts when the first question is shown."}
+              : "Opens on a landing page. Timing starts when the participant presses Start."}
         </span>
         <button className="secondary" type="button" disabled={working} onClick={onBack}>
           Back to dashboard

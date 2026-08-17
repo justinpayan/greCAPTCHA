@@ -231,8 +231,13 @@ function QuestionTimer({
   );
 }
 
-function ReviewTiming({ timing }: { timing: QuestionTiming }) {
-  const parts = [`Answered in ${formatDuration(timing.durationMs)}`];
+function ReviewTiming({ timing }: { timing: QuestionTiming & { skipped?: boolean } }) {
+  // "Answered in 4s" would misdescribe a question the participant declined.
+  const parts = [
+    timing.skipped
+      ? `Skipped after ${formatDuration(timing.durationMs)}`
+      : `Answered in ${formatDuration(timing.durationMs)}`,
+  ];
   if (timing.firstInteractionMs !== null) {
     parts.push(`first input after ${formatDuration(timing.firstInteractionMs)}`);
   }
@@ -246,16 +251,24 @@ function ReviewTiming({ timing }: { timing: QuestionTiming }) {
   return <p className="review-timing">{parts.join(" · ")}</p>;
 }
 
-/** Read-only review of a graded attempt. Rendered on its own once grading has run. */
-export function ResultView({ result }: { result: AssessmentResult }) {
+/**
+ * Score card plus the full answer review for one attempt, without a page around it.
+ *
+ * Separate from `ResultView` so a chained experiment run can stack both blocks' reviews on a
+ * single reveal page instead of showing one and hiding the other.
+ */
+export function ResultSections({
+  result,
+  label,
+}: {
+  result: AssessmentResult;
+  /** Names the block when more than one review is on the page. */
+  label?: string;
+}) {
   return (
-    <main className="app-shell">
-      <div className="brand">
-        <span className="brand-mark">R</span>
-        ResearchCAPTCHA
-      </div>
+    <>
       <section className="card result neutral-result">
-        <p className="eyebrow">Assessment complete</p>
+        <p className="eyebrow">{label ?? "Assessment complete"}</p>
         <h1>Overall score</h1>
         <div className="score-ring neutral-score">{result.overallScore}%</div>
         <p className="lede" style={{ marginInline: "auto", marginBottom: 0 }}>
@@ -285,6 +298,7 @@ export function ResultView({ result }: { result: AssessmentResult }) {
                   {QUESTION_LABELS[review.type]}
                 </span>
                 {review.warmup && <span className="pill">Warm-up · not counted</span>}
+                {review.skipped && <span className="pill skipped">Skipped</span>}
               </span>
               <span>{Math.round(review.score * 10) / 10}%</span>
             </header>
@@ -302,7 +316,9 @@ export function ResultView({ result }: { result: AssessmentResult }) {
                     <span className="review-blank" key={segment.blankId}>
                       <span className="review-answer-row">
                         <small>Your answer</small>
-                        <strong>{blank?.selectedAnswer ?? "No answer"}</strong>
+                        <strong>
+                          {blank?.selectedAnswer ?? (review.skipped ? "Skipped" : "No answer")}
+                        </strong>
                       </span>
                       <span className="review-answer-row">
                         <small>Correct answer</small>
@@ -350,7 +366,11 @@ export function ResultView({ result }: { result: AssessmentResult }) {
                 <h3>{review.prompt}</h3>
                 <div>
                   <span className="review-label">Your response</span>
-                  <p>{review.response}</p>
+                  <p>
+                    {review.skipped
+                      ? "Skipped — no response was submitted."
+                      : review.response}
+                  </p>
                 </div>
                 <div>
                   <span className="review-label">Rubric</span>
@@ -375,11 +395,41 @@ export function ResultView({ result }: { result: AssessmentResult }) {
           </article>
         ))}
       </section>
+    </>
+  );
+}
+
+/** Read-only review of one graded attempt, as its own page. */
+export function ResultView({ result }: { result: AssessmentResult }) {
+  return (
+    <main className="app-shell">
+      <div className="brand">
+        <span className="brand-mark">R</span>
+        ResearchCAPTCHA
+      </div>
+      <ResultSections result={result} />
     </main>
   );
 }
 
-export function QuizWorkspace({ initialAttempt }: { initialAttempt: AttemptView }) {
+export function QuizWorkspace({
+  initialAttempt,
+  onFinish,
+  blockProgress,
+}: {
+  initialAttempt: AttemptView;
+  /**
+   * Takes the graded result instead of this component showing it. A chained experiment run uses
+   * this to move straight into the next paper: the participant must not see a score, or an
+   * answer key, while a scored block is still ahead of them.
+   *
+   * Callers that swap in a new attempt afterwards must remount this component (key it by
+   * attempt ID) — the question, timer and answer state all initialise from props.
+   */
+  onFinish?: (result: AssessmentResult) => void;
+  /** "Paper 1 of 2" during a chained run, so the question count restarting makes sense. */
+  blockProgress?: { index: number; total: number };
+}) {
   const [attempt, setAttempt] = useState(initialAttempt);
   const [fillSelections, setFillSelections] = useState<FillSelections>({});
   const [freeResponse, setFreeResponse] = useState("");
@@ -425,13 +475,18 @@ export function QuizWorkspace({ initialAttempt }: { initialAttempt: AttemptView 
         ? selectedOptionId !== null
         : freeResponse.trim().length > 0;
 
-  async function submitCurrentAnswer() {
-    if (!answerComplete) return;
+  /**
+   * Sends the current answer, or a skip. Both lock the question and advance, so they share one
+   * path: the only difference is the payload and that a skip needs no completed answer.
+   */
+  async function submitCurrentAnswer(skip = false) {
+    if (!skip && !answerComplete) return;
     setSubmitting(true);
     setError("");
     try {
-      const answer =
-        question.type === "fill_blank"
+      const answer = skip
+        ? { type: "skip" }
+        : question.type === "fill_blank"
           ? { type: "fill_blank", selections: fillSelections }
           : question.type === "multiple_choice"
             ? { type: "multiple_choice", optionId: selectedOptionId }
@@ -442,9 +497,13 @@ export function QuizWorkspace({ initialAttempt }: { initialAttempt: AttemptView 
         body: JSON.stringify(answer),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "Unable to submit answer.");
+      if (!response.ok) {
+        throw new Error(payload.error ?? (skip ? "Unable to skip." : "Unable to submit answer."));
+      }
       if (payload.result) {
-        setResult(payload.result as AssessmentResult);
+        const graded = payload.result as AssessmentResult;
+        if (onFinish) onFinish(graded);
+        else setResult(graded);
       } else {
         setAttempt(payload.attempt as AttemptView);
         setFillSelections({});
@@ -474,6 +533,13 @@ export function QuizWorkspace({ initialAttempt }: { initialAttempt: AttemptView 
           <div className="quiz-meta">{attempt.modelId}</div>
         </div>
         <div className="sequence-status">
+          {/* Neutral wording on purpose: it must not reveal which paper is the participant's
+              own and which was chosen for them. */}
+          {blockProgress && (
+            <div className="block-progress">
+              Paper {blockProgress.index} of {blockProgress.total}
+            </div>
+          )}
           <div className="sequence-progress">
             Question {attempt.currentIndex + 1} of {attempt.totalQuestions}
           </div>
@@ -531,11 +597,21 @@ export function QuizWorkspace({ initialAttempt }: { initialAttempt: AttemptView 
       {error && <p className="error" role="alert">{error}</p>}
       <div className="quiz-actions sequential-actions">
         <span className="hint">Submitting locks this answer permanently.</span>
+        {/* A button element for keyboard and screen-reader behaviour, but deliberately styled
+            as plain text: skipping should be available without inviting itself. */}
+        <button
+          className="skip-link"
+          type="button"
+          disabled={submitting}
+          onClick={() => void submitCurrentAnswer(true)}
+        >
+          Skip
+        </button>
         <button
           className="primary"
           type="button"
           disabled={!answerComplete || submitting}
-          onClick={submitCurrentAnswer}
+          onClick={() => void submitCurrentAnswer()}
         >
           {submitting
             ? attempt.currentIndex === attempt.totalQuestions - 1

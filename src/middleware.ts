@@ -15,6 +15,9 @@ const PARTICIPANT_PAGE = /^\/attempt\/[^/]+$/;
 /** `/api/attempts/<id>` — reading the current question. Not the list, not `/outline`. */
 const PARTICIPANT_ATTEMPT = /^\/api\/attempts\/[^/]+$/;
 
+/** `/api/attempts/<id>/intro` — the landing page shown before the questions start. */
+const PARTICIPANT_INTRO = /^\/api\/attempts\/[^/]+\/intro$/;
+
 /** `/api/attempts/<id>/answers` and `/interaction`. */
 const PARTICIPANT_WRITE = /^\/api\/attempts\/[^/]+\/(?:answers|interaction)$/;
 
@@ -28,6 +31,7 @@ const ALWAYS_OPEN = new Set(["/login", "/api/session", "/api/health"]);
 function isParticipantRequest(method: string, pathname: string) {
   if (PARTICIPANT_PAGE.test(pathname)) return method === "GET";
   if (PARTICIPANT_ATTEMPT.test(pathname)) return method === "GET";
+  if (PARTICIPANT_INTRO.test(pathname)) return method === "GET";
   if (PARTICIPANT_WRITE.test(pathname)) return method === "POST";
   return false;
 }

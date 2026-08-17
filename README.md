@@ -20,6 +20,10 @@ fresh, sequential attempts with rubric-based feedback.
   armed when it starts
 - Paired experiments: a generated participant ID, one attempt per paper, and
   counterbalanced block order and unfamiliar-paper stratum
+- A Start landing page before every question set, so the first question's clock begins
+  when the participant presses Start
+- Chained experiment runs: both blocks back to back with no score shown between them,
+  and one combined reveal at the end
 - Optional per-attempt question randomization
 - Researcher-facing assessment plan page with per-item descriptions and progress
 - Nameable question cards for per-family grouping in analysis
@@ -32,6 +36,7 @@ fresh, sequential attempts with rubric-based feedback.
 - Deterministic fill-in-the-blank and multiple-choice grading, LLM rubric grading
   for free response
 - Neutral overall and per-question scores with a read-only answer review
+- Skippable questions, recorded as skipped rather than merely scored zero
 
 ## Local setup
 
@@ -178,6 +183,72 @@ path §11.1 of the research plan asks for.
 **Resume attempt** on the start screen lists every attempt with its progress and status,
 and reopens one on its plan page, keeping every answer and timing.
 
+## The landing page before a question set
+
+Every question set opens on a landing page with a single **Start** button. It names the paper,
+says how many questions there are and that each answer locks when submitted, and mentions the
+soft time limit only when a countdown will actually be visible — an attempt configured to hide
+the countdown is meant not to make time salient.
+
+**Pressing Start is what starts the clock.** That is the substance of this page, not the
+wording on it. Serving a question stamps its `started_at`, so before this existed the first
+question's timer began whenever the page happened to load — while a participant was still
+settling in, or while a laptop was being turned around on a desk. `GET /api/attempts/<id>/intro`
+reads without serving, so the landing page can sit on screen indefinitely and the first
+question still records from the moment the participant chose to begin.
+
+The page is skipped for an attempt already under way. Its clock is running, so offering a Start
+button would misrepresent the state; a refresh mid-assessment resumes at the current question
+exactly as before.
+
+It appears on all three routes into a question set:
+
+| Route | Behaviour |
+| --- | --- |
+| A participant opening their link | Lands on Start; the researcher never starts their clock for them |
+| **Start assessment** on the plan page | Hands over on the landing page, so the participant presses Start after the laptop reaches them |
+| Each block of a chained experiment run | Both blocks land on Start, still with no score or review between them |
+
+In a chained run the page also shows **Paper 1 of 2**, and says nothing about which paper is
+which. Because the second block now waits on Start, this is where §8.3's 3-minute supervised
+skim and §8.4's micro-break fit — the gap the immediate jump did not leave room for.
+
+`/api/attempts/<id>/intro` is participant-accessible for GET only and carries no card names,
+item descriptions or warm-up flags; `/outline`, which does, stays behind the password. A closed
+link answers 403 there in the same shape as the question endpoint, so an early visitor sees the
+same "not open yet" screen.
+
+## Skipping a question
+
+Every question carries a **Skip** beside its submit button, for all three types. It is plain
+underlined text rather than a button, so it stays available without competing with Submit —
+though it is still a real `<button>` underneath, so it keeps keyboard focus and screen-reader
+semantics.
+
+Skipping submits nothing, locks the question at **0**, and moves to the next one. There is no
+confirmation, matching Submit, which also locks without asking, and no way back — the
+progression is forward-only. The clock behaves exactly as it would for an answer: the time
+spent before skipping is recorded, along with time-to-first-interaction if they touched the
+answer before giving up.
+
+A skip is recorded as a skip, not merely as a zero:
+
+- `attempt_answers.skipped` is set and `answer_json` stays null;
+- the review screen marks the question **Skipped**, reads "Skipped after 12s" instead of
+  "Answered in 12s", and shows the correct answer as it does for a wrong one;
+- the CSV export carries a `skipped` column, and `response` is empty on those rows while
+  `correct_answer` is still reported.
+
+That separation is the point. A skip and a wrong answer both score 0, so without the flag the
+two would be indistinguishable in the data — and "declined to answer" is a different behaviour
+from "tried and missed", one an analysis may well want to exclude rather than count as a
+failure. Both readings stay available because the score and the flag are stored side by side.
+
+A skipped free-response question is **not** sent to the grader. It already carries its score
+and its own feedback, so grading a blank answer against a rubric would waste a call and invite
+the model to award partial credit for nothing. A block whose free-response questions were all
+skipped makes no request at all.
+
 ## Experiments
 
 An **experiment** is one participant's paired session: the same assessment on the paper they
@@ -213,6 +284,40 @@ Because the stratum decides which unfamiliar paper is appropriate, the creation 
 what the next experiment will get **before** you create it, both in the notice and on the
 picker's own label — so you can pick the unfamiliar paper's question set to match. When the cells are level it says so instead of promising a stratum it
 would then re-roll.
+
+### Running both blocks in one go
+
+**Run both blocks** on the experiment card runs the whole session without returning to the
+dashboard. The moment the last answer of the first block is submitted, the second paper's landing page
+appears — no score, no answer review, nothing in between. The participant presses **Start**
+when they are ready, which is what starts that block's clock.
+
+That gap matters more than the convenience does. Showing the first block's review would hand
+the participant the item formats, the grader's standards and a set of worked answers while a
+scored block is still ahead of them, which is the reasoning behind §8.4's rule that the
+LLM-assist retry always runs last. The result is held in memory and revealed only at the end.
+
+The button also resumes and reveals:
+
+| State of the experiment | What the button does |
+| --- | --- |
+| Neither block started | Runs block 1, then block 2 |
+| First block finished | Steps over it and runs the remaining block |
+| Both finished | Goes straight to the session reveal |
+
+At the end, one page carries both blocks: each score side by side, then each block's full
+answer review in the order they were taken.
+
+During the run the header shows **Paper 1 of 2**, so the question counter restarting makes
+sense. It deliberately says nothing about which paper is which — the participant is never told
+which one we consider theirs.
+
+The blocks run in the researcher's browser, so the participant link switches are irrelevant
+here: a signed-in session bypasses them. Nothing needs arming for an in-person session.
+
+The landing page between blocks is where §8.3's 3-minute supervised skim and §8.4's
+micro-break fit: nothing is timed while it is on screen, so the proctor can run both before the
+participant presses Start.
 
 Deleting an experiment deletes both attempts and their answers; the confirmation counts the
 answers at stake first. The two question sets are kept. Two deletions are refused rather than
@@ -553,8 +658,8 @@ experiment it belongs to if any (`participant_id`, `experiment_id`, `condition`,
 `block_position`, `foreign_stratum` — all empty for a standalone attempt), the item
 (`position`, `question_id`, `block_name`, `question_type`, `warmup`, `time_limit_seconds`),
 its timing (`started_at`, `first_interaction_at`, `first_interaction_ms`, `submitted_at`,
-`duration_ms`, `overrun_ms`), and the answer itself (`score`, `response`, `correct_answer`,
-`correct`, `grader_feedback`).
+`duration_ms`, `overrun_ms`), and the answer itself (`score`, `skipped`, `response`,
+`correct_answer`, `correct`, `grader_feedback`).
 
 `response` is the submitted free-response text, the chosen option's label, or the chosen
 label per blank. Fields are RFC 4180 quoted, so commas, quotation marks, and newlines inside

@@ -2,15 +2,21 @@
 
 import { useEffect, useState } from "react";
 
+import { loadAttemptEntry, serveAttempt } from "@/components/quiz/attempt-entry";
+import { AttemptIntroPage } from "@/components/quiz/attempt-intro";
 import { QuizWorkspace, ResultView } from "@/components/quiz/quiz-workspace";
-import type { AssessmentResult, AttemptView } from "@/lib/quiz";
+import type { AssessmentResult, AttemptIntro, AttemptView } from "@/lib/quiz";
 
 /**
- * Loads an attempt straight from its ID and hands it to the assessment interface. A refresh
- * re-reads the server state, so a participant who reloads resumes at the current question
- * with its timer intact rather than losing the session.
+ * Loads an attempt straight from its ID and hands it to the assessment interface.
+ *
+ * A fresh attempt opens on its landing page, so the first question's clock starts when the
+ * participant presses Start rather than when the link is opened. An attempt already under way
+ * skips that and resumes at the current question with its timer intact, so a refresh never
+ * loses the session or pretends the clock is not running.
  */
 export function ParticipantSession({ attemptId }: { attemptId: string }) {
+  const [intro, setIntro] = useState<AttemptIntro | null>(null);
   const [attempt, setAttempt] = useState<AttemptView | null>(null);
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [error, setError] = useState("");
@@ -18,25 +24,24 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
 
   useEffect(() => {
     let active = true;
-    fetch(`/api/attempts/${encodeURIComponent(attemptId)}`)
-      .then(async (response) => {
-        const payload = await response.json();
+    loadAttemptEntry(attemptId)
+      .then((entry) => {
         if (!active) return;
-        // A closed link is the expected state for one that was sent out in advance, so it
-        // gets its own screen rather than the failure page.
-        if (response.status === 403 && payload.locked) {
-          setClosed({ message: payload.error as string, paused: payload.paused === true });
-          return;
-        }
-        if (!response.ok) throw new Error(payload.error ?? "Unable to open this assessment.");
-        if (payload.result) setResult(payload.result as AssessmentResult);
-        else setAttempt(payload.attempt as AttemptView);
+        applyEntry(entry);
       })
       .catch((caught: Error) => active && setError(caught.message));
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attemptId]);
+
+  function applyEntry(entry: Awaited<ReturnType<typeof loadAttemptEntry>>) {
+    if (entry.kind === "closed") setClosed({ message: entry.message, paused: entry.paused });
+    else if (entry.kind === "result") setResult(entry.result);
+    else if (entry.kind === "question") setAttempt(entry.attempt);
+    else setIntro(entry.intro);
+  }
 
   if (closed) {
     return (
@@ -81,6 +86,18 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
 
   if (result) return <ResultView result={result} />;
   if (attempt) return <QuizWorkspace initialAttempt={attempt} />;
+  if (intro) {
+    return (
+      <AttemptIntroPage
+        intro={intro}
+        onStart={async () => {
+          const entry = await serveAttempt(attemptId);
+          setIntro(null);
+          applyEntry(entry);
+        }}
+      />
+    );
+  }
 
   return (
     <main className="app-shell">

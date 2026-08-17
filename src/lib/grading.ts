@@ -26,7 +26,16 @@ export async function finalizeAttempt(input: Awaited<ReturnType<typeof loadAttem
     freeByBlock.set(question.blockId, [...(freeByBlock.get(question.blockId) ?? []), question]);
   }
 
-  for (const questions of freeByBlock.values()) {
+  for (const blockQuestions of freeByBlock.values()) {
+    // A skipped question already holds its score and feedback from the submission, so it is
+    // withheld from the grader: an empty response marked against a rubric is a wasted call and
+    // an invitation to award partial credit for nothing. A block that was skipped outright
+    // makes no request at all.
+    const questions = blockQuestions.filter(
+      (question) => !answerByQuestion.get(question.id)?.skipped,
+    );
+    if (questions.length === 0) continue;
+
     const responses: Record<string, string> = {};
     for (const question of questions) {
       const answer = answerByQuestion.get(question.id);
@@ -39,7 +48,11 @@ export async function finalizeAttempt(input: Awaited<ReturnType<typeof loadAttem
       questions,
       answers: responses,
     });
+    // Only apply grades for questions actually sent. A model that echoes an ID it was not
+    // given must not be able to overwrite a skipped question's score.
+    const gradable = new Set(questions.map((question) => question.id));
     for (const grade of grades.grades) {
+      if (!gradable.has(grade.questionId)) continue;
       await db
         .update(attemptAnswers)
         .set({

@@ -13,6 +13,7 @@ import {
   shuffled,
   toPublicQuestion,
   type AssessmentResult,
+  type AttemptIntro,
   type AttemptOutline,
   type AttemptOutlineItem,
   type AttemptView,
@@ -129,6 +130,36 @@ export async function getAttemptState(
         : 0,
       firstInteractionRecorded: Boolean(answerRow?.firstInteractionAt),
     },
+  };
+}
+
+/**
+ * Facts for the landing page that precedes a question set.
+ *
+ * Reads only. Unlike `getAttemptState` it serves nothing and stamps no `startedAt`, so a
+ * participant can sit on the landing page for as long as they like without the first question's
+ * clock running.
+ */
+export async function getAttemptIntro(attemptId: string): Promise<AttemptIntro> {
+  const quiz = await loadAttemptContextLoose(attemptId);
+  const served = await db
+    .select({ id: attemptAnswers.id })
+    .from(attemptAnswers)
+    .where(eq(attemptAnswers.attemptId, attemptId))
+    .limit(1);
+
+  const inOrder = quiz.order
+    .map((questionId) => quiz.questionById.get(questionId))
+    .filter((question): question is StoredQuestion => Boolean(question));
+
+  return {
+    attemptId,
+    paperName: quiz.set.paperName,
+    totalQuestions: quiz.order.length,
+    timedQuestionCount: inOrder.filter((question) => questionTimeLimit(question) !== null).length,
+    started: served.length > 0,
+    status: quiz.attempt.status,
+    countdownHidden: quiz.attempt.countdownHidden,
   };
 }
 
@@ -254,12 +285,13 @@ export function buildResult(input: {
     if (!question || !answer || answer.score === null) {
       throw new Error("Attempt grading is incomplete.");
     }
-    const timing: QuestionTiming & { warmup: boolean } = {
+    const timing: QuestionTiming & { warmup: boolean; skipped: boolean } = {
       durationMs: answer.durationMs ?? 0,
       firstInteractionMs: answer.firstInteractionMs ?? null,
       timeLimitSeconds: answer.timeLimitSeconds ?? null,
       overrunMs: answer.overrunMs ?? null,
       warmup: isWarmup(question),
+      skipped: answer.skipped,
     };
     if (question.type === "fill_blank") {
       const feedback = JSON.parse(answer.feedbackJson ?? "{}") as {

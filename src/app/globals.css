@@ -666,10 +666,107 @@ textarea.control {
   margin-right: auto;
 }
 
-.experiment-head .secondary {
+.experiment-head .secondary,
+.experiment-head .primary {
   min-height: 36px;
   padding: 7px 13px;
   font-size: 0.8rem;
+}
+
+/* Landing page before a question set. Nothing is timed while this is on screen. */
+.intro-card {
+  max-width: 620px;
+  margin: 0 auto;
+  padding: clamp(24px, 4vw, 38px);
+  text-align: center;
+}
+
+.intro-card h1 {
+  margin: 0 0 6px;
+  overflow-wrap: anywhere;
+}
+
+.intro-block {
+  margin: 0 0 4px;
+}
+
+.intro-facts {
+  margin: 22px 0 26px;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+  display: grid;
+  gap: 12px;
+}
+
+.intro-facts li {
+  border-left: 3px solid var(--type-line, var(--line));
+  padding-left: 12px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.intro-facts strong {
+  color: var(--ink);
+}
+
+.intro-start {
+  width: min(100%, 240px);
+  min-height: 54px;
+  font-size: 1rem;
+}
+
+/* Reveal page for a chained run: both blocks' scores before either review. */
+.session-summary {
+  text-align: center;
+}
+
+.session-scores {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+  margin: 18px 0 6px;
+}
+
+.session-score {
+  display: grid;
+  gap: 4px;
+  min-width: min(100%, 240px);
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 18px;
+  background: var(--paper);
+}
+
+.session-score strong {
+  font-size: 1.9rem;
+  font-weight: 780;
+  letter-spacing: -0.02em;
+}
+
+.session-score-label {
+  color: var(--green-dark);
+  font-size: 0.74rem;
+  font-weight: 780;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.session-score-meta {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+/* Which paper of the session this is. Never says which condition. */
+.block-progress {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 780;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 /* Monospaced so a 4-character code is easy to read out and to compare against a sheet. */
@@ -1135,6 +1232,35 @@ textarea.prompt-control {
 
 .sequential-actions .hint {
   margin-right: auto;
+}
+
+/* Text, not a button: skipping stays reachable without competing with Submit. Still a real
+   <button> underneath, so it keeps keyboard focus and screen-reader semantics. */
+.skip-link {
+  border: 0;
+  background: none;
+  padding: 4px 2px;
+  margin-right: 6px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 620;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.skip-link:hover:not(:disabled),
+.skip-link:focus-visible {
+  color: var(--ink);
+}
+
+.skip-link:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.pill.skipped {
+  color: #7a4a11;
+  background: #fbf0db;
 }
 
 .sequence-status {

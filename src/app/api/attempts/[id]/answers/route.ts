@@ -6,13 +6,39 @@ import { attemptAnswers, attempts } from "@/db/schema";
 import { AttemptClosedError, requireOpenAttempt } from "@/lib/attempt-access";
 import { getAttemptState, getCurrentAnswer, loadAttemptContext } from "@/lib/attempts";
 import { finalizeAttempt } from "@/lib/grading";
-import { answerSubmissionSchema, type FillReview } from "@/lib/quiz";
+import {
+  answerSubmissionSchema,
+  type FillReview,
+  type StoredQuestion,
+} from "@/lib/quiz";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 function normalizeAnswer(value: string) {
   return value.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US");
+}
+
+/**
+ * Feedback for a declined question, in the shape its type's review expects.
+ *
+ * Free-response skips carry their feedback from here rather than from the grader: sending an
+ * empty response to be marked against a rubric wastes a call and invites the model to invent a
+ * partial credit for nothing.
+ */
+function skipFeedbackJson(question: StoredQuestion): string {
+  if (question.type === "fill_blank") {
+    return JSON.stringify({
+      blanks: question.blanks.map((blank) => ({
+        blankId: blank.id,
+        selectedAnswer: null,
+        correctAnswer: blank.answer,
+        correct: false,
+      })),
+    });
+  }
+  if (question.type === "multiple_choice") return JSON.stringify({ correct: false });
+  return JSON.stringify({ feedback: "Skipped. No response was submitted to grade." });
 }
 
 export async function POST(
@@ -44,7 +70,8 @@ export async function POST(
       return NextResponse.json({ error: "This answer is already locked." }, { status: 409 });
     }
 
-    if (submission.type !== quiz.currentQuestion.type) {
+    // A skip carries no answer and is valid for every question type, so it is exempt.
+    if (submission.type !== "skip" && submission.type !== quiz.currentQuestion.type) {
       throw new Error("The submitted answer type does not match the current question.");
     }
 
@@ -60,11 +87,17 @@ export async function POST(
       timeLimitSeconds === null
         ? null
         : Math.max(0, durationMs - timeLimitSeconds * 1000);
-    let answerJson: string;
+    let answerJson: string | null = null;
     let score: number | null = null;
     let feedbackJson: string | null = null;
 
-    if (quiz.currentQuestion.type === "fill_blank" && submission.type === "fill_blank") {
+    if (submission.type === "skip") {
+      // Scored 0 and shaped like a wrong answer, so the review screen renders a skipped
+      // question the same way it renders any other — with the key visible — rather than
+      // needing a separate empty state per question type. `answer_json` stays null.
+      score = 0;
+      feedbackJson = skipFeedbackJson(quiz.currentQuestion);
+    } else if (quiz.currentQuestion.type === "fill_blank" && submission.type === "fill_blank") {
       // Bind the narrowed question to a const so the type survives into the callback below.
       const fillQuestion = quiz.currentQuestion;
       const blankFeedback: FillReview["blanks"] = fillQuestion.blanks.map((blank) => {
@@ -119,6 +152,7 @@ export async function POST(
         overrunMs,
         score,
         feedbackJson,
+        skipped: submission.type === "skip",
       })
       .where(and(eq(attemptAnswers.id, answerRow.id), isNull(attemptAnswers.submittedAt)))
       .run();
