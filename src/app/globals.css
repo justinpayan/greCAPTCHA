@@ -551,6 +551,21 @@ textarea.control {
   min-height: 48px;
 }
 
+.catalog-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.catalog-toolbar .secondary {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+}
+
 .catalog-list {
   display: grid;
   gap: 8px;

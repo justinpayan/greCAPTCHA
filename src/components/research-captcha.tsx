@@ -216,7 +216,7 @@ export function ResearchCaptcha() {
         const restoredModel = stored?.draft ? applyConfig(stored.draft, catalog) : false;
         if (!restoredModel && catalog.length) {
           const preferred =
-            catalog.find((model) => model.id === "google/gemini-3.1-pro-preview") ??
+            catalog.find((model) => model.id === "google/gemini-3.7-flash") ??
             catalog.find((model) => /anthropic\/claude.*sonnet/i.test(model.id)) ??
             catalog.find((model) => model.recommended) ??
             catalog[0] ??
@@ -490,6 +490,19 @@ export function ResearchCaptcha() {
     }
   }
 
+  function clearBlocks() {
+    if (blocks.length === 0) return;
+    const plural = blocks.length === 1 ? "card" : "cards";
+    if (
+      !window.confirm(
+        `Remove all ${blocks.length} question type ${plural}?\n\nTheir prompts, counts, limits and warm-up flags are lost, and the autosaved draft updates immediately. Reload a saved study set template to get a configuration back.\n\nThis cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    setBlocks([]);
+  }
+
   function updateBlock(id: string, patch: Partial<QuestionBlockConfig>) {
     setBlocks((current) =>
       current.map((block) =>
@@ -701,6 +714,26 @@ export function ResearchCaptcha() {
               }
               onChange={(event) => setCatalogSearch(event.target.value)}
             />
+          </div>
+
+          <div className="catalog-toolbar">
+            <span className="hint">
+              {mode === "load"
+                ? `${savedSets.length} saved ${savedSets.length === 1 ? "set" : "sets"}`
+                : `${attemptList.length} ${attemptList.length === 1 ? "attempt" : "attempts"} recorded`}
+            </span>
+            <button
+              className="secondary"
+              type="button"
+              disabled={attemptList.length === 0}
+              onClick={() => {
+                // Navigating triggers the download via Content-Disposition, so the CSV is
+                // never held in memory by the browser.
+                window.location.href = "/api/export/answers";
+              }}
+            >
+              Export all attempts as CSV
+            </button>
           </div>
 
           {mode === "load" ? (
@@ -1007,6 +1040,14 @@ export function ResearchCaptcha() {
                   >
                     <span className="type-dot" aria-hidden="true" />
                     Add free-response
+                  </button>
+                  <button
+                    className="secondary danger"
+                    type="button"
+                    disabled={blocks.length === 0}
+                    onClick={clearBlocks}
+                  >
+                    Clear all
                   </button>
                 </div>
               </div>
