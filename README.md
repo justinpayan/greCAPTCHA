@@ -287,7 +287,10 @@ Recommended. Recommendations are convenience labels, not guarantees: model
 availability, prices, context limits, and structured-output behavior can change
 upstream.
 
-The default is `google/gemini-3.1-pro-preview` when it is available in the live catalog.
+The default is `google/gemini-3.7-flash` when it is available in the live catalog. It
+supports native PDF input, has a 1M-token context, and is several times cheaper per token
+than the Pro models, which matters when generating banks across a whole prototyping set.
+A restored draft or a loaded template overrides the default with its own stored model.
 The exact model ID is stored with the reusable question set and the same model
 grades its free-response answers.
 
@@ -442,6 +445,41 @@ The researcher interface is password-gated (see **Access control**), but this MV
 still has no per-user accounts, rate limiting, retention controls, or audit log,
 and it stores everything in a local SQLite file. Anyone with the researcher
 password has full access to every set and every attempt.
+
+## Exporting responses
+
+**Export all attempts as CSV** on the Load saved set and Resume attempt tabs downloads every
+recorded answer across every attempt, one row per question served, with attempt and set
+fields denormalized onto each row so the file stands alone with no joins.
+
+The answer grain is deliberate: the per-family discrimination index needs `block_name`,
+per-item `score` and per-item timing on the same row, which an attempt-level summary cannot
+reconstruct. Columns cover the attempt (`attempt_id`, `set_name`, `paper_name`, `model_id`,
+`attempt_status`, `attempt_score`, `randomize`, `countdown_hidden`, timestamps), the item
+(`position`, `question_id`, `block_name`, `question_type`, `warmup`, `time_limit_seconds`),
+its timing (`started_at`, `first_interaction_at`, `first_interaction_ms`, `submitted_at`,
+`duration_ms`, `overrun_ms`), and the answer itself (`score`, `response`, `correct_answer`,
+`correct`, `grader_feedback`).
+
+`response` is the submitted free-response text, the chosen option's label, or the chosen
+label per blank. Fields are RFC 4180 quoted, so commas, quotation marks, and newlines inside
+a free-response answer survive a round trip through any CSV reader.
+
+A row with an empty `submitted_at` is a question the participant reached but did not answer,
+which is how you see where an attempt stopped. Filter those out, and filter
+`warmup = false`, to get the scored set:
+
+```python
+import csv, collections, statistics
+rows = [r for r in csv.DictReader(open("research-captcha-answers-2026-08-17.csv"))
+        if r["submitted_at"] and r["warmup"] == "false"]
+by_family = collections.defaultdict(list)
+for r in rows:
+    by_family[r["block_name"]].append(float(r["score"]))
+```
+
+The file contains submitted responses and answer keys, so treat it as sensitive research
+data under the retention terms in the IRB protocol.
 
 ## Inspecting the database
 
