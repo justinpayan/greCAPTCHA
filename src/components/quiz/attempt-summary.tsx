@@ -27,10 +27,12 @@ export function AttemptSummary({
   outline,
   onStart,
   onResult,
+  onBack,
 }: {
   outline: AttemptOutline;
   onStart: (attempt: AttemptView) => void;
   onResult: (result: AssessmentResult) => void;
+  onBack: () => void;
 }) {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
@@ -188,6 +190,9 @@ export function AttemptSummary({
               ? "Answered questions stay locked; the assessment resumes at the next one."
               : "Timing starts when the first question is shown."}
         </span>
+        <button className="secondary" type="button" disabled={working} onClick={onBack}>
+          Back to dashboard
+        </button>
         <button
           className="primary"
           type="button"

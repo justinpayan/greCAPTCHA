@@ -559,6 +559,11 @@ export function ResearchCaptcha() {
           setResult(next);
           window.scrollTo({ top: 0, behavior: "smooth" });
         }}
+        onBack={() => {
+          setOutline(null);
+          void refreshCatalog();
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
       />
     );
   }
@@ -934,6 +939,20 @@ export function ResearchCaptcha() {
               </select>
             </div>
 
+            <label className="toggle-row full">
+              <input
+                type="checkbox"
+                checked={randomize}
+                onChange={(event) => setRandomize(event.target.checked)}
+              />
+              Randomize question order for the first attempt
+            </label>
+            <CountdownToggle
+              className="full"
+              hidden={countdownHidden}
+              onChange={setCountdownHidden}
+            />
+
             <div className="full">
               <div className="section-heading">
                 <div>
@@ -1124,19 +1143,6 @@ export function ResearchCaptcha() {
               </div>
             </div>
 
-            <label className="toggle-row full">
-              <input
-                type="checkbox"
-                checked={randomize}
-                onChange={(event) => setRandomize(event.target.checked)}
-              />
-              Randomize question order for the first attempt
-            </label>
-            <CountdownToggle
-              className="full"
-              hidden={countdownHidden}
-              onChange={setCountdownHidden}
-            />
           </div>
 
           {error && <p className="error" role="alert">{error}</p>}
