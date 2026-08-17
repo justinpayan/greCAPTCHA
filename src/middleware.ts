@@ -24,6 +24,24 @@ function isParticipantPath(pathname: string) {
   return PARTICIPANT_PAGE.test(pathname) || PARTICIPANT_API.test(pathname);
 }
 
+/**
+ * Origin to build the sign-in redirect from.
+ *
+ * `request.nextUrl.origin` is not usable here: it reflects the address the server is bound
+ * to, so behind a tunnel it yields `localhost:3000` and sends the visitor somewhere they
+ * cannot reach. Next rejects a relative Location, so the absolute URL has to come from the
+ * request headers instead. The `Host` header is what the client actually asked for, and
+ * `x-forwarded-proto` is set by the tunnel because it reaches this server over plain HTTP.
+ */
+function requestOrigin(request: NextRequest): string {
+  const host = request.headers.get("host");
+  if (!host) return request.nextUrl.origin;
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const proto =
+    forwardedProto || (/^(localhost|127\.|\[::1\])/.test(host) ? "http" : "https");
+  return `${proto}://${host}`;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (ALWAYS_OPEN.has(pathname) || isParticipantPath(pathname)) {
@@ -50,9 +68,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.json({ error: "Not authorised." }, { status: 401 });
   }
 
-  const target = request.nextUrl.clone();
-  target.pathname = "/login";
-  target.search = "";
+  const target = new URL("/login", requestOrigin(request));
   if (pathname !== "/") target.searchParams.set("next", pathname);
   return NextResponse.redirect(target);
 }
