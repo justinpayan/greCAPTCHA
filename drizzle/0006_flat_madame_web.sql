@@ -1,0 +1,1 @@
+ALTER TABLE `attempts` ADD `link_enabled` integer DEFAULT true NOT NULL;

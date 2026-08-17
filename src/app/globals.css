@@ -161,6 +161,19 @@ h2 {
   gap: 6px;
 }
 
+/* Inline qualifier on a field label — carries a constraint that must be read, unlike the
+   hint bubble, while staying visibly subordinate to the label itself. */
+.label-note {
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: var(--green-soft);
+  color: var(--green-dark);
+  font-size: 0.72rem;
+  font-weight: 760;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
 /* Hint bubble anchored to a field label, so helper text costs no vertical space and
    cannot push neighbouring controls out of alignment. */
 .field-hint {
@@ -549,6 +562,164 @@ textarea.control {
 .participant-link-row .secondary {
   flex-shrink: 0;
   min-height: 48px;
+}
+
+/* Participant-link state. Green reads as live, amber as "this link will not open yet". */
+.link-state-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.link-state-row .secondary {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 0.82rem;
+}
+
+.link-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 780;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.link-state::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.link-state.open {
+  color: var(--green-dark);
+  background: var(--green-soft);
+}
+
+.link-state.closed {
+  color: #7a4a11;
+  background: #fbf0db;
+}
+
+/* Experiments: a participant's paired own-paper and foreign-paper blocks. */
+.allocation-notice {
+  /* Bottom margin separates the notice from the paper pickers it is advising on. */
+  margin: 16px 0 20px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--green);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--green-soft);
+  color: var(--ink);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.allocation-counts {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.experiment-create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.experiment-search {
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+.experiment-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: white;
+}
+
+.experiment-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.experiment-head .catalog-meta {
+  margin-right: auto;
+}
+
+.experiment-head .secondary {
+  min-height: 36px;
+  padding: 7px 13px;
+  font-size: 0.8rem;
+}
+
+/* Monospaced so a 4-character code is easy to read out and to compare against a sheet. */
+.participant-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--ink);
+}
+
+.experiment-block {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 11px 13px;
+  background: var(--paper);
+}
+
+.block-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  background: white;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 780;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.summary-experiment {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.catalog-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .catalog-toolbar {

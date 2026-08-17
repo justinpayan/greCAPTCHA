@@ -5,13 +5,17 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { AttemptSummary } from "@/components/quiz/attempt-summary";
 import { QuizWorkspace, ResultView } from "@/components/quiz/quiz-workspace";
 import {
+  CONDITION_LABELS,
   DEFAULT_FILL_PROMPT,
   DEFAULT_FREE_RESPONSE_PROMPT,
   DEFAULT_MULTIPLE_CHOICE_PROMPT,
+  FOREIGN_STRATUM_LABELS,
   type AssessmentResult,
   type AttemptListEntry,
   type AttemptOutline,
   type AttemptView,
+  type ExperimentAllocation,
+  type ExperimentListEntry,
   type QuestionSetListEntry,
   type PdfEngine,
   type QuestionBlockConfig,
@@ -114,7 +118,9 @@ function CountdownToggle({
 }
 
 export function ResearchCaptcha() {
-  const [mode, setMode] = useState<"generate" | "load" | "resume">("generate");
+  const [mode, setMode] = useState<"generate" | "load" | "resume" | "experiments">(
+    "generate",
+  );
   const [models, setModels] = useState<CatalogModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<CatalogModel | null>(null);
   const [modelSearch, setModelSearch] = useState("");
@@ -144,8 +150,15 @@ export function ResearchCaptcha() {
   const [savedSets, setSavedSets] = useState<QuestionSetListEntry[]>([]);
   const [attemptList, setAttemptList] = useState<AttemptListEntry[]>([]);
   const [catalogSearch, setCatalogSearch] = useState("");
+  /** Attempt whose link is mid-update, so only that row's button shows a pending state. */
+  const [togglingLinkId, setTogglingLinkId] = useState("");
   const [renamingId, setRenamingId] = useState("");
   const [renameValue, setRenameValue] = useState("");
+  const [experiments, setExperiments] = useState<ExperimentListEntry[]>([]);
+  const [allocation, setAllocation] = useState<ExperimentAllocation | null>(null);
+  const [ownSetId, setOwnSetId] = useState("");
+  const [foreignSetId, setForeignSetId] = useState("");
+  const [experimentSearch, setExperimentSearch] = useState("");
   const [templates, setTemplates] = useState<StudyTemplateSummary[]>([]);
   const [templateId, setTemplateId] = useState("");
   const [templateName, setTemplateName] = useState("");
@@ -274,15 +287,20 @@ export function ResearchCaptcha() {
   }, [modelSearch, models]);
 
   const refreshCatalog = useCallback(async () => {
-    const [setsResult, attemptsResult] = await Promise.allSettled([
+    const [setsResult, attemptsResult, experimentsResult] = await Promise.allSettled([
       fetch("/api/question-sets").then((response) => response.json()),
       fetch("/api/attempts").then((response) => response.json()),
+      fetch("/api/experiments").then((response) => response.json()),
     ]);
     if (setsResult.status === "fulfilled" && setsResult.value.sets) {
       setSavedSets(setsResult.value.sets as QuestionSetListEntry[]);
     }
     if (attemptsResult.status === "fulfilled" && attemptsResult.value.attempts) {
       setAttemptList(attemptsResult.value.attempts as AttemptListEntry[]);
+    }
+    if (experimentsResult.status === "fulfilled" && experimentsResult.value.experiments) {
+      setExperiments(experimentsResult.value.experiments as ExperimentListEntry[]);
+      setAllocation(experimentsResult.value.allocation as ExperimentAllocation);
     }
   }, []);
 
@@ -302,6 +320,31 @@ export function ResearchCaptcha() {
       ),
     );
   }, [catalogSearch, savedSets]);
+
+  /**
+   * The stratum the next experiment will get, repeated on the picker's own label. The notice
+   * above the pickers says the same thing, deliberately: this is the field where choosing the
+   * wrong paper actually costs something.
+   */
+  const stratumNote = !allocation
+    ? ""
+    : allocation.nextForeignStratum === "in_field"
+      ? "use an in-field paper"
+      : allocation.nextForeignStratum === "out_of_field"
+        ? "use an out-of-field paper"
+        : "in-field or out-of-field";
+
+  const visibleExperiments = useMemo(() => {
+    const query = experimentSearch.trim().toLowerCase();
+    if (!query) return experiments;
+    return experiments.filter((entry) =>
+      [
+        entry.participantId,
+        FOREIGN_STRATUM_LABELS[entry.foreignStratum],
+        ...entry.attempts.flatMap((row) => [row.setLabel, row.paperName]),
+      ].some((field) => field.toLowerCase().includes(query)),
+    );
+  }, [experimentSearch, experiments]);
 
   const visibleAttempts = useMemo(() => {
     const query = catalogSearch.trim().toLowerCase();
@@ -327,7 +370,7 @@ export function ResearchCaptcha() {
       );
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to load question set.");
-      await showSummary((payload.attempt as AttemptView).attemptId);
+      await showSummary(payload.attemptId as string);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load question set.");
     } finally {
@@ -383,6 +426,105 @@ export function ResearchCaptcha() {
       await refreshCatalog();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to delete the attempt.");
+    }
+  }
+
+  /**
+   * Arms or disarms a participant link from the list, so several links mailed out in advance
+   * can be enabled at the start of a session without opening each attempt.
+   */
+  async function toggleAttemptLink(entry: { id: string; linkEnabled: boolean }) {
+    setTogglingLinkId(entry.id);
+    setError("");
+    try {
+      const response = await fetch(`/api/attempts/${encodeURIComponent(entry.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ linkEnabled: !entry.linkEnabled }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to update the link.");
+      const linkEnabled = payload.linkEnabled as boolean;
+      setAttemptList((current) =>
+        current.map((row) => (row.id === entry.id ? { ...row, linkEnabled } : row)),
+      );
+      setExperiments((current) =>
+        current.map((experiment) => ({
+          ...experiment,
+          attempts: experiment.attempts.map((row) =>
+            row.attemptId === entry.id ? { ...row, linkEnabled } : row,
+          ),
+        })),
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to update the link.");
+    } finally {
+      setTogglingLinkId("");
+    }
+  }
+
+  async function createExperiment() {
+    if (!ownSetId || !foreignSetId) {
+      setError("Choose a question set for each paper.");
+      return;
+    }
+    if (ownSetId === foreignSetId) {
+      setError("The own paper and the unfamiliar paper must be different question sets.");
+      return;
+    }
+    setWorking(true);
+    setError("");
+    try {
+      const response = await fetch("/api/experiments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ownQuestionSetId: ownSetId,
+          foreignQuestionSetId: foreignSetId,
+          randomize,
+          countdownHidden,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to create the experiment.");
+      setOwnSetId("");
+      setForeignSetId("");
+      await refreshCatalog();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to create the experiment.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  /**
+   * Deleting an experiment takes both attempts with it, so the confirmation counts the answers
+   * at stake rather than asking a bare "are you sure".
+   */
+  async function deleteExperimentRow(entry: ExperimentListEntry) {
+    const answers = entry.attempts.reduce((total, row) => total + row.answeredCount, 0);
+    const consequence = answers
+      ? `\n\nThis deletes both attempts and the ${answers} ${
+          answers === 1 ? "answer" : "answers"
+        } already submitted across them, with their timings.`
+      : "\n\nNeither attempt has any submitted answers, so no response data is affected.";
+    if (
+      !window.confirm(
+        `Delete the experiment for participant ${entry.participantId}?${consequence}\n\nThe two question sets are kept.\n\nThis cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    setError("");
+    try {
+      const response = await fetch(`/api/experiments/${encodeURIComponent(entry.id)}`, {
+        method: "DELETE",
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to delete the experiment.");
+      await refreshCatalog();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to delete the experiment.");
     }
   }
 
@@ -528,7 +670,7 @@ export function ResearchCaptcha() {
       const response = await fetch("/api/question-sets", { method: "POST", body: form });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to generate questions.");
-      await showSummary((payload.attempt as AttemptView).attemptId);
+      await showSummary(payload.attemptId as string);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Question generation failed.");
     } finally {
@@ -550,7 +692,7 @@ export function ResearchCaptcha() {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to load question set.");
-      await showSummary((payload.attempt as AttemptView).attemptId);
+      await showSummary(payload.attemptId as string);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load question set.");
     } finally {
@@ -628,6 +770,13 @@ export function ResearchCaptcha() {
         >
           Resume attempt
         </button>
+        <button
+          type="button"
+          className={mode === "experiments" ? "active" : ""}
+          onClick={() => setMode("experiments")}
+        >
+          Experiments
+        </button>
       </div>
 
       {mode === "generate" && (
@@ -697,7 +846,213 @@ export function ResearchCaptcha() {
         </section>
       )}
 
-      {mode === "resume" || mode === "load" ? (
+      {mode === "experiments" ? (
+        <section className="card form-card">
+          <div className="section-heading">
+            <div>
+              <span className="field-label">New experiment</span>
+              <p className="hint">
+                Pairs one participant&apos;s own paper with an unfamiliar paper we chose for
+                them, as two attempts on one participant ID. Block order is counterbalanced
+                automatically, so both orderings stay evenly covered across participants.
+              </p>
+            </div>
+          </div>
+
+          {allocation && (
+            <p className="allocation-notice">
+              {allocation.nextForeignStratum ? (
+                <>
+                  Next unfamiliar paper should be{" "}
+                  <strong>
+                    {FOREIGN_STRATUM_LABELS[allocation.nextForeignStratum].toLowerCase()}
+                  </strong>{" "}
+                  — pick that paper&apos;s question set below.
+                </>
+              ) : (
+                <>
+                  Both field strata are level, so the next one is assigned at random. Either
+                  an in-field or an out-of-field unfamiliar paper is fine.
+                </>
+              )}{" "}
+              <span className="allocation-counts">
+                {allocation.counts.total}{" "}
+                {allocation.counts.total === 1 ? "experiment" : "experiments"} so far ·{" "}
+                {allocation.counts.inField} in-field / {allocation.counts.outOfField}{" "}
+                out-of-field · {allocation.counts.ownFirst} own-first /{" "}
+                {allocation.counts.foreignFirst} foreign-first
+              </span>
+            </p>
+          )}
+
+          <div className="form-grid">
+            <div className="field">
+              <label htmlFor="ownSet">
+                Own paper
+                <FieldHint text="The question set built from the manuscript this participant uploaded to us." />
+              </label>
+              <select
+                className="control"
+                id="ownSet"
+                value={ownSetId}
+                onChange={(event) => setOwnSetId(event.target.value)}
+              >
+                <option value="">
+                  {savedSets.length ? "Select a question set…" : "No question sets yet"}
+                </option>
+                {savedSets.map((set) => (
+                  <option key={set.id} value={set.id}>
+                    {set.label} · {set.questionCount} questions
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="foreignSet">
+                Unfamiliar paper
+                {stratumNote && <span className="label-note">{stratumNote}</span>}
+                <FieldHint text="The question set built from the unfamiliar paper we selected for this participant." />
+              </label>
+              <select
+                className="control"
+                id="foreignSet"
+                value={foreignSetId}
+                onChange={(event) => setForeignSetId(event.target.value)}
+              >
+                <option value="">
+                  {savedSets.length ? "Select a question set…" : "No question sets yet"}
+                </option>
+                {savedSets.map((set) => (
+                  <option key={set.id} value={set.id} disabled={set.id === ownSetId}>
+                    {set.label} · {set.questionCount} questions
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="toggle-group">
+            <label className="toggle-row">
+              <input
+                type="checkbox"
+                checked={randomize}
+                onChange={(event) => setRandomize(event.target.checked)}
+              />
+              Randomize question order within each block
+            </label>
+            <CountdownToggle hidden={countdownHidden} onChange={setCountdownHidden} />
+          </div>
+
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
+
+          <div className="experiment-create">
+            <span className="hint">
+              Both links are created disabled, so they can be sent out before the session.
+            </span>
+            <button
+              className="primary"
+              type="button"
+              disabled={working || !ownSetId || !foreignSetId}
+              onClick={() => void createExperiment()}
+            >
+              {working ? "Creating…" : "Create experiment"}
+            </button>
+          </div>
+
+          <div className="field experiment-search">
+            <label htmlFor="experimentSearch">Search experiments</label>
+            <input
+              className="control"
+              id="experimentSearch"
+              value={experimentSearch}
+              placeholder="Filter by participant ID, paper, or stratum"
+              onChange={(event) => setExperimentSearch(event.target.value)}
+            />
+          </div>
+
+          <div className="catalog-list">
+            {visibleExperiments.length === 0 && (
+              <p className="hint catalog-empty">
+                {experiments.length
+                  ? "No experiment matches that search."
+                  : "No experiments have been created yet."}
+              </p>
+            )}
+            {visibleExperiments.map((entry) => (
+              <article className="experiment-card" key={entry.id}>
+                <div className="experiment-head">
+                  <span className="participant-id">{entry.participantId}</span>
+                  <span className="pill">
+                    {FOREIGN_STRATUM_LABELS[entry.foreignStratum]} unfamiliar paper
+                  </span>
+                  <span className="catalog-meta">
+                    {entry.foreignFirst ? "unfamiliar paper first" : "own paper first"} ·{" "}
+                    {new Date(entry.createdAt).toLocaleString()}
+                  </span>
+                  <button
+                    className="secondary danger"
+                    type="button"
+                    onClick={() => void deleteExperimentRow(entry)}
+                  >
+                    Delete
+                  </button>
+                </div>
+                {entry.attempts.map((row) => (
+                  <div className="experiment-block" key={row.attemptId}>
+                    <div className="catalog-main">
+                      <div className="catalog-title-row">
+                        <span className="block-chip">Block {row.blockPosition}</span>
+                        <strong>{CONDITION_LABELS[row.condition]}</strong>
+                        <span
+                          className={`link-state ${row.linkEnabled ? "open" : "closed"}`}
+                        >
+                          {row.linkEnabled ? "Link enabled" : "Link disabled"}
+                        </span>
+                      </div>
+                      <span className="catalog-meta">
+                        {row.setLabel} · {row.answeredCount} of {row.totalQuestions} answered
+                        {row.status === "graded" &&
+                          ` · graded${row.score === null ? "" : ` at ${row.score}%`}`}
+                      </span>
+                    </div>
+                    <div className="catalog-actions">
+                      <button
+                        className={`secondary ${row.linkEnabled ? "danger" : ""}`}
+                        type="button"
+                        disabled={togglingLinkId === row.attemptId}
+                        onClick={() =>
+                          void toggleAttemptLink({
+                            id: row.attemptId,
+                            linkEnabled: row.linkEnabled,
+                          })
+                        }
+                      >
+                        {togglingLinkId === row.attemptId
+                          ? "Saving…"
+                          : row.linkEnabled
+                            ? "Disable link"
+                            : "Enable link"}
+                      </button>
+                      <button
+                        className="primary"
+                        type="button"
+                        disabled={working}
+                        onClick={() => void openAttempt(row.attemptId)}
+                      >
+                        {row.answeredCount && row.status !== "graded" ? "Resume" : "Open"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : mode === "resume" || mode === "load" ? (
         <section className="card form-card">
           <div className="field">
             <label htmlFor="catalogSearch">
@@ -786,7 +1141,12 @@ export function ResearchCaptcha() {
                         {set.paperName} · {set.questionCount}{" "}
                         {set.questionCount === 1 ? "question" : "questions"} ·{" "}
                         {set.attemptCount}{" "}
-                        {set.attemptCount === 1 ? "attempt" : "attempts"} · {set.modelId}
+                        {set.attemptCount === 1 ? "attempt" : "attempts"}
+                        {set.experimentCount > 0 &&
+                          ` · ${set.experimentCount} ${
+                            set.experimentCount === 1 ? "experiment" : "experiments"
+                          }`}{" "}
+                        · {set.modelId}
                       </span>
                     </div>
                     <div className="catalog-actions">
@@ -803,6 +1163,12 @@ export function ResearchCaptcha() {
                       <button
                         className="secondary danger"
                         type="button"
+                        disabled={set.experimentCount > 0}
+                        title={
+                          set.experimentCount > 0
+                            ? "Used by an experiment. Delete the experiment first."
+                            : undefined
+                        }
                         onClick={() => void deleteSet(set)}
                       >
                         Delete
@@ -838,7 +1204,19 @@ export function ResearchCaptcha() {
                 {visibleAttempts.map((entry) => (
                   <article className="catalog-row" key={entry.id}>
                     <div className="catalog-main">
-                      <strong>{entry.setLabel}</strong>
+                      <div className="catalog-title-row">
+                        <strong>{entry.setLabel}</strong>
+                        {entry.participantId && entry.condition && (
+                          <span className="pill">
+                            {entry.participantId} · {CONDITION_LABELS[entry.condition]}
+                          </span>
+                        )}
+                        <span
+                          className={`link-state ${entry.linkEnabled ? "open" : "closed"}`}
+                        >
+                          {entry.linkEnabled ? "Link enabled" : "Link disabled"}
+                        </span>
+                      </div>
                       <span className="catalog-meta">
                         {entry.answeredCount} of {entry.totalQuestions} answered ·{" "}
                         {entry.status === "graded"
@@ -852,9 +1230,27 @@ export function ResearchCaptcha() {
                       <button
                         className="secondary danger"
                         type="button"
+                        disabled={Boolean(entry.participantId)}
+                        title={
+                          entry.participantId
+                            ? `One block of experiment ${entry.participantId}. Delete the experiment to remove both blocks.`
+                            : undefined
+                        }
                         onClick={() => void deleteAttemptRow(entry)}
                       >
                         Delete
+                      </button>
+                      <button
+                        className={`secondary ${entry.linkEnabled ? "danger" : ""}`}
+                        type="button"
+                        disabled={togglingLinkId === entry.id}
+                        onClick={() => void toggleAttemptLink(entry)}
+                      >
+                        {togglingLinkId === entry.id
+                          ? "Saving…"
+                          : entry.linkEnabled
+                            ? "Disable link"
+                            : "Enable link"}
                       </button>
                       <button
                         className="primary"

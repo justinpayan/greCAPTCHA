@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/db";
 import { attemptAnswers } from "@/db/schema";
+import { AttemptClosedError, requireOpenAttempt } from "@/lib/attempt-access";
 import { getCurrentAnswer, loadAttemptContext } from "@/lib/attempts";
 
 export const runtime = "nodejs";
@@ -21,6 +22,7 @@ export async function POST(
 ) {
   try {
     const { id } = await context.params;
+    await requireOpenAttempt(id);
     const quiz = await loadAttemptContext(id);
     if (quiz.attempt.status !== "active") {
       return NextResponse.json({ recorded: false });
@@ -52,6 +54,10 @@ export async function POST(
 
     return NextResponse.json({ recorded: update.changes === 1 });
   } catch (error) {
+    // Telemetry, so a closed link is a silent no-op rather than an error the client shows.
+    if (error instanceof AttemptClosedError) {
+      return NextResponse.json({ recorded: false });
+    }
     const message =
       error instanceof Error ? error.message : "Unable to record interaction.";
     return NextResponse.json({ error: message }, { status: 400 });

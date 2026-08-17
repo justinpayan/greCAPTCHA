@@ -103,8 +103,9 @@ export async function POST(request: Request) {
       createdAt: new Date().toISOString(),
     });
 
-    const state = await createAttempt({ questionSetId, randomize, countdownHidden });
-    return NextResponse.json(state, { status: 201 });
+    // Returns the attempt ID only; no question is served yet, so nothing starts a clock here.
+    const created = await createAttempt({ questionSetId, randomize, countdownHidden });
+    return NextResponse.json(created, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Question generation failed.";
     return NextResponse.json({ error: message }, { status: 400 });

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/db";
 import { attemptAnswers, attempts } from "@/db/schema";
+import { AttemptClosedError, requireOpenAttempt } from "@/lib/attempt-access";
 import { getAttemptState, getCurrentAnswer, loadAttemptContext } from "@/lib/attempts";
 import { finalizeAttempt } from "@/lib/grading";
 import { answerSubmissionSchema, type FillReview } from "@/lib/quiz";
@@ -21,6 +22,9 @@ export async function POST(
   try {
     const { id } = await context.params;
     const submission = answerSubmissionSchema.parse(await request.json());
+    // Checked on every submission, not just the first open, so closing a link stops an
+    // assessment that is already under way.
+    await requireOpenAttempt(id);
     const quiz = await loadAttemptContext(id);
     if (quiz.attempt.status === "graded") {
       return NextResponse.json({ error: "This attempt is already complete." }, { status: 409 });
@@ -133,6 +137,12 @@ export async function POST(
       .run();
     return NextResponse.json(await getAttemptState(id));
   } catch (error) {
+    if (error instanceof AttemptClosedError) {
+      return NextResponse.json(
+        { error: error.message, locked: true, paused: error.paused },
+        { status: 403 },
+      );
+    }
     const message = error instanceof Error ? error.message : "Unable to submit answer.";
     return NextResponse.json({ error: message }, { status: 400 });
   }

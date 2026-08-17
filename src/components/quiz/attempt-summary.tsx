@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from "react";
 
-import type { AssessmentResult, AttemptOutline, AttemptView } from "@/lib/quiz";
+import {
+  CONDITION_LABELS,
+  FOREIGN_STRATUM_LABELS,
+  type AssessmentResult,
+  type AttemptOutline,
+  type AttemptView,
+} from "@/lib/quiz";
 
 const TYPE_LABELS = {
   fill_blank: "Fill in the blank",
@@ -38,6 +44,9 @@ export function AttemptSummary({
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [participantLink, setParticipantLink] = useState("");
+  // The outline is re-fetched every time this page opens, so props are a fresh starting point.
+  const [linkEnabled, setLinkEnabled] = useState(outline.linkEnabled);
+  const [linkWorking, setLinkWorking] = useState(false);
 
   // Built in the browser so the host matches however this deployment is reached.
   useEffect(() => {
@@ -52,6 +61,30 @@ export function AttemptSummary({
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
       setError("Could not copy automatically — select the link and copy it manually.");
+    }
+  }
+
+  /**
+   * Opens or closes the link. Closing takes effect at the participant's next request, so it
+   * also stops a session that is already running.
+   */
+  async function toggleLink() {
+    const next = !linkEnabled;
+    setLinkWorking(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/attempts/${outline.attemptId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ linkEnabled: next }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to update the link.");
+      setLinkEnabled(payload.linkEnabled as boolean);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to update the link.");
+    } finally {
+      setLinkWorking(false);
     }
   }
 
@@ -108,6 +141,21 @@ export function AttemptSummary({
             {outline.modelId}
           </div>
         </div>
+        {/* Which block of whose session this is, so the right one is handed over. */}
+        {outline.experiment && (
+          <div className="summary-experiment">
+            <span className="participant-id">{outline.experiment.participantId}</span>
+            <span className="pill">
+              Block {outline.experiment.blockPosition} ·{" "}
+              {CONDITION_LABELS[outline.experiment.condition]}
+            </span>
+            {outline.experiment.condition === "foreign" && (
+              <span className="catalog-meta">
+                {FOREIGN_STRATUM_LABELS[outline.experiment.foreignStratum].toLowerCase()}
+              </span>
+            )}
+          </div>
+        )}
         <div className="sequence-status">
           <div className="sequence-progress">
             {outline.answeredCount} of {outline.totalQuestions} answered
@@ -140,10 +188,24 @@ export function AttemptSummary({
                 {copied ? "Copied" : "Copy"}
               </button>
             </div>
+            <div className="link-state-row">
+              <span className={`link-state ${linkEnabled ? "open" : "closed"}`}>
+                {linkEnabled ? "Enabled" : "Disabled"}
+              </span>
+              <button
+                className={`secondary ${linkEnabled ? "danger" : ""}`}
+                type="button"
+                disabled={linkWorking}
+                onClick={() => void toggleLink()}
+              >
+                {linkWorking ? "Saving…" : linkEnabled ? "Disable link" : "Enable link"}
+              </button>
+            </div>
             <small>
-              Send this for a remote session. It opens the assessment directly and needs no
-              password — anyone holding it can answer this attempt, so treat it as the key
-              to it. For an in-person session, use the button below instead.
+              {linkEnabled
+                ? "Anyone holding this link can answer the attempt right now, with no password. Disable it when the session ends."
+                : "Safe to send now: whoever opens it sees a “not open yet” page until you enable the link. Enable it when the session starts."}{" "}
+              The button at the bottom of this page works either way, for in-person sessions.
             </small>
           </div>
         </section>

@@ -77,7 +77,74 @@ export type QuestionSetListEntry = {
   modelId: string;
   questionCount: number;
   attemptCount: number;
+  /** Experiments depending on this set. Non-zero makes the set undeletable. */
+  experimentCount: number;
   createdAt: string;
+};
+
+/**
+ * Which paper an attempt belongs to inside its experiment (research plan §8.2). `foreign` is
+ * the plan's term for it and stays the stored value; the interface calls it the unfamiliar
+ * paper, via `CONDITION_LABELS`.
+ */
+export const attemptConditions = ["own", "foreign"] as const;
+export type AttemptCondition = (typeof attemptConditions)[number];
+
+/** Between-subjects split of the unfamiliar paper. */
+export const foreignStrata = ["in_field", "out_of_field"] as const;
+export type ForeignStratum = (typeof foreignStrata)[number];
+
+export const FOREIGN_STRATUM_LABELS: Record<ForeignStratum, string> = {
+  in_field: "In-field",
+  out_of_field: "Out-of-field",
+};
+
+export const CONDITION_LABELS: Record<AttemptCondition, string> = {
+  own: "Own paper",
+  foreign: "Unfamiliar paper",
+};
+
+/** One attempt of an experiment, in the order the participant will meet it. */
+export type ExperimentAttempt = {
+  attemptId: string;
+  condition: AttemptCondition;
+  /** 1 or 2 — which block this attempt is, after counterbalancing. */
+  blockPosition: number;
+  questionSetId: string;
+  setLabel: string;
+  paperName: string;
+  status: string;
+  score: number | null;
+  linkEnabled: boolean;
+  answeredCount: number;
+  totalQuestions: number;
+};
+
+export type ExperimentListEntry = {
+  id: string;
+  participantId: string;
+  foreignStratum: ForeignStratum;
+  /** True when the unfamiliar paper is block A. */
+  foreignFirst: boolean;
+  createdAt: string;
+  /** Both attempts, already sorted into block order. */
+  attempts: ExperimentAttempt[];
+};
+
+/**
+ * What the next experiment will be allocated, so the researcher can pick an unfamiliar paper
+ * from the right stratum *before* creating the experiment. `null` means the cells are level and the
+ * choice will be made at random on creation, so nothing is promised that cannot be kept.
+ */
+export type ExperimentAllocation = {
+  nextForeignStratum: ForeignStratum | null;
+  counts: {
+    total: number;
+    inField: number;
+    outOfField: number;
+    foreignFirst: number;
+    ownFirst: number;
+  };
 };
 
 export type AttemptListEntry = {
@@ -85,9 +152,14 @@ export type AttemptListEntry = {
   questionSetId: string;
   setLabel: string;
   paperName: string;
+  /** Set when the attempt is half of an experiment; both null for a standalone attempt. */
+  participantId: string | null;
+  condition: AttemptCondition | null;
   status: string;
   score: number | null;
   randomize: boolean;
+  /** False while the participant link is closed, so a mailed link cannot be started early. */
+  linkEnabled: boolean;
   answeredCount: number;
   totalQuestions: number;
   createdAt: string;
@@ -286,6 +358,18 @@ export type AttemptOutline = {
   paperName: string;
   modelId: string;
   status: string;
+  /**
+   * Whether the participant link currently opens. A researcher session bypasses it, so this
+   * governs the mailed link rather than the Start button on this page.
+   */
+  linkEnabled: boolean;
+  /** Present when this attempt is one block of an experiment, so the plan page can say which. */
+  experiment: {
+    participantId: string;
+    condition: AttemptCondition;
+    blockPosition: number;
+    foreignStratum: ForeignStratum;
+  } | null;
   totalQuestions: number;
   answeredCount: number;
   scoredQuestionCount: number;

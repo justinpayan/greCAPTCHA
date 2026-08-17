@@ -41,6 +41,41 @@ export const questionSets = sqliteTable("question_sets", {
   createdAt: text("created_at").notNull(),
 });
 
+/**
+ * One participant's paired session: the same form on their own paper and on an unfamiliar
+ * paper we chose for them (research plan §8.2, which calls the second one the foreign paper —
+ * the columns keep that word, the interface does not). The pair is the unit of analysis, since
+ * the primary measure is the within-person gap between the two.
+ *
+ * `restrict` on both question sets rather than `cascade`: an experiment is only meaningful as
+ * a pair, so silently losing one paper is worse than refusing the delete. The app checks first
+ * and explains which participants are affected; this is the backstop.
+ */
+export const experiments = sqliteTable(
+  "experiments",
+  {
+    id: text("id").primaryKey(),
+    /** Short human-readable code, unique. Used in exports and spoken aloud in sessions. */
+    participantId: text("participant_id").notNull(),
+    ownQuestionSetId: text("own_question_set_id")
+      .notNull()
+      .references(() => questionSets.id, { onDelete: "restrict" }),
+    foreignQuestionSetId: text("foreign_question_set_id")
+      .notNull()
+      .references(() => questionSets.id, { onDelete: "restrict" }),
+    /** Counterbalanced block order: true when the unfamiliar paper is block A. */
+    foreignFirst: integer("foreign_first", { mode: "boolean" }).notNull(),
+    /** Between-subjects split of the unfamiliar paper: `in_field` or `out_of_field`. */
+    foreignStratum: text("foreign_stratum").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("experiments_participant_unique").on(table.participantId),
+    index("experiments_own_set_idx").on(table.ownQuestionSetId),
+    index("experiments_foreign_set_idx").on(table.foreignQuestionSetId),
+  ],
+);
+
 export const attempts = sqliteTable(
   "attempts",
   {
@@ -48,7 +83,23 @@ export const attempts = sqliteTable(
     questionSetId: text("question_set_id")
       .notNull()
       .references(() => questionSets.id, { onDelete: "cascade" }),
+    /**
+     * Set on the two attempts of an experiment; null for a standalone attempt.
+     *
+     * No `onDelete` action, and deliberately so: SQLite's `ALTER TABLE ADD COLUMN` cannot
+     * express one, so a declared cascade would be a fiction in every database that ran the
+     * migration. `deleteExperiment` removes the attempts itself instead, and this plain
+     * reference then keeps the DB from being left with a dangling one.
+     */
+    experimentId: text("experiment_id").references(() => experiments.id),
+    /** `own` or `foreign` within its experiment; null for a standalone attempt. */
+    condition: text("condition"),
     randomize: integer("randomize", { mode: "boolean" }).notNull().default(false),
+    // Gates participant access to the link. Links are handed out ahead of a session, so a
+    // new attempt is created closed and armed when the session starts; see
+    // `requireOpenAttempt`. Defaults to true at the column level so attempts that predate
+    // the flag stay reachable — the closed default belongs to `createAttempt`, not here.
+    linkEnabled: integer("link_enabled", { mode: "boolean" }).notNull().default(true),
     // Display-only: the participant sees no timer, but every timing is still recorded.
     // Stored because whether a countdown was visible plausibly changes pacing.
     countdownHidden: integer("countdown_hidden", { mode: "boolean" })
@@ -62,7 +113,10 @@ export const attempts = sqliteTable(
     createdAt: text("created_at").notNull(),
     completedAt: text("completed_at"),
   },
-  (table) => [index("attempts_question_set_idx").on(table.questionSetId)],
+  (table) => [
+    index("attempts_question_set_idx").on(table.questionSetId),
+    index("attempts_experiment_idx").on(table.experimentId),
+  ],
 );
 
 export const attemptAnswers = sqliteTable(
@@ -97,6 +151,7 @@ export const attemptAnswers = sqliteTable(
   ],
 );
 
+export type ExperimentRecord = typeof experiments.$inferSelect;
 export type StudyTemplateRecord = typeof studyTemplates.$inferSelect;
 export type QuestionSetRecord = typeof questionSets.$inferSelect;
 export type AttemptRecord = typeof attempts.$inferSelect;

@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { questionSetLabel } from "@/lib/catalog";
-import { attemptAnswers, attempts, questionSets } from "@/db/schema";
+import { attemptAnswers, attempts, experiments, questionSets } from "@/db/schema";
 import {
   isWarmup,
   questionBlockName,
@@ -22,11 +22,21 @@ import {
   type StoredQuestion,
 } from "@/lib/quiz";
 
+/**
+ * Creates an attempt without serving anything.
+ *
+ * Returns only the ID on purpose. Serving the first question here would stamp its
+ * `startedAt`, and since attempts are created ahead of a session — sometimes days ahead —
+ * that clock would run for the whole waiting period and record a duration measured in days
+ * for question one. The first question is stamped when it is actually served instead.
+ *
+ * The link starts closed, so an ID that reaches a participant early cannot be used.
+ */
 export async function createAttempt(input: {
   questionSetId: string;
   randomize: boolean;
   countdownHidden: boolean;
-}) {
+}): Promise<{ attemptId: string }> {
   const set = await db
     .select()
     .from(questionSets)
@@ -53,12 +63,13 @@ export async function createAttempt(input: {
     questionSetId: input.questionSetId,
     randomize: input.randomize,
     countdownHidden: input.countdownHidden,
+    linkEnabled: false,
     questionOrderJson: JSON.stringify(order),
     currentIndex: 0,
     status: "active",
     createdAt: new Date().toISOString(),
   });
-  return getAttemptState(id);
+  return { attemptId: id };
 }
 
 export async function getAttemptState(
@@ -153,6 +164,13 @@ export async function loadAttemptContext(attemptId: string) {
  */
 export async function getAttemptOutline(attemptId: string): Promise<AttemptOutline> {
   const quiz = await loadAttemptContextLoose(attemptId);
+  const experiment = quiz.attempt.experimentId
+    ? await db
+        .select()
+        .from(experiments)
+        .where(eq(experiments.id, quiz.attempt.experimentId))
+        .get()
+    : undefined;
   const answers = await db
     .select()
     .from(attemptAnswers)
@@ -185,6 +203,17 @@ export async function getAttemptOutline(attemptId: string): Promise<AttemptOutli
     paperName: quiz.set.paperName,
     modelId: quiz.set.modelId,
     status: quiz.attempt.status,
+    linkEnabled: quiz.attempt.linkEnabled,
+    experiment: experiment
+      ? {
+          participantId: experiment.participantId,
+          condition: quiz.attempt.condition === "foreign" ? "foreign" : "own",
+          blockPosition:
+            (quiz.attempt.condition === "foreign") === experiment.foreignFirst ? 1 : 2,
+          foreignStratum:
+            experiment.foreignStratum === "out_of_field" ? "out_of_field" : "in_field",
+        }
+      : null,
     totalQuestions: items.length,
     answeredCount,
     scoredQuestionCount: items.filter((item) => !item.warmup).length,

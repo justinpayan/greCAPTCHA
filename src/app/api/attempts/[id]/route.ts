@@ -1,9 +1,29 @@
 import { NextResponse } from "next/server";
 
+import { AttemptClosedError, requireOpenAttempt } from "@/lib/attempt-access";
 import { getAttemptState } from "@/lib/attempts";
-import { deleteAttempt } from "@/lib/catalog";
+import { deleteAttempt, setAttemptLinkEnabled } from "@/lib/catalog";
 
 export const runtime = "nodejs";
+
+/**
+ * A closed link answers 403 with `locked: true` so the participant screen can say "not open
+ * yet" instead of showing a generic failure. Only reached by requests without a researcher
+ * session; the Start button on the plan page passes the guard.
+ */
+function errorResponse(error: unknown, fallback: string) {
+  if (error instanceof AttemptClosedError) {
+    return NextResponse.json(
+      { error: error.message, locked: true, paused: error.paused },
+      { status: 403 },
+    );
+  }
+  const message = error instanceof Error ? error.message : fallback;
+  return NextResponse.json(
+    { error: message },
+    { status: message === "Attempt not found." ? 404 : 400 },
+  );
+}
 
 export async function GET(
   _request: Request,
@@ -11,13 +31,30 @@ export async function GET(
 ) {
   try {
     const { id } = await context.params;
+    await requireOpenAttempt(id);
     return NextResponse.json(await getAttemptState(id));
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load attempt.";
-    return NextResponse.json(
-      { error: message },
-      { status: message === "Attempt not found." ? 404 : 400 },
-    );
+    return errorResponse(error, "Unable to load attempt.");
+  }
+}
+
+/**
+ * Opens or closes the participant link. Researcher-only: the middleware allows this path to
+ * participants for GET alone, so PATCH stays behind the password like DELETE does.
+ */
+export async function PATCH(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id } = await context.params;
+    const body = (await request.json().catch(() => ({}))) as { linkEnabled?: unknown };
+    if (typeof body.linkEnabled !== "boolean") {
+      throw new Error("linkEnabled must be true or false.");
+    }
+    return NextResponse.json({ linkEnabled: await setAttemptLinkEnabled(id, body.linkEnabled) });
+  } catch (error) {
+    return errorResponse(error, "Unable to update the attempt link.");
   }
 }
 
@@ -31,10 +68,6 @@ export async function DELETE(
     await deleteAttempt(id);
     return NextResponse.json({ deleted: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to delete the attempt.";
-    return NextResponse.json(
-      { error: message },
-      { status: message === "Attempt not found." ? 404 : 400 },
-    );
+    return errorResponse(error, "Unable to delete the attempt.");
   }
 }

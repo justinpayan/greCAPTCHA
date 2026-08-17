@@ -16,6 +16,10 @@ fresh, sequential attempts with rubric-based feedback.
   native file support
 - Named, searchable saved question sets that can start multiple fresh attempts
 - Searchable attempt list for resuming an assessment already under way
+- Participant links that ship disabled, so they can be sent out before a session and
+  armed when it starts
+- Paired experiments: a generated participant ID, one attempt per paper, and
+  counterbalanced block order and unfamiliar-paper stratum
 - Optional per-attempt question randomization
 - Researcher-facing assessment plan page with per-item descriptions and progress
 - Nameable question cards for per-family grouping in analysis
@@ -173,6 +177,89 @@ path §11.1 of the research plan asks for.
 
 **Resume attempt** on the start screen lists every attempt with its progress and status,
 and reopens one on its plan page, keeping every answer and timing.
+
+## Experiments
+
+An **experiment** is one participant's paired session: the same assessment on the paper they
+uploaded to us and on an unfamiliar paper we chose for them (research plan §8.2, which calls
+the second one the *foreign* paper). It is created from the **Experiments** tab by choosing two
+existing question sets — own paper first, unfamiliar paper second — and it produces:
+
+- a generated **participant ID**: four characters from an alphabet with no `O`/`0` or `I`/`1`,
+  since the code gets read aloud and written on forms;
+- **two attempts**, one per paper, each tagged with its condition;
+- a **counterbalanced block order**, and an **unfamiliar-paper stratum** of in-field or
+  out-of-field.
+
+Both links are created disabled, like any attempt, so a pair can be prepared the night before
+and armed block by block during the session. Neither attempt serves a question at creation, so
+no clock starts.
+
+### How the two allocations stay balanced
+
+Neither is an independent coin flip. With N≈24 a fair coin lands on a 16/8 split often enough
+to matter, so both use **minority-fill**: the cell with fewer experiments gets the next one,
+and only an exact tie is broken at random.
+
+| Allocation | Balanced across | Result |
+| --- | --- | --- |
+| Unfamiliar-paper stratum | all experiments | in-field and out-of-field within one of each other |
+| Block order | each stratum separately | own-first and unfamiliar-first within one of each other, inside each stratum *and* overall |
+
+Balancing order *within* stratum rather than globally costs nothing and additionally stops
+order from correlating with stratum.
+
+Because the stratum decides which unfamiliar paper is appropriate, the creation form shows
+what the next experiment will get **before** you create it, both in the notice and on the
+picker's own label — so you can pick the unfamiliar paper's question set to match. When the cells are level it says so instead of promising a stratum it
+would then re-roll.
+
+Deleting an experiment deletes both attempts and their answers; the confirmation counts the
+answers at stake first. The two question sets are kept. Two deletions are refused rather than
+silently doing damage: a single attempt that is one block of an experiment, and a question set
+an experiment depends on (the error names the participants).
+
+Attempt-level fields — `participant_id`, `condition`, `block_position`, `foreign_stratum` —
+are in the CSV export, since the primary measure Δ = score(own) − score(foreign) cannot be
+computed without knowing which attempt is which.
+
+**One caveat if you run two laptops.** Balance is computed from the database the app is
+running against. Per §11.1 each laptop has its own, so two laptops produce two independently
+balanced sequences: each is within one of even, and the merged set within two. Creating all
+experiments on one machine avoids this entirely.
+
+## Enabling and disabling a participant link
+
+Participant links are usually sent out before a session, so **a new attempt is created with
+its link disabled**. The link is safe to mail immediately: anyone who opens it early sees a
+*not open yet* page instead of the first question, and no clock starts.
+
+The switch sits beside the link on the plan page, and on every row of **Resume attempt** so
+several links can be armed at once without opening each attempt:
+
+| Link state | Participant opening the link | Researcher pressing the plan page button |
+| --- | --- | --- |
+| Disabled | *Not open yet* page | Starts the assessment normally |
+| Enabled | Answers the assessment | Starts the assessment normally |
+
+The researcher's password session bypasses the flag, which is what lets an in-person session
+run without arming anything. So *disabled* governs the mailed link, not the password holder.
+This follows the same rule as the rest of the access control: under `next dev` with no
+`RESEARCHER_PASSWORD` set, every request counts as the researcher, so a disabled link still
+opens locally. Set the variable to see what a participant sees.
+
+The flag is checked on every participant request — opening the page, fetching a question, and
+submitting an answer — so disabling a link mid-session halts it at once and the participant
+sees a *paused* page. Nothing already submitted is lost, and enabling it again resumes at the
+next unanswered question. An answer typed but not yet submitted when the link is disabled is
+lost, so disabling a live session interrupts it rather than pausing it politely.
+
+Attempts created before this flag existed remain enabled, so nothing already in flight
+changed when the column was added.
+
+Question one's clock starts when the question is first served, not when the attempt is
+created. This matters here: attempts are often created days before the session, and stamping
+the clock at creation would record question one as having taken days.
 
 ## Question type colours
 
@@ -414,7 +501,13 @@ production build it is **required**: with the variable unset every researcher ro
 assessment directly, along with the three endpoints it needs — reading the current
 question, submitting an answer, and reporting first interaction. The attempt ID in the URL
 is the capability, so treat a participant link like a key: anyone holding it can answer
-that attempt. IDs are UUIDs and are not listed anywhere unauthenticated.
+that attempt **while the link is enabled**. IDs are UUIDs and are not listed anywhere
+unauthenticated.
+
+The allowlist is method-aware, so the endpoints it opens are opened only for the method the
+participant needs. `GET /api/attempts/<id>` is open; `PATCH` on the same path, which enables
+or disables the link, and `DELETE`, which destroys the attempt, both stay behind the
+password.
 
 Copy the link from the **Participant link** field on the assessment plan page. For an
 in-person session, ignore it and use **Start assessment** on the same page instead.
@@ -455,7 +548,9 @@ fields denormalized onto each row so the file stands alone with no joins.
 The answer grain is deliberate: the per-family discrimination index needs `block_name`,
 per-item `score` and per-item timing on the same row, which an attempt-level summary cannot
 reconstruct. Columns cover the attempt (`attempt_id`, `set_name`, `paper_name`, `model_id`,
-`attempt_status`, `attempt_score`, `randomize`, `countdown_hidden`, timestamps), the item
+`attempt_status`, `attempt_score`, `randomize`, `countdown_hidden`, timestamps), the
+experiment it belongs to if any (`participant_id`, `experiment_id`, `condition`,
+`block_position`, `foreign_stratum` — all empty for a standalone attempt), the item
 (`position`, `question_id`, `block_name`, `question_type`, `warmup`, `time_limit_seconds`),
 its timing (`started_at`, `first_interaction_at`, `first_interaction_ms`, `submitted_at`,
 `duration_ms`, `overrun_ms`), and the answer itself (`score`, `response`, `correct_answer`,
@@ -476,6 +571,21 @@ rows = [r for r in csv.DictReader(open("research-captcha-answers-2026-08-17.csv"
 by_family = collections.defaultdict(list)
 for r in rows:
     by_family[r["block_name"]].append(float(r["score"]))
+```
+
+For the paired own-versus-unfamiliar comparison, average each participant's scored items per
+condition and difference them:
+
+```python
+per_cell = collections.defaultdict(list)
+for r in rows:
+    if r["participant_id"]:
+        per_cell[(r["participant_id"], r["condition"])].append(float(r["score"]))
+deltas = {
+    pid: statistics.mean(per_cell[(pid, "own")]) - statistics.mean(per_cell[(pid, "foreign")])
+    for pid, condition in per_cell
+    if condition == "own" and (pid, "foreign") in per_cell
+}
 ```
 
 The file contains submitted responses and answer keys, so treat it as sensitive research
