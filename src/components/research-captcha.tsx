@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
+import { ParticipantId } from "@/components/participant-id";
 import { AttemptSummary } from "@/components/quiz/attempt-summary";
 import { QuizWorkspace, ResultView } from "@/components/quiz/quiz-workspace";
 import {
@@ -985,7 +986,7 @@ export function ResearchCaptcha() {
             {visibleExperiments.map((entry) => (
               <article className="experiment-card" key={entry.id}>
                 <div className="experiment-head">
-                  <span className="participant-id">{entry.participantId}</span>
+                  <ParticipantId id={entry.participantId} />
                   <span className="pill">
                     {FOREIGN_STRATUM_LABELS[entry.foreignStratum]} unfamiliar paper
                   </span>
@@ -1208,7 +1209,8 @@ export function ResearchCaptcha() {
                         <strong>{entry.setLabel}</strong>
                         {entry.participantId && entry.condition && (
                           <span className="pill">
-                            {entry.participantId} · {CONDITION_LABELS[entry.condition]}
+                            Participant {entry.participantId} ·{" "}
+                            {CONDITION_LABELS[entry.condition]}
                           </span>
                         )}
                         <span
@@ -1233,7 +1235,7 @@ export function ResearchCaptcha() {
                         disabled={Boolean(entry.participantId)}
                         title={
                           entry.participantId
-                            ? `One block of experiment ${entry.participantId}. Delete the experiment to remove both blocks.`
+                            ? `One block of participant ${entry.participantId}'s experiment. Delete the experiment to remove both blocks.`
                             : undefined
                         }
                         onClick={() => void deleteAttemptRow(entry)}

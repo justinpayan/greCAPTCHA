@@ -674,11 +674,24 @@ textarea.control {
 
 /* Monospaced so a 4-character code is easy to read out and to compare against a sheet. */
 .participant-id {
+  display: inline-flex;
+  align-items: baseline;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   color: var(--ink);
+}
+
+/* Body font and normal tracking, so the word reads as a label rather than part of the code. */
+.participant-id-label {
+  margin-right: 7px;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 780;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .experiment-block {

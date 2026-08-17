@@ -88,7 +88,7 @@ export async function deleteQuestionSet(id: string) {
     const named = uses.map((use) => use.participantId).join(", ");
     const plural = uses.length === 1;
     throw new Error(
-      `This set is used by ${uses.length} experiment${plural ? "" : "s"} (${named}). Delete ${plural ? "that experiment" : "those experiments"} first.`,
+      `This set is used by ${uses.length} experiment${plural ? "" : "s"} (participant${plural ? "" : "s"} ${named}). Delete ${plural ? "that experiment" : "those experiments"} first.`,
     );
   }
   const result = await db.delete(questionSets).where(eq(questionSets.id, id)).run();

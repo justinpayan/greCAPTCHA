@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { ParticipantId } from "@/components/participant-id";
 import {
   CONDITION_LABELS,
   FOREIGN_STRATUM_LABELS,
@@ -144,7 +145,7 @@ export function AttemptSummary({
         {/* Which block of whose session this is, so the right one is handed over. */}
         {outline.experiment && (
           <div className="summary-experiment">
-            <span className="participant-id">{outline.experiment.participantId}</span>
+            <ParticipantId id={outline.experiment.participantId} />
             <span className="pill">
               Block {outline.experiment.blockPosition} ·{" "}
               {CONDITION_LABELS[outline.experiment.condition]}
