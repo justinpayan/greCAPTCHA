@@ -437,6 +437,18 @@ textarea.control {
   font-weight: 680;
 }
 
+/* Groups adjacent toggles so the space between them is set here, rather than inherited
+   from the form grid's gap plus each row's own top margin. */
+.toggle-group {
+  display: grid;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.toggle-group .toggle-row {
+  margin-top: 0;
+}
+
 .toggle-row input {
   width: 18px;
   height: 18px;

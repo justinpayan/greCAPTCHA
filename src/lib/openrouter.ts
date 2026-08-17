@@ -39,6 +39,9 @@ const recommendedPatterns = [
   /anthropic\/claude-(?:sonnet|opus)/i,
   /openai\/gpt-[5-9]/i,
   /google\/gemini-.*pro/i,
+  // Anchored so the async `:batch` sibling, which cannot serve a synchronous request, is
+  // not promoted alongside it.
+  /^google\/gemini-3\.7-flash$/i,
   /deepseek\/deepseek/i,
 ];
 

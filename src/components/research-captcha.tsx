@@ -705,15 +705,17 @@ export function ResearchCaptcha() {
 
           {mode === "load" ? (
             <>
-              <label className="toggle-row">
-                <input
-                  type="checkbox"
-                  checked={randomize}
-                  onChange={(event) => setRandomize(event.target.checked)}
-                />
-                Randomize question order for this attempt
-              </label>
-              <CountdownToggle hidden={countdownHidden} onChange={setCountdownHidden} />
+              <div className="toggle-group">
+                <label className="toggle-row">
+                  <input
+                    type="checkbox"
+                    checked={randomize}
+                    onChange={(event) => setRandomize(event.target.checked)}
+                  />
+                  Randomize question order for this attempt
+                </label>
+                <CountdownToggle hidden={countdownHidden} onChange={setCountdownHidden} />
+              </div>
               {error && (
                 <p className="error" role="alert">
                   {error}
@@ -939,19 +941,17 @@ export function ResearchCaptcha() {
               </select>
             </div>
 
-            <label className="toggle-row full">
-              <input
-                type="checkbox"
-                checked={randomize}
-                onChange={(event) => setRandomize(event.target.checked)}
-              />
-              Randomize question order for the first attempt
-            </label>
-            <CountdownToggle
-              className="full"
-              hidden={countdownHidden}
-              onChange={setCountdownHidden}
-            />
+            <div className="toggle-group full">
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={randomize}
+                  onChange={(event) => setRandomize(event.target.checked)}
+                />
+                Randomize question order for the first attempt
+              </label>
+              <CountdownToggle hidden={countdownHidden} onChange={setCountdownHidden} />
+            </div>
 
             <div className="full">
               <div className="section-heading">
