@@ -53,8 +53,8 @@ export async function POST(request: Request) {
       throw new Error("Only PDF files are supported.");
     }
     if (file.size > MAX_PDF_BYTES) throw new Error("The PDF must be 25 MB or smaller.");
-    if (contributions.length < 20 || contributions.length > 10_000) {
-      throw new Error("Describe your contributions in 20 to 10,000 characters.");
+    if (contributions.length < 15 || contributions.length > 10_000) {
+      throw new Error("Describe the contributions in 15 to 10,000 characters.");
     }
     if (blocks.reduce((sum, block) => sum + block.count, 0) > 50) {
       throw new Error("A question set may contain at most 50 questions.");
