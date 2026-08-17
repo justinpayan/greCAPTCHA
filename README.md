@@ -300,6 +300,89 @@ PDFs are limited to 25 MB by the application. Password-protected, damaged, very
 large, or unusually structured manuscripts may fail. Extraction quality
 directly affects question quality.
 
+## Hosting through Cloudflare Tunnel
+
+The app runs on your own machine and `cloudflared` dials out to Cloudflare, which serves a
+public hostname. No inbound port is opened, there is no server to maintain, and the study
+database never leaves the machine — which is the easiest arrangement to describe in an IRB
+protocol that limits access to the named researchers.
+
+### 1. Move the domain's DNS to Cloudflare
+
+The domain stays registered with Namecheap; Cloudflare only becomes its DNS provider.
+
+1. In the Cloudflare dashboard, **Add a site**, enter your domain, and pick the Free plan.
+2. Cloudflare scans your existing records and shows two nameservers, like
+   `dana.ns.cloudflare.com` and `rick.ns.cloudflare.com`. Copy both.
+3. In Namecheap: **Domain List → Manage → Nameservers → Custom DNS**, replace the entries
+   with Cloudflare's two, and save.
+4. Wait for Cloudflare to report the zone **Active**. Usually minutes, occasionally hours.
+
+Check any existing records survived the scan before switching, especially MX records if the
+domain carries email.
+
+### 2. Create the tunnel
+
+```bash
+brew install cloudflared
+cloudflared tunnel login                      # opens a browser, pick the zone
+cloudflared tunnel create research-captcha    # writes ~/.cloudflared/<UUID>.json
+cloudflared tunnel route dns research-captcha rc.yourdomain.org
+```
+
+Copy `cloudflared/config.example.yml` to `~/.cloudflared/config.yml` and fill in the tunnel
+UUID, your username, and the hostname.
+
+### 3. Configure and run the app
+
+`.env.local` needs the API keys plus:
+
+```dotenv
+RESEARCHER_PASSWORD=something_long_and_random
+PUBLIC_BASE_URL=https://rc.yourdomain.org
+```
+
+`PUBLIC_BASE_URL` is what participant links are built from. Without it the link is built
+from whatever origin *your* browser is on, so working at `localhost:3000` would hand
+participants a `localhost` link that cannot work.
+
+```bash
+npm ci
+npm run build
+npm run start:tunnel     # binds 127.0.0.1 only
+cloudflared tunnel run research-captcha
+```
+
+`start:tunnel` binds the loopback interface rather than every interface, so the app is
+reachable only through the tunnel and not to anyone else on the same wifi.
+
+To keep it up between sessions, `cloudflared service install` registers the tunnel as a
+launchd service, and `caffeinate -s` prevents the machine sleeping mid-assessment. A laptop
+that sleeps takes the tunnel down and strands a participant part-way through.
+
+### 4. Check it end to end
+
+`https://rc.yourdomain.org/api/health` should return `{"ok":true}` from another network —
+a phone on cellular is the quickest test. `https://rc.yourdomain.org/` should redirect to
+the sign-in page.
+
+### Notes
+
+- **Timings include the round trip.** `duration_ms` is measured server-side from serve to
+  submit, so a remote participant's latency is inside it. In-person and remote timings are
+  not directly comparable; treat the mode as a covariate.
+- **Work as the researcher on `http://127.0.0.1:3000`, not through the tunnel.** Cloudflare
+  returns error 524 when an origin takes longer than 100 seconds, a ceiling that cannot be
+  raised on the Free or Pro plans. Question generation carries a PDF and routinely exceeds
+  it. Going direct on this machine avoids the limit entirely, and `PUBLIC_BASE_URL` keeps
+  participant links pointing at the public hostname anyway.
+- **The final answer of a free-response set can hit the same limit**, because submitting it
+  triggers grading. The answer is locked either way; if the participant sees an error,
+  grade the attempt afterwards from its plan page.
+- **Nothing runs in Docker.** SQLite in WAL mode over a macOS Docker bind mount has known
+  file-locking problems, and the database needs to stay directly reachable on the host for
+  `drizzle-kit studio` and end-of-day export.
+
 ## Access control
 
 The interface has two audiences with different access.

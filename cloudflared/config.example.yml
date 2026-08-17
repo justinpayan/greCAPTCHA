@@ -1,0 +1,33 @@
+# Cloudflare Tunnel configuration for ResearchCAPTCHA.
+#
+# Copy to ~/.cloudflared/config.yml and replace the placeholders. See the "Hosting through
+# Cloudflare Tunnel" section of README.md for the full walkthrough.
+#
+# The tunnel dials out to Cloudflare, so no inbound port is opened on this machine and the
+# study database never leaves it.
+
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: /Users/REPLACE_WITH_USER/.cloudflared/REPLACE_WITH_TUNNEL_UUID.json
+
+ingress:
+  # One hostname for the app. Give it a subdomain rather than an apex you also use for
+  # something else, so nothing has to be split by path.
+  - hostname: REPLACE_WITH_HOSTNAME
+    service: http://127.0.0.1:3000
+  # Anything not matched above is refused rather than forwarded.
+  - service: http_status:404
+
+# NOTE ON LONG REQUESTS
+#
+# Cloudflare's edge gives up on an origin that has not responded within 100 seconds and
+# returns error 524. That ceiling is fixed on the Free and Pro plans and cannot be raised
+# here, so no setting in this file avoids it.
+#
+# It does not fit question generation, which carries a PDF and routinely runs for minutes.
+# Generate item banks against http://127.0.0.1:3000 on this machine instead: the researcher
+# interface never needs to go through the tunnel, and PUBLIC_BASE_URL makes participant
+# links point at the public hostname regardless of where you are browsing from.
+#
+# Participant requests are short, except the final answer of a set containing free-response
+# cards, which triggers grading. If that exceeds 100 seconds the participant sees an error
+# while their answer stays safely locked; grade the attempt afterwards from its plan page.

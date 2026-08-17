@@ -39,8 +39,9 @@ export function AttemptSummary({
 
   // Built in the browser so the host matches however this deployment is reached.
   useEffect(() => {
-    setParticipantLink(`${window.location.origin}/attempt/${outline.attemptId}`);
-  }, [outline.attemptId]);
+    const origin = outline.participantBaseUrl || window.location.origin;
+    setParticipantLink(`${origin}/attempt/${outline.attemptId}`);
+  }, [outline.attemptId, outline.participantBaseUrl]);
 
   async function copyLink() {
     try {

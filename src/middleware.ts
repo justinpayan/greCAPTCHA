@@ -18,7 +18,7 @@ const PARTICIPANT_PAGE = /^\/attempt\/[^/]+$/;
  */
 const PARTICIPANT_API = /^\/api\/attempts\/[^/]+(?:\/(?:answers|interaction))?$/;
 
-const ALWAYS_OPEN = new Set(["/login", "/api/session"]);
+const ALWAYS_OPEN = new Set(["/login", "/api/session", "/api/health"]);
 
 function isParticipantPath(pathname: string) {
   return PARTICIPANT_PAGE.test(pathname) || PARTICIPANT_API.test(pathname);

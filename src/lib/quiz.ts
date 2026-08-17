@@ -290,6 +290,12 @@ export type AttemptOutline = {
   graded: boolean;
   /** Every question answered but no result stored yet, so grading can still be run. */
   gradable: boolean;
+  /**
+   * Origin to build the participant link from, from PUBLIC_BASE_URL. Empty falls back to
+   * the browser's own origin — which would be wrong if the researcher is on localhost
+   * while participants reach the app through a tunnel.
+   */
+  participantBaseUrl: string;
   items: AttemptOutlineItem[];
 };
 

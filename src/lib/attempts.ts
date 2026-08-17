@@ -188,6 +188,7 @@ export async function getAttemptOutline(attemptId: string): Promise<AttemptOutli
     scoredQuestionCount: items.filter((item) => !item.warmup).length,
     graded,
     gradable: !graded && answeredCount === items.length && items.length > 0,
+    participantBaseUrl: (process.env.PUBLIC_BASE_URL ?? "").trim().replace(/\/+$/, ""),
     items,
   };
 }
