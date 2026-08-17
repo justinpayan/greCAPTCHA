@@ -142,28 +142,35 @@ export function AttemptSummary({
             {outline.modelId}
           </div>
         </div>
-        {/* Which block of whose session this is, so the right one is handed over. */}
-        {outline.experiment && (
-          <div className="summary-experiment">
-            <ParticipantId id={outline.experiment.participantId} />
-            <span className="pill">
-              Block {outline.experiment.blockPosition} ·{" "}
-              {CONDITION_LABELS[outline.experiment.condition]}
-            </span>
-            {outline.experiment.condition === "foreign" && (
-              <span className="catalog-meta">
-                {FOREIGN_STRATUM_LABELS[outline.experiment.foreignStratum].toLowerCase()}
+        {/*
+          One element in the header's second column. Adding the experiment badge as a third
+          child of a two-column grid pushed the progress onto an implicit row inside the wide
+          left column, where it read as misaligned rather than top-right.
+        */}
+        <div className="summary-header-side">
+          {/* Which block of whose session this is, so the right one is handed over. */}
+          {outline.experiment && (
+            <div className="summary-experiment">
+              <ParticipantId id={outline.experiment.participantId} />
+              <span className="pill">
+                Block {outline.experiment.blockPosition} ·{" "}
+                {CONDITION_LABELS[outline.experiment.condition]}
               </span>
-            )}
-          </div>
-        )}
-        <div className="sequence-status">
-          <div className="sequence-progress">
-            {outline.answeredCount} of {outline.totalQuestions} answered
-          </div>
-          <div className="question-timer">
-            {outline.scoredQuestionCount} scored ·{" "}
-            {outline.totalQuestions - outline.scoredQuestionCount} warm-up
+              {outline.experiment.condition === "foreign" && (
+                <span className="catalog-meta">
+                  {FOREIGN_STRATUM_LABELS[outline.experiment.foreignStratum].toLowerCase()}
+                </span>
+              )}
+            </div>
+          )}
+          <div className="sequence-status">
+            <div className="sequence-progress">
+              {outline.answeredCount} of {outline.totalQuestions} answered
+            </div>
+            <div className="question-timer">
+              {outline.scoredQuestionCount} scored ·{" "}
+              {outline.totalQuestions - outline.scoredQuestionCount} warm-up
+            </div>
           </div>
         </div>
       </header>

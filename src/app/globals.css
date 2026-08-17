@@ -818,10 +818,20 @@ textarea.control {
   white-space: nowrap;
 }
 
+/* The plan header's right-hand column: identity above progress, both flush right. Kept as one
+   grid child so the two-column header cannot spill onto an implicit row. */
+.summary-header-side {
+  display: grid;
+  justify-items: end;
+  align-content: end;
+  gap: 10px;
+}
+
 .summary-experiment {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
 }
 
@@ -1542,6 +1552,17 @@ button.option.selected {
   }
 
   .progress-grid {
+    justify-content: flex-start;
+  }
+
+  /* The header is a single column here, so right-aligning against a left-aligned title would
+     read as a second, unrelated edge. Scoped to the plan page's side column. */
+  .summary-header-side,
+  .summary-header-side .sequence-status {
+    justify-items: start;
+  }
+
+  .summary-experiment {
     justify-content: flex-start;
   }
 
