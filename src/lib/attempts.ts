@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
+import { questionSetLabel } from "@/lib/catalog";
 import { attemptAnswers, attempts, questionSets } from "@/db/schema";
 import {
   isWarmup,
@@ -180,6 +181,7 @@ export async function getAttemptOutline(attemptId: string): Promise<AttemptOutli
   return {
     attemptId,
     questionSetId: quiz.set.id,
+    setLabel: questionSetLabel(quiz.set.name, quiz.set.paperName),
     paperName: quiz.set.paperName,
     modelId: quiz.set.modelId,
     status: quiz.attempt.status,

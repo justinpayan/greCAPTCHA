@@ -335,6 +335,57 @@ export function ResearchCaptcha() {
     }
   }
 
+  /**
+   * Deleting a set cascades to its attempts and their answers, so the confirmation names
+   * exactly what goes with it rather than asking a bare "are you sure".
+   */
+  async function deleteSet(set: QuestionSetListEntry) {
+    const consequence = set.attemptCount
+      ? `\n\nThis also deletes its ${set.attemptCount} ${
+          set.attemptCount === 1 ? "attempt" : "attempts"
+        } and every answer and timing recorded in them.`
+      : "\n\nIt has no attempts, so no response data is affected.";
+    if (!window.confirm(`Delete the set “${set.label}”?${consequence}\n\nThis cannot be undone.`)) {
+      return;
+    }
+    setError("");
+    try {
+      const response = await fetch(`/api/question-sets/${encodeURIComponent(set.id)}`, {
+        method: "DELETE",
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to delete the set.");
+      await refreshCatalog();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to delete the set.");
+    }
+  }
+
+  async function deleteAttemptRow(entry: AttemptListEntry) {
+    const state =
+      entry.status === "graded"
+        ? `It is graded${entry.score === null ? "" : ` at ${entry.score}%`}.`
+        : `${entry.answeredCount} of ${entry.totalQuestions} questions are answered.`;
+    if (
+      !window.confirm(
+        `Delete this attempt of “${entry.setLabel}”?\n\n${state} Its answers and timings will be removed. The question set itself is kept.\n\nThis cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    setError("");
+    try {
+      const response = await fetch(`/api/attempts/${encodeURIComponent(entry.id)}`, {
+        method: "DELETE",
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to delete the attempt.");
+      await refreshCatalog();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to delete the attempt.");
+    }
+  }
+
   async function commitRename(id: string) {
     const next = renameValue;
     setRenamingId("");
@@ -530,10 +581,10 @@ export function ResearchCaptcha() {
       </div>
       <section>
         <p className="eyebrow">Authorship understanding assessment</p>
-        <h1>Build an assessment around the work.</h1>
+        <h1>Researcher Dashboard</h1>
         <p className="lede">
-          Generate a reusable mixed-format question set or start a fresh attempt from
-          a saved set&nbsp;ID.
+          Generate a reusable mixed-format question set, start a fresh attempt from one you
+          have already built, or reopen an assessment already under way.
         </p>
       </section>
 
@@ -710,6 +761,13 @@ export function ResearchCaptcha() {
                         Rename
                       </button>
                       <button
+                        className="secondary danger"
+                        type="button"
+                        onClick={() => void deleteSet(set)}
+                      >
+                        Delete
+                      </button>
+                      <button
                         className="primary"
                         type="button"
                         disabled={working}
@@ -751,6 +809,13 @@ export function ResearchCaptcha() {
                       </span>
                     </div>
                     <div className="catalog-actions">
+                      <button
+                        className="secondary danger"
+                        type="button"
+                        onClick={() => void deleteAttemptRow(entry)}
+                      >
+                        Delete
+                      </button>
                       <button
                         className="primary"
                         type="button"

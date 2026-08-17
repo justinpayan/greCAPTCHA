@@ -12,16 +12,24 @@ import { SESSION_COOKIE, safeEqual, sessionToken } from "@/lib/auth";
 /** `/attempt/<id>` — the link handed to a participant. */
 const PARTICIPANT_PAGE = /^\/attempt\/[^/]+$/;
 
-/**
- * `/api/attempts/<id>`, plus its `answers` and `interaction` children. Written so that
- * the bare `/api/attempts` list and the `/outline` plan are NOT matched.
- */
-const PARTICIPANT_API = /^\/api\/attempts\/[^/]+(?:\/(?:answers|interaction))?$/;
+/** `/api/attempts/<id>` — reading the current question. Not the list, not `/outline`. */
+const PARTICIPANT_ATTEMPT = /^\/api\/attempts\/[^/]+$/;
+
+/** `/api/attempts/<id>/answers` and `/interaction`. */
+const PARTICIPANT_WRITE = /^\/api\/attempts\/[^/]+\/(?:answers|interaction)$/;
 
 const ALWAYS_OPEN = new Set(["/login", "/api/session", "/api/health"]);
 
-function isParticipantPath(pathname: string) {
-  return PARTICIPANT_PAGE.test(pathname) || PARTICIPANT_API.test(pathname);
+/**
+ * Method-aware on purpose. `/api/attempts/<id>` also answers DELETE, which must stay
+ * researcher-only — a path-only allowlist would let anyone holding a participant link
+ * destroy the attempt behind it.
+ */
+function isParticipantRequest(method: string, pathname: string) {
+  if (PARTICIPANT_PAGE.test(pathname)) return method === "GET";
+  if (PARTICIPANT_ATTEMPT.test(pathname)) return method === "GET";
+  if (PARTICIPANT_WRITE.test(pathname)) return method === "POST";
+  return false;
 }
 
 /**
@@ -44,7 +52,7 @@ function requestOrigin(request: NextRequest): string {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  if (ALWAYS_OPEN.has(pathname) || isParticipantPath(pathname)) {
+  if (ALWAYS_OPEN.has(pathname) || isParticipantRequest(request.method, pathname)) {
     return NextResponse.next();
   }
 

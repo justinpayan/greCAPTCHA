@@ -99,8 +99,12 @@ export function AttemptSummary({
       <header className="quiz-header sequential-header">
         <div>
           <p className="eyebrow">Assessment plan</p>
-          <h1>{outline.paperName}</h1>
-          <div className="quiz-meta">{outline.modelId}</div>
+          <h1>{outline.setLabel}</h1>
+          <div className="quiz-meta">
+            {/* Only worth showing when the set was named, otherwise it repeats the title. */}
+            {outline.setLabel !== outline.paperName && `${outline.paperName} · `}
+            {outline.modelId}
+          </div>
         </div>
         <div className="sequence-status">
           <div className="sequence-progress">

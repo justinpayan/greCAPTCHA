@@ -54,6 +54,22 @@ export async function renameQuestionSet(id: string, name: string) {
   return trimmed;
 }
 
+/**
+ * Deletes a set and, by foreign-key cascade, every attempt on it and every answer in those
+ * attempts. `foreign_keys = ON` is set when the connection opens, so the cascade chains
+ * from question_sets through attempts to attempt_answers.
+ */
+export async function deleteQuestionSet(id: string) {
+  const result = await db.delete(questionSets).where(eq(questionSets.id, id)).run();
+  if (result.changes !== 1) throw new Error("Question set not found.");
+}
+
+/** Deletes one attempt and its answers, leaving the question set intact. */
+export async function deleteAttempt(id: string) {
+  const result = await db.delete(attempts).where(eq(attempts.id, id)).run();
+  if (result.changes !== 1) throw new Error("Attempt not found.");
+}
+
 export async function listAttempts(): Promise<AttemptListEntry[]> {
   const rows = await db
     .select({

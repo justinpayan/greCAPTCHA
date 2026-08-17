@@ -569,6 +569,17 @@ textarea.control {
   font-size: 0.85rem;
 }
 
+.secondary.danger {
+  color: var(--danger);
+  border-color: #e6cccc;
+}
+
+.secondary.danger:hover:not(:disabled) {
+  color: white;
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
 .catalog-rename {
   min-height: 40px;
   padding: 8px 12px;

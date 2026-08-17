@@ -281,6 +281,8 @@ export type AttemptOutlineItem = {
 export type AttemptOutline = {
   attemptId: string;
   questionSetId: string;
+  /** The set's name, falling back to the PDF filename when it was never named. */
+  setLabel: string;
   paperName: string;
   modelId: string;
   status: string;

@@ -108,6 +108,16 @@ one to start a fresh attempt with its own answers, timings, scores, and optional
 order. **Resume attempt** shows every attempt with its progress, status, and score, and
 reopens one exactly where it was left.
 
+Both lists carry a **Delete** button per row, each asking for confirmation first. Deleting
+an attempt removes its answers and timings and keeps the question set. Deleting a set
+cascades: every attempt on it and every answer in those attempts goes with it, and the
+confirmation says how many before you agree. Neither can be undone, so take a backup first
+if the data matters:
+
+```bash
+sqlite3 data/research-captcha.db ".backup 'backup-$(date +%F).db'"
+```
+
 Neither list needs an ID. IDs are no longer shown in the interface, so nothing
 researcher-facing appears on screen during a session; they remain available in the
 database if you need them.
