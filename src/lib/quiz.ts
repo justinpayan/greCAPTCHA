@@ -65,6 +65,12 @@ export const studyTemplateConfigSchema = z.object({
   blocks: z.array(questionBlockSchema).max(20).default([]),
   randomize: z.boolean().default(false),
   countdownHidden: z.boolean().default(false),
+  /**
+   * Budget for the whole set in seconds, or null for none. Enforced, unlike the per-question soft
+   * limits: once it is spent no further question is served. Stored in seconds like every other
+   * limit here, though the form collects whole minutes.
+   */
+  overallTimeLimitSeconds: z.number().int().min(30).max(21_600).nullable().default(null),
 });
 export type StudyTemplateConfig = z.infer<typeof studyTemplateConfigSchema>;
 
@@ -80,6 +86,38 @@ export type QuestionSetListEntry = {
   /** Experiments depending on this set. Non-zero makes the set undeletable. */
   experimentCount: number;
   createdAt: string;
+};
+
+/**
+ * A saved set's contents, readable without creating an attempt.
+ *
+ * Researcher-facing, like `AttemptOutline`: it carries card names and generated descriptions, so
+ * it must never reach a participant screen. Unlike the outline it has no answered state and no
+ * participant link, because no attempt is involved.
+ */
+export type QuestionSetOverviewItem = {
+  position: number;
+  questionId: string;
+  type: StoredQuestion["type"];
+  blockName: string;
+  description: string;
+  timeLimitSeconds: number | null;
+  warmup: boolean;
+};
+
+export type QuestionSetOverview = {
+  id: string;
+  /** Empty when the set was never named; `label` is what to display. */
+  name: string;
+  label: string;
+  paperName: string;
+  modelId: string;
+  pdfEngine: string;
+  overallTimeLimitSeconds: number | null;
+  attemptCount: number;
+  experimentCount: number;
+  createdAt: string;
+  items: QuestionSetOverviewItem[];
 };
 
 /**
@@ -345,6 +383,8 @@ export type AttemptIntro = {
   totalQuestions: number;
   /** How many carry a soft limit, so the page can say whether the set is timed at all. */
   timedQuestionCount: number;
+  /** Budget for the whole set in seconds, or null. Enforced once spent. */
+  overallTimeLimitSeconds: number | null;
   /** True once a question has been served, meaning the clock is already running. */
   started: boolean;
   status: string;
@@ -369,6 +409,13 @@ export type AttemptView = {
   countdownHidden: boolean;
   /** Server-measured time already spent on this question, so a refresh resumes the display. */
   elapsedMs: number;
+  /** Budget for the whole set in seconds, or null when the set is unlimited. */
+  overallTimeLimitSeconds: number | null;
+  /**
+   * Spent against that budget: every finished question's duration plus the live time on this one.
+   * A sum rather than wall-clock, so a paused session or a closed laptop costs nothing.
+   */
+  overallElapsedMs: number;
   /** True once the server has stamped a first interaction, so a refresh does not re-ping. */
   firstInteractionRecorded: boolean;
 };
@@ -458,6 +505,8 @@ type ReviewBase = QuestionTiming & {
   warmup: boolean;
   /** Declined rather than answered. Scored 0, and labelled as skipped on the review. */
   skipped: boolean;
+  /** Never answered because the overall budget ran out. Scored 0, and labelled separately. */
+  timedOut: boolean;
 };
 
 export type FillReview = ReviewBase & {

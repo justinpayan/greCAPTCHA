@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import { db } from "@/db";
 import { questionSets } from "@/db/schema";
@@ -44,6 +45,10 @@ export async function POST(request: Request) {
     const pdfEngine = pdfEngineSchema.parse(form.get("pdfEngine"));
     const randomize = form.get("randomize") === "true";
     const countdownHidden = form.get("countdownHidden") === "true";
+    const overallRaw = String(form.get("overallTimeLimitSeconds") ?? "").trim();
+    const overallTimeLimitSeconds = overallRaw
+      ? z.number().int().min(30).max(21_600).parse(Number(overallRaw))
+      : null;
     const blocks = generationConfigSchema.parse(
       JSON.parse(String(form.get("blocks") ?? "[]")),
     );
@@ -98,6 +103,7 @@ export async function POST(request: Request) {
       contributions,
       modelId,
       pdfEngine: effectivePdfEngine,
+      overallTimeLimitSeconds,
       configJson: JSON.stringify(blocks),
       questionsJson: JSON.stringify(questions),
       createdAt: new Date().toISOString(),

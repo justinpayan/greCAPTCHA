@@ -195,6 +195,7 @@ export async function createExperiment(input: {
       randomize: input.randomize,
       countdownHidden: input.countdownHidden,
       linkEnabled: false,
+      overallTimeLimitSeconds: set.overallTimeLimitSeconds,
       questionOrderJson: JSON.stringify(questionOrder(set, input.randomize)),
       currentIndex: 0,
       status: "active",

@@ -236,12 +236,34 @@ function QuestionTimer({
   );
 }
 
-function ReviewTiming({ timing }: { timing: QuestionTiming & { skipped?: boolean } }) {
-  // "Answered in 4s" would misdescribe a question the participant declined.
+/**
+ * Countdown for the whole set. Unlike the per-question timer this one is enforced, so reaching
+ * zero asks the server to close the attempt — the server checks the budget itself and is free to
+ * disagree.
+ */
+function OverallTimer({ remainingMs }: { remainingMs: number }) {
+  const low = remainingMs <= 60_000;
+  return (
+    <div className={`question-timer overall-timer ${low ? "over" : ""}`}>
+      {formatClock(Math.max(0, remainingMs))} left for the set
+    </div>
+  );
+}
+
+function ReviewTiming({
+  timing,
+}: {
+  timing: QuestionTiming & { skipped?: boolean; timedOut?: boolean };
+}) {
+  // "Answered in 4s" would misdescribe a question the participant declined or never reached.
   const parts = [
-    timing.skipped
-      ? `Skipped after ${formatDuration(timing.durationMs)}`
-      : `Answered in ${formatDuration(timing.durationMs)}`,
+    timing.timedOut
+      ? timing.durationMs
+        ? `Open for ${formatDuration(timing.durationMs)} when time ran out`
+        : "Not reached before time ran out"
+      : timing.skipped
+        ? `Skipped after ${formatDuration(timing.durationMs)}`
+        : `Answered in ${formatDuration(timing.durationMs)}`,
   ];
   if (timing.firstInteractionMs !== null) {
     parts.push(`first input after ${formatDuration(timing.firstInteractionMs)}`);
@@ -304,6 +326,7 @@ export function ResultSections({
                 </span>
                 {review.warmup && <span className="pill">Warm-up · not counted</span>}
                 {review.skipped && <span className="pill skipped">Skipped</span>}
+                {review.timedOut && <span className="pill skipped">Out of time</span>}
               </span>
               <span>{Math.round(review.score * 10) / 10}%</span>
             </header>
@@ -330,6 +353,8 @@ export function ResultSections({
                             <MathText text={blank.selectedAnswer} />
                           ) : review.skipped ? (
                             "Skipped"
+                          ) : review.timedOut ? (
+                            "Out of time"
                           ) : (
                             "No answer"
                           )}
@@ -398,6 +423,8 @@ export function ResultSections({
                   <p>
                     {review.skipped ? (
                       "Skipped — no response was submitted."
+                    ) : review.timedOut ? (
+                      "Not answered — the overall time limit ran out."
                     ) : (
                       <MathText text={review.response} />
                     )}
@@ -472,18 +499,31 @@ export function QuizWorkspace({
   const [error, setError] = useState("");
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [elapsedMs, setElapsedMs] = useState(initialAttempt.elapsedMs);
+  const [overallElapsedMs, setOverallElapsedMs] = useState(initialAttempt.overallElapsedMs);
   const interactionReported = useRef(initialAttempt.firstInteractionRecorded);
+  const timeoutFired = useRef(false);
   const question = attempt.question;
+  const overallLimitMs =
+    attempt.overallTimeLimitSeconds === null ? null : attempt.overallTimeLimitSeconds * 1000;
+  const overallRemainingMs = overallLimitMs === null ? null : overallLimitMs - overallElapsedMs;
 
   // The server tells us how long this question has already been open, so the display
   // resumes correctly after a refresh instead of restarting at zero.
   useEffect(() => {
     const servedAt = Date.now() - attempt.elapsedMs;
+    const overallBase = attempt.overallElapsedMs - attempt.elapsedMs;
     setElapsedMs(attempt.elapsedMs);
+    setOverallElapsedMs(attempt.overallElapsedMs);
     interactionReported.current = attempt.firstInteractionRecorded;
-    // Nothing renders the clock when it is hidden, so do not re-render once a second.
-    if (attempt.countdownHidden) return;
-    const ticker = window.setInterval(() => setElapsedMs(Date.now() - servedAt), 1000);
+    timeoutFired.current = false;
+    // The overall limit is enforced, so its clock has to run even when the display is hidden —
+    // otherwise hiding the countdown would quietly disable the limit.
+    if (attempt.countdownHidden && attempt.overallTimeLimitSeconds === null) return;
+    const ticker = window.setInterval(() => {
+      const onThisQuestion = Date.now() - servedAt;
+      setElapsedMs(onThisQuestion);
+      setOverallElapsedMs(overallBase + onThisQuestion);
+    }, 1000);
     return () => window.clearInterval(ticker);
   }, [attempt]);
 
@@ -500,6 +540,49 @@ export function QuizWorkspace({
     }).catch(() => {
       // Telemetry only: a failed ping must never interrupt the attempt.
     });
+  }
+
+  /**
+   * Fires once when the budget runs out. An answer already entered is submitted first, so the bell
+   * does not discard work; otherwise the server is asked to close the attempt. Guarded by a ref so
+   * a slow round trip cannot fire it twice.
+   */
+  useEffect(() => {
+    if (overallRemainingMs === null || overallRemainingMs > 0) return;
+    if (timeoutFired.current || submitting || result) return;
+    timeoutFired.current = true;
+    void closeOnTimeout();
+    // closeOnTimeout is stable for this render and reads the current answer state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overallRemainingMs, submitting, result]);
+
+  async function closeOnTimeout() {
+    if (answerComplete) {
+      await submitCurrentAnswer();
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/attempts/${attempt.attemptId}/timeout`, {
+        method: "POST",
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to close the assessment.");
+      if (payload.result) {
+        const graded = payload.result as AssessmentResult;
+        if (onFinish) onFinish(graded);
+        else setResult(graded);
+      } else if (payload.attempt) {
+        // The server disagreed that time was up; carry on from what it served.
+        setAttempt(payload.attempt as AttemptView);
+        timeoutFired.current = false;
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to close the assessment.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   const answerComplete =
@@ -578,6 +661,9 @@ export function QuizWorkspace({
               elapsedMs={elapsedMs}
               timeLimitSeconds={question.timeLimitSeconds ?? null}
             />
+          )}
+          {!attempt.countdownHidden && overallRemainingMs !== null && (
+            <OverallTimer remainingMs={overallRemainingMs} />
           )}
         </div>
       </header>

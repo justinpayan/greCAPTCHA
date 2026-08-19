@@ -72,6 +72,12 @@ export function AttemptIntroPage({
               cuts you off and nothing is taken away.
             </li>
           )}
+          {intro.overallTimeLimitSeconds !== null && (
+            <li>
+              You have {Math.round(intro.overallTimeLimitSeconds / 60)} minutes for the whole set.
+              When that runs out the assessment ends and anything unanswered is left unanswered.
+            </li>
+          )}
           <li>
             {mentionTiming
               ? "Timing begins when you press Start, so take as long as you need on this page."

@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ParticipantId } from "@/components/participant-id";
+import { SetOverview } from "@/components/set-overview";
 import {
   loadAttemptEntry,
   serveAttempt,
@@ -26,6 +27,7 @@ import {
   type ExperimentAllocation,
   type ExperimentListEntry,
   type QuestionSetListEntry,
+  type QuestionSetOverview,
   type PdfEngine,
   type QuestionBlockConfig,
   type StudyTemplateConfig,
@@ -158,6 +160,8 @@ export function ResearchCaptcha() {
   ]);
   const [randomize, setRandomize] = useState(false);
   const [countdownHidden, setCountdownHidden] = useState(false);
+  /** Whole minutes in the form, seconds in the data. Empty means no overall limit. */
+  const [overallLimitMinutes, setOverallLimitMinutes] = useState("");
   const [loadingModels, setLoadingModels] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
@@ -172,8 +176,8 @@ export function ResearchCaptcha() {
   const [catalogSearch, setCatalogSearch] = useState("");
   /** Attempt whose link is mid-update, so only that row's button shows a pending state. */
   const [togglingLinkId, setTogglingLinkId] = useState("");
-  const [renamingId, setRenamingId] = useState("");
-  const [renameValue, setRenameValue] = useState("");
+  /** The set whose overview is open. Replaces the old inline rename in the list. */
+  const [setOverview, setSetOverview] = useState<QuestionSetOverview | null>(null);
   const [experiments, setExperiments] = useState<ExperimentListEntry[]>([]);
   const [allocation, setAllocation] = useState<ExperimentAllocation | null>(null);
   const [ownSetId, setOwnSetId] = useState("");
@@ -214,8 +218,11 @@ export function ResearchCaptcha() {
       blocks,
       randomize,
       countdownHidden,
+      overallTimeLimitSeconds: overallLimitMinutes
+        ? Number(overallLimitMinutes) * 60
+        : null,
     }),
-    [selectedModel, pdfEngine, blocks, randomize, countdownHidden],
+    [selectedModel, pdfEngine, blocks, randomize, countdownHidden, overallLimitMinutes],
   );
 
   function applyConfig(config: StudyTemplateConfig, catalog: CatalogModel[]) {
@@ -223,6 +230,9 @@ export function ResearchCaptcha() {
     setBlocks(config.blocks);
     setRandomize(config.randomize);
     setCountdownHidden(config.countdownHidden);
+    setOverallLimitMinutes(
+      config.overallTimeLimitSeconds ? String(Math.round(config.overallTimeLimitSeconds / 60)) : "",
+    );
     const match = catalog.find((model) => model.id === config.modelId);
     if (match) {
       setSelectedModel(match);
@@ -701,20 +711,20 @@ export function ResearchCaptcha() {
     }
   }
 
-  async function commitRename(id: string) {
-    const next = renameValue;
-    setRenamingId("");
+  /** Opens a saved set's contents without creating an attempt to see them. */
+  async function showSetOverview(id: string) {
+    setWorking(true);
+    setError("");
     try {
-      const response = await fetch(`/api/question-sets/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: next }),
-      });
+      const response = await fetch(`/api/question-sets/${encodeURIComponent(id)}`);
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "Unable to rename the set.");
-      await refreshCatalog();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to load the set.");
+      setSetOverview(payload.overview as QuestionSetOverview);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to rename the set.");
+      setError(caught instanceof Error ? caught.message : "Unable to load the set.");
+    } finally {
+      setWorking(false);
     }
   }
 
@@ -838,6 +848,10 @@ export function ResearchCaptcha() {
     form.set("blocks", JSON.stringify(blocks));
     form.set("randomize", String(randomize));
     form.set("countdownHidden", String(countdownHidden));
+    form.set(
+      "overallTimeLimitSeconds",
+      overallLimitMinutes ? String(Number(overallLimitMinutes) * 60) : "",
+    );
     form.set("name", setName);
     try {
       const response = await fetch("/api/question-sets", { method: "POST", body: form });
@@ -908,6 +922,33 @@ export function ResearchCaptcha() {
         key={attempt.attemptId}
         initialAttempt={attempt}
         onFinish={chain.current ? (graded) => void advanceChain(graded) : undefined}
+      />
+    );
+  }
+  if (setOverview) {
+    return (
+      <SetOverview
+        overview={setOverview}
+        onSaved={({ name, overallTimeLimitSeconds }) => {
+          // Keep the open page and the list behind it in step without a refetch of either.
+          setSetOverview((current) =>
+            current
+              ? { ...current, name, label: name || current.paperName, overallTimeLimitSeconds }
+              : current,
+          );
+          setSavedSets((current) =>
+            current.map((entry) =>
+              entry.id === setOverview.id
+                ? { ...entry, name, label: name || entry.paperName }
+                : entry,
+            ),
+          );
+        }}
+        onBack={() => {
+          setSetOverview(null);
+          void refreshCatalog();
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
       />
     );
   }
@@ -1347,23 +1388,7 @@ export function ResearchCaptcha() {
                 {visibleSets.map((set) => (
                   <article className="catalog-row" key={set.id}>
                     <div className="catalog-main">
-                      {renamingId === set.id ? (
-                        <input
-                          className="control catalog-rename"
-                          value={renameValue}
-                          autoFocus
-                          maxLength={120}
-                          placeholder={set.paperName}
-                          onChange={(event) => setRenameValue(event.target.value)}
-                          onBlur={() => void commitRename(set.id)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") void commitRename(set.id);
-                            if (event.key === "Escape") setRenamingId("");
-                          }}
-                        />
-                      ) : (
-                        <strong>{set.label}</strong>
-                      )}
+                      <strong>{set.label}</strong>
                       <span className="catalog-meta">
                         {set.paperName} · {set.questionCount}{" "}
                         {set.questionCount === 1 ? "question" : "questions"} ·{" "}
@@ -1380,12 +1405,10 @@ export function ResearchCaptcha() {
                       <button
                         className="secondary"
                         type="button"
-                        onClick={() => {
-                          setRenamingId(set.id);
-                          setRenameValue(set.name);
-                        }}
+                        disabled={working}
+                        onClick={() => void showSetOverview(set.id)}
                       >
-                        Rename
+                        Overview
                       </button>
                       <button
                         className="secondary danger"
@@ -1618,6 +1641,25 @@ export function ResearchCaptcha() {
                 <option value="cloudflare-ai">Cloudflare AI — free extraction</option>
                 <option value="mistral-ocr">Mistral OCR — paid, best for scans</option>
               </select>
+            </div>
+
+            <div className="field">
+              <label htmlFor="overallLimit">
+                Overall time limit
+                <span className="label-note">minutes</span>
+                <FieldHint text="Enforced, unlike the per-card soft limits: once the budget is spent no further question is served and the attempt is graded. Counts the time questions were actually open, so pausing a session costs nothing. Leave blank for no limit." />
+              </label>
+              <input
+                className="control"
+                id="overallLimit"
+                type="number"
+                min={1}
+                max={360}
+                step={1}
+                value={overallLimitMinutes}
+                placeholder="No limit"
+                onChange={(event) => setOverallLimitMinutes(event.target.value)}
+              />
             </div>
 
             <div className="toggle-group full">

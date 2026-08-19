@@ -1,14 +1,18 @@
 import "server-only";
 
-import { count, desc, eq, isNotNull, or } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
 
 import { db } from "@/db";
 import { attemptAnswers, attempts, experiments, questionSets } from "@/db/schema";
-import type {
-  AttemptCondition,
-  AttemptListEntry,
-  QuestionSetListEntry,
-  StoredQuestion,
+import {
+  isWarmup,
+  questionBlockName,
+  questionTimeLimit,
+  type AttemptCondition,
+  type AttemptListEntry,
+  type QuestionSetListEntry,
+  type QuestionSetOverview,
+  type StoredQuestion,
 } from "@/lib/quiz";
 
 const LIST_LIMIT = 200;
@@ -58,6 +62,52 @@ export async function listQuestionSets(): Promise<QuestionSetListEntry[]> {
   }));
 }
 
+/**
+ * A saved set's contents, without creating an attempt to see them.
+ *
+ * The plan page can only show a set's items once an attempt exists, which made inspecting a bank
+ * cost an attempt. Items come back in generation order — warm-ups only move to the front when an
+ * attempt is built, so this is the set as stored rather than as it will be asked.
+ */
+export async function getQuestionSetOverview(id: string): Promise<QuestionSetOverview> {
+  const set = await db.select().from(questionSets).where(eq(questionSets.id, id)).get();
+  if (!set) throw new Error("Question set not found.");
+
+  const attemptTotal = await db
+    .select({ total: count() })
+    .from(attempts)
+    .where(eq(attempts.questionSetId, id))
+    .get();
+  const experimentUses = await db
+    .select({ total: count() })
+    .from(experiments)
+    .where(or(eq(experiments.ownQuestionSetId, id), eq(experiments.foreignQuestionSetId, id)))
+    .get();
+
+  const questions = JSON.parse(set.questionsJson) as StoredQuestion[];
+  return {
+    id: set.id,
+    name: set.name?.trim() ?? "",
+    label: questionSetLabel(set.name, set.paperName),
+    paperName: set.paperName,
+    modelId: set.modelId,
+    pdfEngine: set.pdfEngine,
+    overallTimeLimitSeconds: set.overallTimeLimitSeconds,
+    attemptCount: attemptTotal?.total ?? 0,
+    experimentCount: experimentUses?.total ?? 0,
+    createdAt: set.createdAt,
+    items: questions.map((question, index) => ({
+      position: index + 1,
+      questionId: question.id,
+      type: question.type,
+      blockName: questionBlockName(question),
+      description: question.description?.trim() ?? "",
+      timeLimitSeconds: questionTimeLimit(question),
+      warmup: isWarmup(question),
+    })),
+  };
+}
+
 export async function renameQuestionSet(id: string, name: string) {
   const trimmed = name.trim();
   if (trimmed.length > 120) throw new Error("Set names are limited to 120 characters.");
@@ -68,6 +118,57 @@ export async function renameQuestionSet(id: string, name: string) {
     .run();
   if (result.changes !== 1) throw new Error("Question set not found.");
   return trimmed;
+}
+
+/**
+ * Changes a set's overall time limit after generation.
+ *
+ * Also applies it to attempts on the set that **have not started** — one prepared the night before
+ * would otherwise keep the budget it was created with, and an edit made the morning of a session
+ * would silently do nothing for the very attempts about to be run.
+ *
+ * An attempt already under way is never re-budgeted. That is the whole point of snapshotting the
+ * limit onto the attempt: someone answering question four should not have their remaining time
+ * change underneath them, in either direction.
+ */
+export async function setQuestionSetOverallLimit(
+  id: string,
+  seconds: number | null,
+): Promise<{ overallTimeLimitSeconds: number | null; attemptsUpdated: number }> {
+  if (seconds !== null && (!Number.isInteger(seconds) || seconds < 30 || seconds > 21_600)) {
+    throw new Error("An overall limit must be between 30 seconds and 6 hours.");
+  }
+
+  const updated = await db
+    .update(questionSets)
+    .set({ overallTimeLimitSeconds: seconds })
+    .where(eq(questionSets.id, id))
+    .run();
+  if (updated.changes !== 1) throw new Error("Question set not found.");
+
+  const active = await db
+    .select({ id: attempts.id })
+    .from(attempts)
+    .where(and(eq(attempts.questionSetId, id), eq(attempts.status, "active")));
+  if (active.length === 0) return { overallTimeLimitSeconds: seconds, attemptsUpdated: 0 };
+
+  const startedIds = new Set(
+    (
+      await db
+        .select({ attemptId: attemptAnswers.attemptId })
+        .from(attemptAnswers)
+        .where(inArray(attemptAnswers.attemptId, active.map((row) => row.id)))
+    ).map((row) => row.attemptId),
+  );
+  const unstarted = active.filter((row) => !startedIds.has(row.id)).map((row) => row.id);
+  if (unstarted.length === 0) return { overallTimeLimitSeconds: seconds, attemptsUpdated: 0 };
+
+  await db
+    .update(attempts)
+    .set({ overallTimeLimitSeconds: seconds })
+    .where(inArray(attempts.id, unstarted))
+    .run();
+  return { overallTimeLimitSeconds: seconds, attemptsUpdated: unstarted.length };
 }
 
 /**

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { AttemptClosedError, requireOpenAttempt } from "@/lib/attempt-access";
+import { closeForTimeout, overallBudget } from "@/lib/attempt-close";
 import { getAttemptState } from "@/lib/attempts";
 import { deleteAttempt, setAttemptLinkEnabled } from "@/lib/catalog";
 
@@ -32,6 +33,12 @@ export async function GET(
   try {
     const { id } = await context.params;
     await requireOpenAttempt(id);
+    // No further question is served once the overall budget is spent. Checked here rather than
+    // inside getAttemptState, which would stamp a clock start before anyone noticed.
+    const budget = await overallBudget(id);
+    if (budget.exhausted) {
+      return NextResponse.json({ result: await closeForTimeout(id) });
+    }
     return NextResponse.json(await getAttemptState(id));
   } catch (error) {
     return errorResponse(error, "Unable to load attempt.");

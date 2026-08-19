@@ -62,6 +62,7 @@ export async function createAttempt(input: {
   await db.insert(attempts).values({
     id,
     questionSetId: input.questionSetId,
+    overallTimeLimitSeconds: set.overallTimeLimitSeconds,
     randomize: input.randomize,
     countdownHidden: input.countdownHidden,
     linkEnabled: false,
@@ -71,6 +72,23 @@ export async function createAttempt(input: {
     createdAt: new Date().toISOString(),
   });
   return { attemptId: id };
+}
+
+/**
+ * Time spent against an attempt's overall budget.
+ *
+ * A sum of per-question durations rather than wall-clock from the first question: a session that
+ * was paused by disabling its link, a reload, or a closed laptop then costs nothing. The question
+ * currently open contributes the time it has been open so far, so the figure ticks live.
+ */
+export function attemptElapsedMs(
+  answers: Array<{ startedAt: string; submittedAt: string | null; durationMs: number | null }>,
+): number {
+  const now = Date.now();
+  return answers.reduce((total, answer) => {
+    if (answer.submittedAt) return total + (answer.durationMs ?? 0);
+    return total + Math.max(0, now - new Date(answer.startedAt).getTime());
+  }, 0);
 }
 
 /** Which block an experiment's attempt is, from its condition and the counterbalanced order. */
@@ -146,6 +164,14 @@ export async function getAttemptState(
     .run();
 
   const answerRow = await getCurrentAnswer(attemptId, questionId);
+  const allAnswers = await db
+    .select({
+      startedAt: attemptAnswers.startedAt,
+      submittedAt: attemptAnswers.submittedAt,
+      durationMs: attemptAnswers.durationMs,
+    })
+    .from(attemptAnswers)
+    .where(eq(attemptAnswers.attemptId, attemptId));
 
   return {
     attempt: {
@@ -160,6 +186,8 @@ export async function getAttemptState(
         ? Math.max(0, Date.now() - new Date(answerRow.startedAt).getTime())
         : 0,
       firstInteractionRecorded: Boolean(answerRow?.firstInteractionAt),
+      overallTimeLimitSeconds: attempt.overallTimeLimitSeconds,
+      overallElapsedMs: attemptElapsedMs(allAnswers),
     },
   };
 }
@@ -174,10 +202,13 @@ export async function getAttemptState(
 export async function getAttemptIntro(attemptId: string): Promise<AttemptIntro> {
   const quiz = await loadAttemptContextLoose(attemptId);
   const served = await db
-    .select({ id: attemptAnswers.id })
+    .select({
+      startedAt: attemptAnswers.startedAt,
+      submittedAt: attemptAnswers.submittedAt,
+      durationMs: attemptAnswers.durationMs,
+    })
     .from(attemptAnswers)
-    .where(eq(attemptAnswers.attemptId, attemptId))
-    .limit(1);
+    .where(eq(attemptAnswers.attemptId, attemptId));
 
   const inOrder = quiz.order
     .map((questionId) => quiz.questionById.get(questionId))
@@ -187,6 +218,7 @@ export async function getAttemptIntro(attemptId: string): Promise<AttemptIntro> 
     attemptId,
     totalQuestions: quiz.order.length,
     timedQuestionCount: inOrder.filter((question) => questionTimeLimit(question) !== null).length,
+    overallTimeLimitSeconds: quiz.attempt.overallTimeLimitSeconds,
     started: served.length > 0,
     status: quiz.attempt.status,
     countdownHidden: quiz.attempt.countdownHidden,
@@ -314,13 +346,18 @@ export function buildResult(input: {
     if (!question || !answer || answer.score === null) {
       throw new Error("Attempt grading is incomplete.");
     }
-    const timing: QuestionTiming & { warmup: boolean; skipped: boolean } = {
+    const timing: QuestionTiming & {
+      warmup: boolean;
+      skipped: boolean;
+      timedOut: boolean;
+    } = {
       durationMs: answer.durationMs ?? 0,
       firstInteractionMs: answer.firstInteractionMs ?? null,
       timeLimitSeconds: answer.timeLimitSeconds ?? null,
       overrunMs: answer.overrunMs ?? null,
       warmup: isWarmup(question),
       skipped: answer.skipped,
+      timedOut: answer.timedOut,
     };
     if (question.type === "fill_blank") {
       const feedback = JSON.parse(answer.feedbackJson ?? "{}") as {

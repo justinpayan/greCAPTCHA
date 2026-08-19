@@ -27,13 +27,14 @@ export async function finalizeAttempt(input: Awaited<ReturnType<typeof loadAttem
   }
 
   for (const blockQuestions of freeByBlock.values()) {
-    // A skipped question already holds its score and feedback from the submission, so it is
-    // withheld from the grader: an empty response marked against a rubric is a wasted call and
-    // an invitation to award partial credit for nothing. A block that was skipped outright
-    // makes no request at all.
-    const questions = blockQuestions.filter(
-      (question) => !answerByQuestion.get(question.id)?.skipped,
-    );
+    // A skipped question, or one the overall budget never reached, already holds its score and
+    // feedback, so it is withheld from the grader: an empty response marked against a rubric is
+    // a wasted call and an invitation to award partial credit for nothing. A block with nothing
+    // gradable makes no request at all.
+    const questions = blockQuestions.filter((question) => {
+      const answer = answerByQuestion.get(question.id);
+      return !answer?.skipped && !answer?.timedOut;
+    });
     if (questions.length === 0) continue;
 
     const responses: Record<string, string> = {};

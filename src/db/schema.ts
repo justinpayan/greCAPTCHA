@@ -36,6 +36,11 @@ export const questionSets = sqliteTable("question_sets", {
   contributions: text("contributions").notNull(),
   modelId: text("model_id").notNull(),
   pdfEngine: text("pdf_engine").notNull(),
+  /**
+    * Budget for the whole set, in seconds, or null for no overall limit. Unlike the per-question
+    * soft limits this one is enforced: once it is spent no further question is served.
+    */
+  overallTimeLimitSeconds: integer("overall_time_limit_seconds"),
   configJson: text("config_json").notNull(),
   questionsJson: text("questions_json").notNull(),
   createdAt: text("created_at").notNull(),
@@ -105,6 +110,12 @@ export const attempts = sqliteTable(
     countdownHidden: integer("countdown_hidden", { mode: "boolean" })
       .notNull()
       .default(false),
+    /**
+     * Snapshotted from the question set at creation, for the same reason the per-question limit
+     * is snapshotted onto each answer: editing a set must not change the budget of an attempt
+     * that is already under way.
+     */
+    overallTimeLimitSeconds: integer("overall_time_limit_seconds"),
     questionOrderJson: text("question_order_json").notNull(),
     currentIndex: integer("current_index").notNull().default(0),
     status: text("status").notNull().default("active"),
@@ -139,6 +150,12 @@ export const attemptAnswers = sqliteTable(
      * the former. `answer_json` is null on a skipped row.
      */
     skipped: integer("skipped", { mode: "boolean" }).notNull().default(false),
+    /**
+     * The overall budget ran out before this question was answered. Scored 0 like a skip, but
+     * recorded apart from it: "ran out of time" and "declined to answer" are different
+     * behaviours, and a per-family analysis that merged them would be misled.
+     */
+    timedOut: integer("timed_out", { mode: "boolean" }).notNull().default(false),
     startedAt: text("started_at").notNull(),
     firstInteractionAt: text("first_interaction_at"),
     firstInteractionMs: integer("first_interaction_ms"),

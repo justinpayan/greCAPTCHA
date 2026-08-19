@@ -27,8 +27,8 @@ const PARTICIPANT_EXPERIMENT_PAGE = /^\/experiment\/[^/]+$/;
  */
 const PARTICIPANT_EXPERIMENT_SESSION = /^\/api\/experiments\/[^/]+\/session$/;
 
-/** `/api/attempts/<id>/answers` and `/interaction`. */
-const PARTICIPANT_WRITE = /^\/api\/attempts\/[^/]+\/(?:answers|interaction)$/;
+/** `/api/attempts/<id>/answers`, `/interaction` and `/timeout`. */
+const PARTICIPANT_WRITE = /^\/api\/attempts\/[^/]+\/(?:answers|interaction|timeout)$/;
 
 const ALWAYS_OPEN = new Set(["/login", "/api/session", "/api/health"]);
 

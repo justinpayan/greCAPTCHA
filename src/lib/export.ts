@@ -54,6 +54,8 @@ const COLUMNS = [
   // A skip scores 0 like a wrong answer, so without this column the two are indistinguishable
   // in the data — and declining a question is a different behaviour from getting it wrong.
   "skipped",
+  // Distinct from `skipped`: the overall limit ran out before this question was answered.
+  "timed_out",
   "response",
   "correct_answer",
   "correct",
@@ -189,6 +191,7 @@ export async function buildAnswerCsv(): Promise<string> {
         answer.overrunMs,
         answer.score,
         answer.skipped,
+        answer.timedOut,
         described.response,
         described.correctAnswer,
         described.correct,

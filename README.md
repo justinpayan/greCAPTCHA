@@ -32,6 +32,8 @@ fresh, sequential attempts with rubric-based feedback.
 - Locked one-question-at-a-time progression with server-recorded elapsed time
 - Per-question soft time limits and timing telemetry: time to first interaction,
   total duration, and overrun against the limit
+- An enforced overall time limit per question set, measured as the sum of question
+  durations so a paused session costs nothing
 - Per-attempt option to hide the on-screen countdown while still recording timing
 - Deterministic fill-in-the-blank and multiple-choice grading, LLM rubric grading
   for free response
@@ -118,6 +120,29 @@ it has already produced, and its model — with a search box filtering on any of
 one to start a fresh attempt with its own answers, timings, scores, and optional randomized
 order. **Resume attempt** shows every attempt with its progress, status, and score, and
 reopens one exactly where it was left.
+
+Each saved set carries an **Overview** button, which opens the set's contents without creating an
+attempt to see them. It lists every item with its type, card name, soft limit, warm-up marker and
+generated description, alongside the set's model, extractor, overall limit, attempt and experiment
+counts, and the date it was generated. Items appear in stored order — warm-ups only move to the
+front when an attempt is built, and the rest are shuffled only if that attempt randomizes them.
+
+**Renaming happens on that page**, in a Set name field, rather than as an inline edit in the list:
+inspecting a set and naming it are the same act, and the old inline rename gave no way to see what
+you were naming. Leaving the field blank falls back to the PDF filename. Renaming touches nothing
+else — the questions, every attempt on the set and their answers are unaffected.
+
+**The overall time limit is editable there too**, in minutes, so a ceiling can be set or changed
+after the bank was generated rather than only on the generation screen. One **Save changes** button
+sends whichever of the two fields actually changed, so saving a name cannot clear a limit or the
+reverse.
+
+Changing the limit also applies it to attempts on the set that **have not started** — one prepared
+the night before would otherwise keep the budget it was created with, and an edit made on the
+morning of a session would silently do nothing for the attempts about to be run. An attempt already
+under way keeps the budget it began with, because someone answering question four should not have
+their remaining time change underneath them. The confirmation says which happened, for instance
+*"Overall limit set to 12 minutes. Also applied to 2 attempts that have not started."*
 
 Both lists carry a **Delete** button per row, each asking for confirmation first. Deleting
 an attempt removes its answers and timings and keeps the question set. Deleting a set
@@ -531,6 +556,39 @@ Four values are recorded per question, all stamped by the server:
 | `time_limit_seconds` | The soft limit in force when the question was served, or null if untimed |
 | `overrun_ms` | Milliseconds beyond the limit, `0` if within it, null if untimed |
 
+### The overall time limit
+
+The generation screen takes an **Overall time limit** in whole minutes, stored on the question set
+and snapshotted onto each attempt at creation, so editing a set never changes the budget of an
+attempt already under way. Leave it blank for no limit. It travels in study set templates, so one
+template carries the same ceiling across every participant's paper.
+
+Unlike the per-question soft limits, **this one is enforced**. The rule is that no further question
+is served once the budget is spent:
+
+| Moment | What happens |
+| --- | --- |
+| An answer is submitted that spends the budget | The answer counts, then the attempt closes and grades |
+| The budget is spent while a question sits open | The countdown closes the attempt; that question keeps the time it had accumulated |
+| A question is requested with the budget already spent | The attempt closes instead of serving it |
+
+An answer already entered is never snatched back — the bell stops the assessment moving on, it
+does not discard work. Anything not answered is recorded **timed out**: scored 0, but flagged
+separately from a skip, because "ran out of time" and "declined to answer" are different behaviours
+and merging them would mislead §10's per-family analysis. The review labels those items *Out of
+time* and the CSV carries a `timed_out` column.
+
+**Elapsed time is the sum of the per-question durations**, not wall-clock from the first question.
+The consequence is worth knowing: pausing a session by disabling its link costs nothing against the
+budget, and neither does a reload or a closed laptop. In ordinary use the two measures agree within
+a second or two, since one question is served the instant the last is submitted.
+
+Enforcement is server-side. The participant's countdown only asks the server to close promptly; the
+server re-checks the budget and hands back the current question if the client fired early, so a
+wrong clock or a replayed request cannot end an assessment. A participant who closes the tab is
+closed out on their next request instead. That also means hiding the on-screen countdown does not
+disable the limit — the clock still runs, it is only invisible.
+
 ### Hiding the countdown
 
 Both start screens carry a **Hide the on-screen countdown** toggle. Turning it on
@@ -743,8 +801,8 @@ experiment it belongs to if any (`participant_id`, `experiment_id`, `condition`,
 `block_position`, `foreign_stratum` — all empty for a standalone attempt), the item
 (`position`, `question_id`, `block_name`, `question_type`, `warmup`, `time_limit_seconds`),
 its timing (`started_at`, `first_interaction_at`, `first_interaction_ms`, `submitted_at`,
-`duration_ms`, `overrun_ms`), and the answer itself (`score`, `skipped`, `response`,
-`correct_answer`, `correct`, `grader_feedback`).
+`duration_ms`, `overrun_ms`), and the answer itself (`score`, `skipped`, `timed_out`,
+`response`, `correct_answer`, `correct`, `grader_feedback`).
 
 `response` is the submitted free-response text, the chosen option's label, or the chosen
 label per blank. Fields are RFC 4180 quoted, so commas, quotation marks, and newlines inside

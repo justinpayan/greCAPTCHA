@@ -691,6 +691,12 @@ textarea.control {
   overflow-y: hidden;
 }
 
+/* The set-level countdown. Enforced, unlike the per-question one, so it is given a heavier
+   weight and turns amber in its last minute. */
+.overall-timer {
+  font-weight: 760;
+}
+
 /* Landing page before a question set. Nothing is timed while this is on screen. */
 .intro-card {
   max-width: 620px;
@@ -926,13 +932,29 @@ textarea.control {
   background: var(--danger);
 }
 
-.catalog-rename {
-  min-height: 40px;
-  padding: 8px 12px;
-}
-
 .catalog-empty {
   margin: 4px 0;
+}
+
+.set-save-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+/* Set-level facts on the overview: a quiet row, not a table, since none of it is per-item. */
+.set-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.set-facts strong {
+  color: var(--ink);
+  font-weight: 720;
 }
 
 .summary-notice {

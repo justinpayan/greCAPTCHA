@@ -4,13 +4,11 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { attemptAnswers, attempts } from "@/db/schema";
 import { AttemptClosedError, requireOpenAttempt } from "@/lib/attempt-access";
+import { closeForTimeout, overallBudget } from "@/lib/attempt-close";
 import { getAttemptState, getCurrentAnswer, loadAttemptContext } from "@/lib/attempts";
 import { finalizeAttempt } from "@/lib/grading";
-import {
-  answerSubmissionSchema,
-  type FillReview,
-  type StoredQuestion,
-} from "@/lib/quiz";
+import { noCreditFeedbackJson } from "@/lib/no-credit";
+import { answerSubmissionSchema, type FillReview } from "@/lib/quiz";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -19,27 +17,6 @@ function normalizeAnswer(value: string) {
   return value.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US");
 }
 
-/**
- * Feedback for a declined question, in the shape its type's review expects.
- *
- * Free-response skips carry their feedback from here rather than from the grader: sending an
- * empty response to be marked against a rubric wastes a call and invites the model to invent a
- * partial credit for nothing.
- */
-function skipFeedbackJson(question: StoredQuestion): string {
-  if (question.type === "fill_blank") {
-    return JSON.stringify({
-      blanks: question.blanks.map((blank) => ({
-        blankId: blank.id,
-        selectedAnswer: null,
-        correctAnswer: blank.answer,
-        correct: false,
-      })),
-    });
-  }
-  if (question.type === "multiple_choice") return JSON.stringify({ correct: false });
-  return JSON.stringify({ feedback: "Skipped. No response was submitted to grade." });
-}
 
 export async function POST(
   request: Request,
@@ -96,7 +73,10 @@ export async function POST(
       // question the same way it renders any other — with the key visible — rather than
       // needing a separate empty state per question type. `answer_json` stays null.
       score = 0;
-      feedbackJson = skipFeedbackJson(quiz.currentQuestion);
+      feedbackJson = noCreditFeedbackJson(
+        quiz.currentQuestion,
+        "Skipped. No response was submitted to grade.",
+      );
     } else if (quiz.currentQuestion.type === "fill_blank" && submission.type === "fill_blank") {
       // Bind the narrowed question to a const so the type survives into the callback below.
       const fillQuestion = quiz.currentQuestion;
@@ -162,6 +142,12 @@ export async function POST(
 
     if (isFinalQuestion) {
       return NextResponse.json({ result: await finalizeAttempt(quiz) });
+    }
+
+    // The answer above counted; the bell does not snatch back work already entered. But if it
+    // spent the budget, the attempt closes here instead of serving another question.
+    if ((await overallBudget(id)).exhausted) {
+      return NextResponse.json({ result: await closeForTimeout(id) });
     }
 
     await db
