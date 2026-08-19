@@ -14,7 +14,10 @@ export async function GET() {
       listExperiments(),
       experimentAllocation(),
     ]);
-    return NextResponse.json({ experiments, allocation });
+    // Same source as the plan page's participant link: the researcher may be on localhost
+    // while participants reach the app through a tunnel.
+    const participantBaseUrl = (process.env.PUBLIC_BASE_URL ?? "").trim().replace(/\/+$/, "");
+    return NextResponse.json({ experiments, allocation, participantBaseUrl });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to list experiments.";
     return NextResponse.json({ error: message }, { status: 400 });

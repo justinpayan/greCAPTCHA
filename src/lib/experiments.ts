@@ -11,6 +11,7 @@ import {
   type ExperimentAllocation,
   type ExperimentAttempt,
   type ExperimentListEntry,
+  type ExperimentSessionPlan,
   type ForeignStratum,
   type StoredQuestion,
   isWarmup,
@@ -291,6 +292,36 @@ export async function listExperiments(): Promise<ExperimentListEntry[]> {
       attempts: attemptViews.sort((a, b) => a.blockPosition - b.blockPosition),
     };
   });
+}
+
+/**
+ * The block order behind a single chained participant link.
+ *
+ * Returns attempt IDs and positions only. Everything else the participant needs comes from the
+ * ordinary per-attempt endpoints, which gate themselves on their own link switch, so a chained
+ * link grants exactly what holding both individual links would.
+ */
+export async function getExperimentSession(id: string): Promise<ExperimentSessionPlan> {
+  const experiment = await db
+    .select()
+    .from(experiments)
+    .where(eq(experiments.id, id))
+    .get();
+  if (!experiment) throw new Error("Experiment not found.");
+
+  const rows = await db
+    .select({ id: attempts.id, condition: attempts.condition })
+    .from(attempts)
+    .where(eq(attempts.experimentId, id));
+
+  const blocks = rows
+    .map((row) => ({
+      attemptId: row.id,
+      position: (row.condition === "foreign") === experiment.foreignFirst ? 1 : 2,
+    }))
+    .sort((a, b) => a.position - b.position);
+
+  return { experimentId: id, blocks };
 }
 
 /** Submitted answers across both attempts, so a deletion can say what it destroys. */

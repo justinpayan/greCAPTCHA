@@ -12,6 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 
+import { MathText } from "@/components/quiz/math-text";
 import type {
   AssessmentResult,
   AttemptView,
@@ -61,7 +62,7 @@ function DraggableChoice({
       // After the spread: dnd-kit also sets aria-pressed, and the selection state wins.
       aria-pressed={selected}
     >
-      {choice.label}
+      <MathText text={choice.label} />
     </button>
   );
 }
@@ -84,7 +85,7 @@ function BlankSlot({
       onClick={onClear}
       aria-label={label ? `Filled with ${label}. Select to clear.` : "Empty answer blank"}
     >
-      {label ?? "Drop answer"}
+      {label ? <MathText text={label} /> : "Drop answer"}
     </button>
   );
 }
@@ -136,7 +137,9 @@ function FillQuestionEditor({
       <div className="question-copy">
         {question.segments.map((segment, index) =>
           segment.type === "text" ? (
-            <span key={`${index}-${segment.value}`}>{segment.value}</span>
+            <span key={`${index}-${segment.value}`}>
+              <MathText text={segment.value} />
+            </span>
           ) : (
             <BlankSlot
               key={segment.blankId}
@@ -175,7 +178,9 @@ function MultipleChoiceQuestion({
 }) {
   return (
     <div className="multiple-choice-question">
-      <h2>{question.prompt}</h2>
+      <h2>
+        <MathText text={question.prompt} />
+      </h2>
       <div className="option-list" role="radiogroup" aria-label="Answer options">
         {question.options.map((option) => (
           <button
@@ -186,7 +191,7 @@ function MultipleChoiceQuestion({
             aria-checked={selectedOptionId === option.id}
             onClick={() => onSelect(option.id)}
           >
-            {option.label}
+            <MathText text={option.label} />
           </button>
         ))}
       </div>
@@ -307,7 +312,11 @@ export function ResultSections({
               <div className="review-question-copy">
                 {review.segments.map((segment, segmentIndex) => {
                   if (segment.type === "text") {
-                    return <span key={`${segmentIndex}-${segment.value}`}>{segment.value}</span>;
+                    return (
+                      <span key={`${segmentIndex}-${segment.value}`}>
+                        <MathText text={segment.value} />
+                      </span>
+                    );
                   }
                   const blank = review.blanks.find(
                     (candidate) => candidate.blankId === segment.blankId,
@@ -317,12 +326,24 @@ export function ResultSections({
                       <span className="review-answer-row">
                         <small>Your answer</small>
                         <strong>
-                          {blank?.selectedAnswer ?? (review.skipped ? "Skipped" : "No answer")}
+                          {blank?.selectedAnswer ? (
+                            <MathText text={blank.selectedAnswer} />
+                          ) : review.skipped ? (
+                            "Skipped"
+                          ) : (
+                            "No answer"
+                          )}
                         </strong>
                       </span>
                       <span className="review-answer-row">
                         <small>Correct answer</small>
-                        <strong>{blank?.correctAnswer ?? "Unavailable"}</strong>
+                        <strong>
+                          {blank?.correctAnswer ? (
+                            <MathText text={blank.correctAnswer} />
+                          ) : (
+                            "Unavailable"
+                          )}
+                        </strong>
                       </span>
                     </span>
                   );
@@ -330,7 +351,9 @@ export function ResultSections({
               </div>
             ) : review.type === "multiple_choice" ? (
               <div className="free-review">
-                <h3>{review.prompt}</h3>
+                <h3>
+                  <MathText text={review.prompt} />
+                </h3>
                 <div className="option-list review-option-list">
                   {review.options.map((option) => {
                     const isCorrect = option.id === review.correctOptionId;
@@ -342,7 +365,9 @@ export function ResultSections({
                         }`}
                         key={option.id}
                       >
-                        <span>{option.label}</span>
+                        <span>
+                          <MathText text={option.label} />
+                        </span>
                         <small>
                           {isCorrect && isSelected
                             ? "Correct answer · your answer"
@@ -358,37 +383,49 @@ export function ResultSections({
                 </div>
                 <div>
                   <span className="review-label">Why</span>
-                  <p>{review.rationale}</p>
+                  <p>
+                    <MathText text={review.rationale} />
+                  </p>
                 </div>
               </div>
             ) : (
               <div className="free-review">
-                <h3>{review.prompt}</h3>
+                <h3>
+                  <MathText text={review.prompt} />
+                </h3>
                 <div>
                   <span className="review-label">Your response</span>
                   <p>
-                    {review.skipped
-                      ? "Skipped — no response was submitted."
-                      : review.response}
+                    {review.skipped ? (
+                      "Skipped — no response was submitted."
+                    ) : (
+                      <MathText text={review.response} />
+                    )}
                   </p>
                 </div>
                 <div>
                   <span className="review-label">Rubric</span>
-                  <p>{review.rubric.summary}</p>
+                  <p>
+                    <MathText text={review.rubric.summary} />
+                  </p>
                   <ul>
                     {review.rubric.criteria.map((criterion) => (
                       <li key={criterion.criterion}>
                         <strong>
-                          {criterion.criterion} ({criterion.points} points)
+                          <MathText text={criterion.criterion} /> ({criterion.points} points)
                         </strong>
-                        <span>{criterion.guidance}</span>
+                        <span>
+                          <MathText text={criterion.guidance} />
+                        </span>
                       </li>
                     ))}
                   </ul>
                 </div>
                 <div>
                   <span className="review-label">Grading feedback</span>
-                  <p>{review.feedback}</p>
+                  <p>
+                    <MathText text={review.feedback} />
+                  </p>
                 </div>
               </div>
             )}
@@ -415,7 +452,6 @@ export function ResultView({ result }: { result: AssessmentResult }) {
 export function QuizWorkspace({
   initialAttempt,
   onFinish,
-  blockProgress,
 }: {
   initialAttempt: AttemptView;
   /**
@@ -427,8 +463,6 @@ export function QuizWorkspace({
    * attempt ID) — the question, timer and answer state all initialise from props.
    */
   onFinish?: (result: AssessmentResult) => void;
-  /** "Paper 1 of 2" during a chained run, so the question count restarting makes sense. */
-  blockProgress?: { index: number; total: number };
 }) {
   const [attempt, setAttempt] = useState(initialAttempt);
   const [fillSelections, setFillSelections] = useState<FillSelections>({});
@@ -529,17 +563,12 @@ export function QuizWorkspace({
       <header className="quiz-header sequential-header">
         <div>
           <p className="eyebrow">Understanding assessment</p>
+          {/* Server-chosen label: the real filename for a standalone attempt, "Paper 1"
+              or "Paper 2" inside an experiment, where a filename could reveal which
+              paper is the participant's own. */}
           <h1>{attempt.paperName}</h1>
-          <div className="quiz-meta">{attempt.modelId}</div>
         </div>
         <div className="sequence-status">
-          {/* Neutral wording on purpose: it must not reveal which paper is the participant's
-              own and which was chosen for them. */}
-          {blockProgress && (
-            <div className="block-progress">
-              Paper {blockProgress.index} of {blockProgress.total}
-            </div>
-          )}
           <div className="sequence-progress">
             Question {attempt.currentIndex + 1} of {attempt.totalQuestions}
           </div>

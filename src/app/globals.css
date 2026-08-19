@@ -673,6 +673,24 @@ textarea.control {
   font-size: 0.8rem;
 }
 
+/* Typeset math sits inside ordinary prose, headings and option buttons.
+   The wrapper stays a plain inline span on purpose: giving it `display` or `overflow` would
+   make it a scroll container, whose baseline is its bottom edge, dropping inline formulas
+   below the surrounding text. Only display math — already a block — gets to scroll. */
+.math-run {
+  max-width: 100%;
+}
+
+.math-run .katex {
+  font-size: 1.03em;
+}
+
+.math-run .katex-display {
+  margin: 0.4em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
 /* Landing page before a question set. Nothing is timed while this is on screen. */
 .intro-card {
   max-width: 620px;
@@ -686,20 +704,22 @@ textarea.control {
 }
 
 .intro-facts {
-  margin: 22px 0 26px;
+  margin: 22px 0 28px;
   padding: 0;
   list-style: none;
   text-align: left;
   display: grid;
-  gap: 12px;
+  gap: 16px;
 }
 
+/* Full-strength ink at reading size: these are the instructions a participant acts on, not
+   supporting hints, and they are the only prose left on the page. */
 .intro-facts li {
   border-left: 3px solid var(--type-line, var(--line));
-  padding-left: 12px;
-  color: var(--muted);
-  font-size: 0.92rem;
-  line-height: 1.5;
+  padding-left: 14px;
+  color: var(--ink);
+  font-size: 1.1rem;
+  line-height: 1.55;
 }
 
 .intro-start {

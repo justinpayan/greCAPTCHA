@@ -132,6 +132,18 @@ export type ExperimentListEntry = {
 };
 
 /**
+ * Ordered block plan behind a single chained participant link.
+ *
+ * Carries attempt IDs and their positions and nothing else — no condition, no paper names, no
+ * participant ID. Each attempt then gates itself through the ordinary participant endpoints, so
+ * this hands out no access the two individual links would not.
+ */
+export type ExperimentSessionPlan = {
+  experimentId: string;
+  blocks: Array<{ attemptId: string; position: number }>;
+};
+
+/**
  * What the next experiment will be allocated, so the researcher can pick an unfamiliar paper
  * from the right stratum *before* creating the experiment. `null` means the cells are level and the
  * choice will be made at random on creation, so nothing is promised that cannot be kept.
@@ -342,8 +354,14 @@ export type AttemptIntro = {
 export type AttemptView = {
   attemptId: string;
   questionSetId: string;
+  /**
+   * What to title the assessment. The real filename for a standalone attempt, but "Paper 1" or
+   * "Paper 2" for an experiment's attempts: a filename can betray which of the two papers is the
+   * participant's own, so it is never sent to their browser.
+   */
   paperName: string;
-  modelId: string;
+  // No model ID. The participant is not shown which model generated or grades their items, and
+  // what is not displayed is not sent — `AttemptOutline` carries it for the researcher instead.
   currentIndex: number;
   totalQuestions: number;
   question: PublicQuestion;

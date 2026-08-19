@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { attemptAnswers, attempts } from "@/db/schema";
-import { buildResult, loadAttemptContext } from "@/lib/attempts";
+import { attemptPaperLabel, buildResult, loadAttemptContext } from "@/lib/attempts";
 import { gradeFreeResponseBlock } from "@/lib/openrouter";
 import type { AssessmentResult, StoredFreeResponseQuestion } from "@/lib/quiz";
 
@@ -76,7 +76,9 @@ export async function finalizeAttempt(input: Awaited<ReturnType<typeof loadAttem
   const result = buildResult({
     attemptId: input.attempt.id,
     questionSetId: input.set.id,
-    paperName: input.set.paperName,
+    // Neutral inside an experiment, so the stored result and the payload the participant
+    // receives at the end of a block cannot name the paper.
+    paperName: await attemptPaperLabel(input.attempt, input.set.paperName),
     order: input.order,
     questions: input.questions,
     answers: gradedAnswers,

@@ -18,6 +18,15 @@ const PARTICIPANT_ATTEMPT = /^\/api\/attempts\/[^/]+$/;
 /** `/api/attempts/<id>/intro` — the landing page shown before the questions start. */
 const PARTICIPANT_INTRO = /^\/api\/attempts\/[^/]+\/intro$/;
 
+/** `/experiment/<id>` — the chained link that runs both blocks of an experiment. */
+const PARTICIPANT_EXPERIMENT_PAGE = /^\/experiment\/[^/]+$/;
+
+/**
+ * `/api/experiments/<id>/session` — the block order behind a chained link. Deliberately narrow:
+ * the experiment list and the DELETE on `/api/experiments/<id>` must stay researcher-only.
+ */
+const PARTICIPANT_EXPERIMENT_SESSION = /^\/api\/experiments\/[^/]+\/session$/;
+
 /** `/api/attempts/<id>/answers` and `/interaction`. */
 const PARTICIPANT_WRITE = /^\/api\/attempts\/[^/]+\/(?:answers|interaction)$/;
 
@@ -32,6 +41,8 @@ function isParticipantRequest(method: string, pathname: string) {
   if (PARTICIPANT_PAGE.test(pathname)) return method === "GET";
   if (PARTICIPANT_ATTEMPT.test(pathname)) return method === "GET";
   if (PARTICIPANT_INTRO.test(pathname)) return method === "GET";
+  if (PARTICIPANT_EXPERIMENT_PAGE.test(pathname)) return method === "GET";
+  if (PARTICIPANT_EXPERIMENT_SESSION.test(pathname)) return method === "GET";
   if (PARTICIPANT_WRITE.test(pathname)) return method === "POST";
   return false;
 }

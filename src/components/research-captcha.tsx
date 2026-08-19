@@ -46,6 +46,15 @@ const BLOCK_LABELS: Record<QuestionBlockConfig["type"], string> = {
   free_response: "Free response",
 };
 
+/**
+ * Whether an experiment can be handed out as one chained link. Both blocks must be open: the
+ * link walks straight from the first into the second, so a disabled second block would strand
+ * the participant mid-session.
+ */
+function bothLinksEnabled(entry: ExperimentListEntry) {
+  return entry.attempts.length === 2 && entry.attempts.every((row) => row.linkEnabled);
+}
+
 function newBlock(type: QuestionBlockConfig["type"]): QuestionBlockConfig {
   const id = crypto.randomUUID();
   if (type === "fill_blank") {
@@ -170,6 +179,10 @@ export function ResearchCaptcha() {
   const [ownSetId, setOwnSetId] = useState("");
   const [foreignSetId, setForeignSetId] = useState("");
   const [experimentSearch, setExperimentSearch] = useState("");
+  /** Origin for participant links, from PUBLIC_BASE_URL; empty falls back to this origin. */
+  const [participantBaseUrl, setParticipantBaseUrl] = useState("");
+  /** Experiment whose session link was just copied, for the button's confirmation. */
+  const [copiedSessionId, setCopiedSessionId] = useState("");
   /** Both blocks' reveal, shown once a chained run finishes. */
   const [sessionResults, setSessionResults] = useState<{
     participantId: string;
@@ -328,6 +341,7 @@ export function ResearchCaptcha() {
     if (experimentsResult.status === "fulfilled" && experimentsResult.value.experiments) {
       setExperiments(experimentsResult.value.experiments as ExperimentListEntry[]);
       setAllocation(experimentsResult.value.allocation as ExperimentAllocation);
+      setParticipantBaseUrl((experimentsResult.value.participantBaseUrl as string) ?? "");
     }
   }, []);
 
@@ -487,6 +501,26 @@ export function ResearchCaptcha() {
       setError(caught instanceof Error ? caught.message : "Unable to update the link.");
     } finally {
       setTogglingLinkId("");
+    }
+  }
+
+  /**
+   * Copies the chained link for an experiment: one URL that runs both blocks in order.
+   *
+   * Only offered once both blocks' links are enabled. A chained link that runs into a disabled
+   * block leaves the participant stranded on a "not open yet" page halfway through a session,
+   * which is worse than not handing out the link at all.
+   */
+  async function copySessionLink(entry: ExperimentListEntry) {
+    const origin = participantBaseUrl || window.location.origin;
+    const link = `${origin}/experiment/${entry.id}`;
+    setError("");
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopiedSessionId(entry.id);
+      window.setTimeout(() => setCopiedSessionId(""), 2000);
+    } catch {
+      setError(`Could not copy automatically. The session link is ${link}`);
     }
   }
 
@@ -874,11 +908,6 @@ export function ResearchCaptcha() {
         key={attempt.attemptId}
         initialAttempt={attempt}
         onFinish={chain.current ? (graded) => void advanceChain(graded) : undefined}
-        blockProgress={
-          chain.current
-            ? { index: chain.current.done.length + 1, total: chain.current.total }
-            : undefined
-        }
       />
     );
   }
@@ -1176,6 +1205,19 @@ export function ResearchCaptcha() {
                     onClick={() => void deleteExperimentRow(entry)}
                   >
                     Delete
+                  </button>
+                  <button
+                    className="secondary"
+                    type="button"
+                    disabled={!bothLinksEnabled(entry)}
+                    title={
+                      bothLinksEnabled(entry)
+                        ? "One link that runs both blocks in order"
+                        : "Enable both blocks' links first — a chained link cannot run into a disabled block"
+                    }
+                    onClick={() => void copySessionLink(entry)}
+                  >
+                    {copiedSessionId === entry.id ? "Link copied" : "Copy session link"}
                   </button>
                   <button
                     className="primary"
@@ -1800,7 +1842,7 @@ export function ResearchCaptcha() {
               type="submit"
               disabled={working || !selectedModel || blocks.length === 0}
             >
-              {working ? "Generating question set…" : "Generate question set and begin"}
+              {working ? "Generating question set…" : "Generate question set"}
             </button>
           </div>
         </form>

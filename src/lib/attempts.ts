@@ -73,6 +73,36 @@ export async function createAttempt(input: {
   return { attemptId: id };
 }
 
+/** Which block an experiment's attempt is, from its condition and the counterbalanced order. */
+function blockPosition(condition: string | null, foreignFirst: boolean) {
+  return (condition === "foreign") === foreignFirst ? 1 : 2;
+}
+
+/**
+ * What to call an attempt's paper in anything the participant's browser receives.
+ *
+ * Inside an experiment it is "Paper 1" or "Paper 2" — never the filename, which can betray
+ * which of the two papers is the participant's own. Withheld rather than merely hidden in the
+ * markup, because a chained run hands the first block's graded result to the browser while the
+ * second block is still ahead, where a network tab would be enough to read it.
+ *
+ * A standalone attempt keeps its real filename: with no second paper there is nothing to give
+ * away, and the name is what makes the screen recognisable.
+ */
+export async function attemptPaperLabel(
+  attempt: { experimentId: string | null; condition: string | null },
+  fallback: string,
+): Promise<string> {
+  if (!attempt.experimentId) return fallback;
+  const experiment = await db
+    .select({ foreignFirst: experiments.foreignFirst })
+    .from(experiments)
+    .where(eq(experiments.id, attempt.experimentId))
+    .get();
+  if (!experiment) return fallback;
+  return `Paper ${blockPosition(attempt.condition, experiment.foreignFirst)}`;
+}
+
 export async function getAttemptState(
   attemptId: string,
 ): Promise<{ attempt?: AttemptView; result?: AssessmentResult }> {
@@ -89,6 +119,8 @@ export async function getAttemptState(
     .where(eq(questionSets.id, attempt.questionSetId))
     .get();
   if (!set) throw new Error("Question set not found.");
+
+  const paperName = await attemptPaperLabel(attempt, set.paperName);
 
   const questions = JSON.parse(set.questionsJson) as StoredQuestion[];
   const questionById = new Map(questions.map((question) => [question.id, question]));
@@ -119,8 +151,7 @@ export async function getAttemptState(
     attempt: {
       attemptId,
       questionSetId: set.id,
-      paperName: set.paperName,
-      modelId: set.modelId,
+      paperName,
       currentIndex: attempt.currentIndex,
       totalQuestions: order.length,
       question: toPublicQuestion(question),
@@ -238,8 +269,7 @@ export async function getAttemptOutline(attemptId: string): Promise<AttemptOutli
       ? {
           participantId: experiment.participantId,
           condition: quiz.attempt.condition === "foreign" ? "foreign" : "own",
-          blockPosition:
-            (quiz.attempt.condition === "foreign") === experiment.foreignFirst ? 1 : 2,
+          blockPosition: blockPosition(quiz.attempt.condition, experiment.foreignFirst),
           foreignStratum:
             experiment.foreignStratum === "out_of_field" ? "out_of_field" : "in_field",
         }

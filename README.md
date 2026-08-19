@@ -23,7 +23,7 @@ fresh, sequential attempts with rubric-based feedback.
 - A Start landing page before every question set, so the first question's clock begins
   when the participant presses Start
 - Chained experiment runs: both blocks back to back with no score shown between them,
-  and one combined reveal at the end
+  and one combined reveal at the end — in the dashboard, or from one participant link
 - Optional per-attempt question randomization
 - Researcher-facing assessment plan page with per-item descriptions and progress
 - Nameable question cards for per-family grouping in analysis
@@ -35,6 +35,8 @@ fresh, sequential attempts with rubric-based feedback.
 - Per-attempt option to hide the on-screen countdown while still recording timing
 - Deterministic fill-in-the-blank and multiple-choice grading, LLM rubric grading
   for free response
+- LaTeX in questions, options and rubrics typeset with KaTeX, offline and with a
+  currency-safe `$` rule
 - Neutral overall and per-question scores with a read-only answer review
 - Skippable questions, recorded as skipped rather than merely scored zero
 
@@ -183,6 +185,38 @@ path §11.1 of the research plan asks for.
 **Resume attempt** on the start screen lists every attempt with its progress and status,
 and reopens one on its plan page, keeping every answer and timing.
 
+## LaTeX in questions
+
+Questions generated from a manuscript routinely contain mathematics, so any text a question
+carries is typeset with [KaTeX](https://katex.org/) before it is shown. That covers the question
+prompt, the word bank and its blanks, multiple-choice options, the rationale, the rubric and its
+criteria, the grading feedback, the participant's own response on the review, and the item
+descriptions on the plan page.
+
+| Delimiter | Renders as |
+| --- | --- |
+| `$$…$$`, `\[…\]` | display math, centred on its own line |
+| `\(…\)`, `$…$` | inline math |
+
+KaTeX is a dependency rather than a CDN script, and its fonts are emitted into the build, so
+typesetting works with no network at all — which matters for the local-first laptops in §11.1.
+
+**The single `$` is guarded**, because these papers discuss money as well as mathematics. The
+content must hug its delimiters, as TeX requires; a backslash, `^`, `_` or brace accepts it
+outright; otherwise a leading digit is read as currency and rejected. So `$n$` and `$x$` typeset —
+single-letter variables are everywhere — while "$30 for the session and $10 more" stays prose.
+The known blemish is that `$thirty$` would be typeset, italic where it should be upright.
+
+**Malformed LaTeX falls back to its source.** Anything KaTeX refuses to parse is shown exactly as
+written, delimiters included, rather than vanishing or rendering as a red error in the middle of a
+timed question. The splitter is lossless by construction: reassembling its segments reproduces the
+input exactly, which is asserted over every case in its tests.
+
+KaTeX runs with `trust: false`, so `\href`, `\url` and `\includegraphics` are inert — a model
+that emits `\href{javascript:…}` produces literal red text, no anchor and no `href` attribute.
+The only HTML inserted is KaTeX's own escaped output, which matters because this text comes from a
+model and, on the review screen, from the participant.
+
 ## The landing page before a question set
 
 Every question set opens on a landing page with a single **Start** button. It names the paper,
@@ -214,7 +248,8 @@ which. Because the second block now waits on Start, this is where §8.3's 3-minu
 skim and §8.4's micro-break fit — the gap the immediate jump did not leave room for.
 
 `/api/attempts/<id>/intro` is participant-accessible for GET only and carries no card names,
-item descriptions or warm-up flags; `/outline`, which does, stays behind the password. A closed
+item descriptions or warm-up flags; `/outline`, which does, stays behind the password. The same
+holds for the chained link's `/api/experiments/<id>/session`. A closed
 link answers 403 there in the same shape as the question endpoint, so an early visitor sees the
 same "not open yet" screen.
 
@@ -284,6 +319,56 @@ Because the stratum decides which unfamiliar paper is appropriate, the creation 
 what the next experiment will get **before** you create it, both in the notice and on the
 picker's own label — so you can pick the unfamiliar paper's question set to match. When the cells are level it says so instead of promising a stratum it
 would then re-roll.
+
+### What the participant is told about the papers
+
+Inside an experiment the papers are called **Paper 1** and **Paper 2** and nothing else. A
+filename can betray which of the two is the participant's own — `my-chi-submission-final.pdf`
+next to an arXiv name settles it — and the whole own-versus-unfamiliar contrast depends on them
+not knowing.
+
+So the name is *withheld* rather than hidden in the markup. `paperName` in the served question,
+and in the graded result, is `Paper 1` or `Paper 2` for an experiment's attempts; the filename is
+never sent to the participant's browser, so a network tab reveals nothing. This matters
+mid-session, because a chained run hands the first block's graded result over while the second
+block is still ahead.
+
+A standalone attempt keeps its real filename: with no second paper there is nothing to give
+away, and the name is what makes the screen recognisable.
+
+The **model is not named either**. The question screens used to carry the model ID under the
+title; a participant has no use for it, knowing which model wrote and marks their items could
+plausibly shape how they answer, and it is study configuration rather than something they are
+owed. Like the paper name it is withheld rather than hidden: `modelId` is no longer part of the
+served attempt at all.
+
+The researcher's own views are unaffected — the plan page names the model, and the plan page, the
+experiment card and the `paper_name` and `model_id` columns of the CSV export all name the real
+papers and models.
+
+### One link that runs both blocks
+
+**Copy session link** on the experiment card hands out a single URL — `/experiment/<id>` —
+that runs both blocks in order for a remote session. It behaves like the researcher-driven run:
+each block opens on its own landing page, no score or review appears between them, and one
+combined reveal follows the second block.
+
+The button is **enabled only when both blocks' links are enabled**. A chained link that runs
+into a disabled block leaves the participant stranded halfway through, having finished the first
+paper and facing a "not open yet" page — worse than not handing out the link at all. Reloading
+the link resumes: a block already graded is collected from the server rather than remembered in
+the browser, so a refresh or a closed laptop loses nothing.
+
+On the participant's reveal the blocks are labelled **Paper 1** and **Paper 2**, never "own" or
+"unfamiliar". The researcher-driven run keeps the condition labels, since only the researcher
+sees that screen before the debrief.
+
+The link grants no more than the two individual links already do.
+`GET /api/experiments/<id>/session` returns attempt IDs and their positions and nothing else —
+no condition, no paper names, no participant ID — and each attempt still gates itself on its own
+link switch. It is the only experiment endpoint open to participants: the experiment list, the
+create call and the delete all answer 401 without the password, as does `POST` to the session
+path itself.
 
 ### Running both blocks in one go
 

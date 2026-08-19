@@ -226,7 +226,8 @@ npm-debug.log*
 # ResearchCAPTCHA runtime data
 data/
 uploads/
+bak/
 
 # Migration mutex, created beside whatever DATABASE_URL points at
 *.migrate.lock
-paper/
+.DS_STORE

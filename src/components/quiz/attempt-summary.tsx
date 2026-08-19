@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { ParticipantId } from "@/components/participant-id";
+import { MathText } from "@/components/quiz/math-text";
 import {
   CONDITION_LABELS,
   FOREIGN_STRATUM_LABELS,
@@ -238,7 +239,11 @@ export function AttemptSummary({
               </span>
             </div>
             <p className="summary-description">
-              {item.description || "No description was generated for this item."}
+              {item.description ? (
+                <MathText text={item.description} />
+              ) : (
+                "No description was generated for this item."
+              )}
             </p>
           </article>
         ))}
