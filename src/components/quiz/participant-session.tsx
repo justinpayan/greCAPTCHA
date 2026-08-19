@@ -46,10 +46,6 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
   if (closed) {
     return (
       <main className="app-shell">
-        <div className="brand">
-          <span className="brand-mark">R</span>
-          ResearchCAPTCHA
-        </div>
         <section>
           <p className="eyebrow">{closed.paused ? "Paused" : "Not open yet"}</p>
           <h1>
@@ -70,10 +66,6 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
   if (error) {
     return (
       <main className="app-shell">
-        <div className="brand">
-          <span className="brand-mark">R</span>
-          ResearchCAPTCHA
-        </div>
         <section>
           <p className="eyebrow">Assessment unavailable</p>
           <h1>This link could not be opened.</h1>
@@ -101,10 +93,6 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
 
   return (
     <main className="app-shell">
-      <div className="brand">
-        <span className="brand-mark">R</span>
-        ResearchCAPTCHA
-      </div>
       <p className="lede">Loading the assessment…</p>
     </main>
   );

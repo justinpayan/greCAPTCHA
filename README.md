@@ -801,6 +801,13 @@ Locally under `next dev` the password is optional, so development needs no sign-
 production build it is **required**: with the variable unset every researcher route returns
 503 rather than being served, so a deployment that forgets it is locked rather than open.
 
+**`/signup` is a public redirect.** It sends visitors to the recruitment form, so it has to resolve
+for people who have no password — that is the whole point of handing the link out. The destination
+lives in `next.config.ts`; changing it needs a rebuild, so put the form's own short link there
+rather than a URL you expect to churn. It is a temporary redirect deliberately: a permanent one is
+cached by browsers indefinitely, and a later change of form could not reach anyone who had already
+followed the old link.
+
 **The participant assessment is not behind the password.** `/attempt/<id>` opens the
 assessment directly, along with the three endpoints it needs — reading the current
 question, submitting an answer, and reporting first interaction. The attempt ID in the URL

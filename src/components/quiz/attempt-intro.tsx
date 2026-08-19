@@ -46,11 +46,6 @@ export function AttemptIntroPage({
 
   return (
     <main className="app-shell">
-      <div className="brand">
-        <span className="brand-mark">R</span>
-        ResearchCAPTCHA
-      </div>
-
       <section className="card intro-card">
         {blockProgress && (
           <p className="block-progress intro-block">

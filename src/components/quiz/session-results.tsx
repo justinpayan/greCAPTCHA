@@ -28,11 +28,6 @@ export function SessionResults({
 }) {
   return (
     <main className="app-shell">
-      <div className="brand">
-        <span className="brand-mark">R</span>
-        ResearchCAPTCHA
-      </div>
-
       <section className="card session-summary">
         <p className="eyebrow">Session complete</p>
         <h1>Both papers finished</h1>

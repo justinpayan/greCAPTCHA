@@ -30,7 +30,12 @@ const PARTICIPANT_EXPERIMENT_SESSION = /^\/api\/experiments\/[^/]+\/session$/;
 /** `/api/attempts/<id>/answers`, `/interaction` and `/timeout`. */
 const PARTICIPANT_WRITE = /^\/api\/attempts\/[^/]+\/(?:answers|interaction|timeout)$/;
 
-const ALWAYS_OPEN = new Set(["/login", "/api/session", "/api/health"]);
+/**
+ * `/signup` is a recruitment link and must resolve for people who have no password. The redirect
+ * itself lives in `next.config.ts` and is applied ahead of middleware, so this is a belt-and-braces
+ * entry rather than the thing that makes it work.
+ */
+const ALWAYS_OPEN = new Set(["/login", "/api/session", "/api/health", "/signup"]);
 
 /**
  * Method-aware on purpose. `/api/attempts/<id>` also answers DELETE, which must stay

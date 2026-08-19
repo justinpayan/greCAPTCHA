@@ -467,10 +467,6 @@ export function ResultSections({
 export function ResultView({ result }: { result: AssessmentResult }) {
   return (
     <main className="app-shell">
-      <div className="brand">
-        <span className="brand-mark">R</span>
-        ResearchCAPTCHA
-      </div>
       <ResultSections result={result} />
     </main>
   );
@@ -639,13 +635,8 @@ export function QuizWorkspace({
 
   return (
     <main className="app-shell">
-      <div className="brand">
-        <span className="brand-mark">R</span>
-        ResearchCAPTCHA
-      </div>
       <header className="quiz-header sequential-header">
         <div>
-          <p className="eyebrow">Understanding assessment</p>
           {/* Server-chosen label: the real filename for a standalone attempt, "Paper 1"
               or "Paper 2" inside an experiment, where a filename could reveal which
               paper is the participant's own. */}

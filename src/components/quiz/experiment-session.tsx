@@ -16,10 +16,6 @@ function blockLabel(position: number) {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <main className="app-shell">
-      <div className="brand">
-        <span className="brand-mark">R</span>
-        ResearchCAPTCHA
-      </div>
       {children}
     </main>
   );
