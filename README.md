@@ -180,6 +180,35 @@ templates, and `app_state` holds the single autosaved draft under the key `templ
 Both export with the rest of the study data, so the exact configuration used on a session
 day is part of the record.
 
+## Moving between screens
+
+The dashboard's screens — a set overview, an assessment plan, a landing page, the questions, a
+result — are all one route, swapped in React state. That meant the browser's Back button left the
+app: from anywhere in the dashboard it went to `/login`, which reads as being signed out.
+
+Back now walks the screens instead. One history entry is pushed per screen layer and popped off in
+step, so:
+
+| From | Back goes to |
+| --- | --- |
+| Set overview | the dashboard |
+| Assessment plan page | the dashboard |
+| Landing page, questions, or results | the plan page they were opened from |
+| A chained experiment run, at any point | the dashboard |
+| The dashboard | `/login`, which really is the previous page |
+
+The landing page, the questions and the results are one layer, not three. They are a single act on
+one attempt, and going "back" from a graded result to the question that produced it would mean
+nothing — so moving between them replaces the screen rather than stacking another entry.
+
+The in-app **Back to dashboard** buttons rewind the history rather than clearing state directly, so
+both they and the browser button run through the same path. That is what keeps the layer stack and
+the history at the same depth; if they diverged, Back would start skipping screens or leave for the
+login page again.
+
+Leaving a screen never loses anything: every answer, timing and score lives on the server, so
+returning to a plan page and re-entering resumes exactly where the assessment was.
+
 ## The assessment plan page
 
 Generating a set, loading a saved set, or resuming an attempt all land on a **plan page**

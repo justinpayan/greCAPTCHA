@@ -178,6 +178,18 @@ export function ResearchCaptcha() {
   const [togglingLinkId, setTogglingLinkId] = useState("");
   /** The set whose overview is open. Replaces the old inline rename in the list. */
   const [setOverview, setSetOverview] = useState<QuestionSetOverview | null>(null);
+  /**
+   * Browser-history mirror of the screens stacked on top of the dashboard.
+   *
+   * Every screen here is React state on one route, so without this the browser's Back button
+   * leaves the app entirely — from anywhere in the dashboard it went to `/login`, which reads as
+   * being signed out. One history entry is pushed per layer and popped back off in step, so Back
+   * walks the screens the way it walks pages.
+   *
+   * A ref rather than state: it is read inside async handlers and inside the popstate listener,
+   * where a captured state value would be stale.
+   */
+  const layers = useRef<Array<"overview" | "outline" | "assessment">>([]);
   const [experiments, setExperiments] = useState<ExperimentListEntry[]>([]);
   const [allocation, setAllocation] = useState<ExperimentAllocation | null>(null);
   const [ownSetId, setOwnSetId] = useState("");
@@ -591,7 +603,9 @@ export function ResearchCaptcha() {
       return;
     }
 
-    // Every block is graded: show the whole session's reveal.
+    // Every block is graded: show the whole session's reveal. Still the assessment layer, so
+    // Back leaves for the dashboard rather than returning to a block that is over.
+    pushLayer("assessment");
     setAttempt(null);
     setIntro(null);
     setSessionResults({ participantId: session.participantId, blocks: session.done });
@@ -601,6 +615,7 @@ export function ResearchCaptcha() {
 
   /** Shows whichever screen an attempt is due: its landing page, or the current question. */
   function showEntry(entry: AttemptEntry) {
+    if (entry.kind !== "closed") pushLayer("assessment");
     if (entry.kind === "intro") {
       setAttempt(null);
       setIntro(entry.intro);
@@ -711,6 +726,65 @@ export function ResearchCaptcha() {
     }
   }
 
+  /**
+   * Records a screen opening on top of the dashboard.
+   *
+   * The assessment layer covers the landing page, the questions and the results together: they are
+   * one act on one attempt, and going "back" from a graded result to the question that produced it
+   * would mean nothing. Moving between them replaces the screen without adding an entry, which is
+   * what keeps the stack and the history the same depth.
+   */
+  const pushLayer = useCallback((kind: "overview" | "outline" | "assessment") => {
+    if (kind === "assessment" && layers.current.includes("assessment")) return;
+    layers.current = [...layers.current, kind];
+    window.history.pushState({ rcDepth: layers.current.length }, "");
+  }, []);
+
+  /** Closes the topmost screen. Precedence matches the render order, so it peels one layer. */
+  const closeTopLayer = useCallback(() => {
+    const kind = layers.current[layers.current.length - 1];
+    layers.current = layers.current.slice(0, -1);
+    if (kind === "overview") {
+      setSetOverview(null);
+    } else if (kind === "outline") {
+      setOutline(null);
+    } else {
+      setIntro(null);
+      setAttempt(null);
+      setResult(null);
+      setSessionResults(null);
+      chain.current = null;
+    }
+  }, []);
+
+  /**
+   * Unwinds to whatever depth the history entry we landed on describes. A loop rather than a single
+   * step, because one `history.go(-n)` traversal fires a single popstate.
+   */
+  useEffect(() => {
+    function onPop(event: PopStateEvent) {
+      const target = (event.state as { rcDepth?: number } | null)?.rcDepth ?? 0;
+      while (layers.current.length > target) closeTopLayer();
+      if (layers.current.length === 0) void refreshCatalog();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [closeTopLayer, refreshCatalog]);
+
+  /**
+   * What the in-app Back buttons do. Rewinding the history rather than clearing state directly
+   * means both routes into the dashboard run through the same popstate path, so the stack cannot
+   * be left deeper than the history or the other way round.
+   */
+  const exitToDashboard = useCallback(() => {
+    if (layers.current.length > 0) {
+      window.history.go(-layers.current.length);
+      return;
+    }
+    void refreshCatalog();
+  }, [refreshCatalog]);
+
   /** Opens a saved set's contents without creating an attempt to see them. */
   async function showSetOverview(id: string) {
     setWorking(true);
@@ -720,6 +794,7 @@ export function ResearchCaptcha() {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to load the set.");
       setSetOverview(payload.overview as QuestionSetOverview);
+      pushLayer("overview");
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load the set.");
@@ -734,6 +809,7 @@ export function ResearchCaptcha() {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error ?? "Unable to load the attempt summary.");
     setOutline(payload.outline as AttemptOutline);
+    pushLayer("outline");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -892,11 +968,7 @@ export function ResearchCaptcha() {
       <SessionResults
         blocks={sessionResults.blocks}
         participantId={sessionResults.participantId}
-        onDone={() => {
-          setSessionResults(null);
-          void refreshCatalog();
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        }}
+        onDone={exitToDashboard}
       />
     );
   }
@@ -944,11 +1016,7 @@ export function ResearchCaptcha() {
             ),
           );
         }}
-        onBack={() => {
-          setSetOverview(null);
-          void refreshCatalog();
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        }}
+        onBack={exitToDashboard}
       />
     );
   }
@@ -958,14 +1026,11 @@ export function ResearchCaptcha() {
         outline={outline}
         onStart={beginAttempt}
         onResult={(next) => {
+          pushLayer("assessment");
           setResult(next);
           window.scrollTo({ top: 0, behavior: "smooth" });
         }}
-        onBack={() => {
-          setOutline(null);
-          void refreshCatalog();
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        }}
+        onBack={exitToDashboard}
       />
     );
   }
