@@ -249,8 +249,35 @@ descriptions on the plan page.
 
 | Delimiter | Renders as |
 | --- | --- |
-| `$$…$$`, `\[…\]` | display math, centred on its own line |
+| `$$…$$`, `\[…\]` **alone on a line** | display math, centred on its own line |
+| `$$…$$`, `\[…\]` **mid-sentence** | inline math |
 | `\(…\)`, `$…$` | inline math |
+
+Display math is only display when it stands alone. A model writing grading feedback reaches for
+`$$` around every fragment, and display math is a centred block with margins above and below — so
+a sentence mentioning three quantities came out as three centred lines with the prose stranded
+between them. Mid-sentence, inline is both what was meant and what reads.
+
+A formula that fails in the mode it was given is retried in the other one before falling back to
+its source, because a few environments — `align`, `equation` — exist only in display mode and one
+written mid-sentence would otherwise show as raw TeX.
+
+**Double-escaped commands are repaired before rendering.** A model writing JSON reaches for
+`"\\\\lambda"` about as often as `"\\lambda"`, and the first parses to the two characters `\\`
+followed by `lambda`. In TeX `\\` is a line break, so KaTeX faithfully renders a break and then the
+letters, with no parse error to catch it — a rubric criterion read *mathcalO(lambda3)* instead of
+𝒪(λ³). Counting the backslash run is what makes the repair safe: an odd number before a letter is a
+real command and is left alone, including a genuine line break followed by `\alpha`, while an even
+number is halved. It happens at render time rather than at generation, so sets already in the
+database display correctly without being regenerated — though their stored text, and so the
+`grader_feedback` and rubric strings in an export, keep the extra backslashes.
+
+Typeset formulas are the only elements `MathText` emits; the prose between them is returned as
+fragments, with no element of its own. That is deliberate. A stylesheet rule for bare spans inside
+a list — `.free-review li span { display: block }`, written for the guidance line under a rubric
+criterion — matched every run as well, so a criterion mentioning three quantities broke into one
+line per symbol. Rules like that now have nothing to catch in prose, and the one that caused it is
+scoped to a direct child.
 
 KaTeX is a dependency rather than a CDN script, and its fonts are emitted into the build, so
 typesetting works with no network at all — which matters for the local-first laptops in §11.1.

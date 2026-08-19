@@ -677,8 +677,10 @@ textarea.control {
    The wrapper stays a plain inline span on purpose: giving it `display` or `overflow` would
    make it a scroll container, whose baseline is its bottom edge, dropping inline formulas
    below the surrounding text. Only display math — already a block — gets to scroll. */
+/* The only element MathText emits. Text runs are Fragments, so a rule for bare spans has nothing
+   to catch in prose; this keeps the formula itself inline where the specificity allows. */
 .math-run {
-  max-width: 100%;
+  display: inline;
 }
 
 .math-run .katex {
@@ -1564,7 +1566,10 @@ button.option.selected {
   padding-left: 20px;
 }
 
-.free-review li span {
+/* The guidance line under a criterion. A direct child on purpose: a descendant selector also
+   caught the spans MathText emits for each run, so every formula in a rubric became its own
+   block and the criterion broke across as many lines as it had symbols. */
+.free-review li > span {
   display: block;
   color: var(--muted);
 }

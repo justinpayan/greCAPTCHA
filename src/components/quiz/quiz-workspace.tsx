@@ -692,7 +692,9 @@ export function QuizWorkspace({
           />
         ) : (
           <div className="free-response-question">
-            <h2>{question.prompt}</h2>
+            <h2>
+              <MathText text={question.prompt} />
+            </h2>
             <label htmlFor="freeResponse">Your response</label>
             <textarea
               className="control"

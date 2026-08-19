@@ -2,7 +2,13 @@
  * Splits text into plain and LaTeX runs.
  *
  * Deliberately free of any renderer, so the delimiter rules can be reasoned about and tested on
- * their own. `$$…$$` and `\[…\]` are display math, `\(…\)` and `$…$` are inline.
+ * their own. `\(…\)` and `$…$` are inline.
+ *
+ * `$$…$$` and `\[…\]` are display math **only when they stand alone on their own line**. A model
+ * writing grading feedback reaches for `$$` around every fragment, and display math is a centred
+ * block with margins above and below — so a sentence mentioning three quantities came out as three
+ * centred lines with the prose stranded between them. Mid-sentence, inline is both what was meant
+ * and what reads.
  *
  * The single `$` needs a guard, because papers discuss money as well as mathematics and a
  * question mentioning "$30 for the session and $10 more" must not have half of it swallowed into
@@ -25,17 +31,45 @@ export type LatexSegment =
   | { type: "math"; value: string; display: boolean; source: string };
 
 const DELIMITERS = [
-  { open: "$$", close: "$$", display: true, guard: false },
-  { open: "\\[", close: "\\]", display: true, guard: false },
-  { open: "\\(", close: "\\)", display: false, guard: false },
-  { open: "$", close: "$", display: false, guard: true },
+  { open: "$$", close: "$$", block: true, guard: false },
+  { open: "\\[", close: "\\]", block: true, guard: false },
+  { open: "\\(", close: "\\)", block: false, guard: false },
+  { open: "$", close: "$", block: false, guard: true },
 ] as const;
+
+/**
+ * Whether a block delimiter stands alone, and so should be typeset as display math: nothing but
+ * whitespace between it and a line break, at both ends.
+ */
+function standsAlone(text: string, start: number, end: number) {
+  const before = text.slice(0, start);
+  const after = text.slice(end);
+  return /(^|\n)[ \t]*$/.test(before) && /^[ \t]*($|\n)/.test(after);
+}
 
 function looksLikeMath(content: string) {
   if (!content.trim()) return false;
   if (/^\s|\s$/.test(content)) return false;
   if (/[\\^_{}]/.test(content)) return true;
   return !/^\d/.test(content);
+}
+
+/**
+ * Repairs double-escaped TeX commands inside a formula.
+ *
+ * A model writing JSON reaches for `"\\\\lambda"` about as often as `"\\lambda"`, and the first
+ * parses to the two characters `\\` followed by `lambda`. In TeX `\\` is a line break, so KaTeX
+ * faithfully renders a break and then the letters — a rubric criterion came out reading
+ * "mathcalO(lambda3)" instead of 𝒪(λ³), with no parse error to catch it.
+ *
+ * Counting the run is what makes this safe. An odd number of backslashes before a letter is a real
+ * command and is left alone, including `\\\\alpha`, which is a genuine line break followed by
+ * `\alpha`. An even number is an escaping artefact and is halved.
+ */
+export function repairDoubleEscapes(source: string): string {
+  return source.replace(/\\+(?=[A-Za-z])/g, (run) =>
+    run.length % 2 === 0 ? "\\".repeat(run.length / 2) : run,
+  );
 }
 
 export function splitLatex(text: string): LatexSegment[] {
@@ -62,14 +96,15 @@ export function splitLatex(text: string): LatexSegment[] {
       continue;
     }
 
+    const closeEnd = closeAt + delimiter!.close.length;
     flush();
     segments.push({
       type: "math",
       value: content,
-      display: delimiter!.display,
-      source: text.slice(index, closeAt + delimiter!.close.length),
+      display: delimiter!.block && standsAlone(text, index, closeEnd),
+      source: text.slice(index, closeEnd),
     });
-    index = closeAt + delimiter!.close.length;
+    index = closeEnd;
   }
 
   flush();

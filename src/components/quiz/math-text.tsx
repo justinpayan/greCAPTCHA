@@ -1,9 +1,9 @@
 "use client";
 
 import katex from "katex";
-import { useMemo } from "react";
+import { Fragment, useMemo } from "react";
 
-import { splitLatex } from "@/lib/latex";
+import { repairDoubleEscapes, splitLatex } from "@/lib/latex";
 
 import "katex/dist/katex.min.css";
 
@@ -25,17 +25,26 @@ export function MathText({ text }: { text: string }) {
     () =>
       splitLatex(text).map((segment) => {
         if (segment.type === "text") return { text: segment.value };
+        // Repaired before rendering rather than at generation, so sets already in the database
+        // display correctly without being regenerated.
+        const source = repairDoubleEscapes(segment.value);
+        const render = (displayMode: boolean) =>
+          katex.renderToString(source, {
+            displayMode,
+            throwOnError: true,
+            strict: false,
+            trust: false,
+          });
         try {
-          return {
-            html: katex.renderToString(segment.value, {
-              displayMode: segment.display,
-              throwOnError: true,
-              strict: false,
-              trust: false,
-            }),
-          };
+          return { html: render(segment.display) };
         } catch {
-          return { text: segment.source };
+          // A few environments — `align`, `equation` — exist only in display mode, and one of
+          // those written mid-sentence would otherwise fall all the way back to raw source.
+          try {
+            return { html: render(!segment.display) };
+          } catch {
+            return { text: segment.source };
+          }
         }
       }),
     [text],
@@ -54,7 +63,10 @@ export function MathText({ text }: { text: string }) {
             dangerouslySetInnerHTML={{ __html: piece.html }}
           />
         ) : (
-          <span key={position}>{piece.text}</span>
+          // A Fragment, not a span: prose is split into several runs, and any element here can be
+          // caught by a stylesheet rule for bare spans — which is how a rubric criterion ended up
+          // broken across one line per symbol. Nothing to match means nothing to break.
+          <Fragment key={position}>{piece.text}</Fragment>
         ),
       )}
     </>
