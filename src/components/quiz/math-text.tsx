@@ -53,8 +53,13 @@ export function MathText({ text }: { text: string }) {
   // No math: hand back the string itself so no wrapper markup appears at all.
   if (pieces.length === 1 && "text" in pieces[0]) return <>{pieces[0].text}</>;
 
+  // One wrapper around the whole sequence, because a formula in prose is several runs and some of
+  // the places this lands are flex containers. An answer option is `justify-content: space-between`
+  // for the review's "correct answer" note, and "1/12 and 1/8" arrived as three flex items — a
+  // number pinned to each edge of the button with the "and" stranded in the middle. Wrapped, it is
+  // one item and the text simply flows.
   return (
-    <>
+    <span className="math-text">
       {pieces.map((piece, position) =>
         "html" in piece ? (
           <span
@@ -63,12 +68,11 @@ export function MathText({ text }: { text: string }) {
             dangerouslySetInnerHTML={{ __html: piece.html }}
           />
         ) : (
-          // A Fragment, not a span: prose is split into several runs, and any element here can be
-          // caught by a stylesheet rule for bare spans — which is how a rubric criterion ended up
-          // broken across one line per symbol. Nothing to match means nothing to break.
+          // A Fragment, not an element: a stylesheet rule for bare spans has nothing to catch in
+          // prose, which is how a rubric criterion once broke across one line per symbol.
           <Fragment key={position}>{piece.text}</Fragment>
         ),
       )}
-    </>
+    </span>
   );
 }

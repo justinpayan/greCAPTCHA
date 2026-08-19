@@ -237,15 +237,40 @@ function QuestionTimer({
 }
 
 /**
- * Countdown for the whole set. Unlike the per-question timer this one is enforced, so reaching
- * zero asks the server to close the attempt — the server checks the budget itself and is free to
- * disagree.
+ * Both clocks for the whole set: how long has been spent and how much is left.
+ *
+ * Only shown when a set carries an overall limit, since without one there is no remainder to
+ * report. Unlike the per-question timer this budget is enforced, so reaching zero asks the server
+ * to close the attempt — the server checks the budget itself and is free to disagree.
+ *
+ * Elapsed is the sum of the time each question was open, not wall-clock, so it holds still while a
+ * session is paused. That is the same figure the limit is enforced against, which is what keeps the
+ * two lines adding up to the budget.
  */
-function OverallTimer({ remainingMs }: { remainingMs: number }) {
+function OverallTimer({
+  elapsedMs,
+  remainingMs,
+  limitSeconds,
+}: {
+  elapsedMs: number;
+  remainingMs: number;
+  limitSeconds: number;
+}) {
+  // The remainder is derived from the figure shown above it, not rounded independently, so the two
+  // always add up to the budget. Someone watching a clock does that arithmetic.
+  const usedSeconds = Math.min(limitSeconds, Math.max(0, Math.round(elapsedMs / 1000)));
+  const leftSeconds = limitSeconds - usedSeconds;
+  // Enforcement still runs off the unrounded remainder, so display rounding cannot end an
+  // assessment early or late.
   const low = remainingMs <= 60_000;
   return (
-    <div className={`question-timer overall-timer ${low ? "over" : ""}`}>
-      {formatClock(Math.max(0, remainingMs))} left for the set
+    <div className="overall-timer">
+      <div className="question-timer">
+        {formatClock(usedSeconds * 1000)} of {formatDuration(limitSeconds * 1000)} used
+      </div>
+      <div className={`question-timer overall-remaining ${low ? "over" : ""}`}>
+        {formatClock(leftSeconds * 1000)} left for the set
+      </div>
     </div>
   );
 }
@@ -502,6 +527,12 @@ export function QuizWorkspace({
   const overallLimitMs =
     attempt.overallTimeLimitSeconds === null ? null : attempt.overallTimeLimitSeconds * 1000;
   const overallRemainingMs = overallLimitMs === null ? null : overallLimitMs - overallElapsedMs;
+  // Bound rather than tested inline, so the limit and remainder reach the clock as numbers.
+  const overallClock =
+    attempt.overallTimeLimitSeconds !== null && overallRemainingMs !== null
+      ? { limitSeconds: attempt.overallTimeLimitSeconds, remainingMs: overallRemainingMs }
+      : null;
+  const showClocks = overallClock !== null || !attempt.countdownHidden;
 
   // The server tells us how long this question has already been open, so the display
   // resumes correctly after a refresh instead of restarting at zero.
@@ -642,27 +673,44 @@ export function QuizWorkspace({
               paper is the participant's own. */}
           <h1>{attempt.paperName}</h1>
         </div>
-        <div className="sequence-status">
+        <div className="sequence-status attempt-status">
+          {/* The clocks sit to the left of the question count, stacked among themselves. */}
+          {showClocks && (
+            <div className="attempt-clocks">
+              {/* Display only: hiding this changes nothing about what the server records. */}
+              {!attempt.countdownHidden && (
+                <QuestionTimer
+                  elapsedMs={elapsedMs}
+                  timeLimitSeconds={question.timeLimitSeconds ?? null}
+                />
+              )}
+              {/*
+                Shown even when the countdown is hidden. Hiding the per-question timer keeps time
+                from being salient on an item whose limit is soft and costs nothing; the overall
+                limit ends the assessment. Cutting someone off with no clock on screen is a
+                different thing entirely, and not one this study should do to a participant.
+              */}
+              {overallClock && (
+                <OverallTimer
+                  elapsedMs={overallElapsedMs}
+                  remainingMs={overallClock.remainingMs}
+                  limitSeconds={overallClock.limitSeconds}
+                />
+              )}
+            </div>
+          )}
           <div className="sequence-progress">
             Question {attempt.currentIndex + 1} of {attempt.totalQuestions}
           </div>
-          {/* Display only: hiding this changes nothing about what the server records. */}
-          {!attempt.countdownHidden && (
-            <QuestionTimer
-              elapsedMs={elapsedMs}
-              timeLimitSeconds={question.timeLimitSeconds ?? null}
-            />
-          )}
-          {!attempt.countdownHidden && overallRemainingMs !== null && (
-            <OverallTimer remainingMs={overallRemainingMs} />
-          )}
         </div>
       </header>
 
+      {/*
+        No type chip: naming the format tells the participant nothing the question itself does not
+        already show, and the label is researcher-side categorisation. It stays on the review, the
+        plan page and the set overview, which are researcher-facing.
+      */}
       <section className="card question-card">
-        <span className={`type-chip type-${question.type}`}>
-          {QUESTION_LABELS[question.type]}
-        </span>
         {question.type === "fill_blank" ? (
           <FillQuestionEditor
             question={question}

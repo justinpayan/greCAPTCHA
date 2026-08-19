@@ -51,6 +51,10 @@ function looksLikeMath(content: string) {
   if (!content.trim()) return false;
   if (/^\s|\s$/.test(content)) return false;
   if (/[\\^_{}]/.test(content)) return true;
+  // A bare fraction is mathematics, not money. Without this `$1/12$` fell to the leading-digit rule
+  // below and stayed as prose, while `$+1/12$` was typeset — the same quantity rendered two ways
+  // depending on whether the model wrote the sign.
+  if (/^\d+\/\d+$/.test(content)) return true;
   return !/^\d/.test(content);
 }
 

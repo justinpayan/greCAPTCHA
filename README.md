@@ -34,7 +34,7 @@ fresh, sequential attempts with rubric-based feedback.
   total duration, and overrun against the limit
 - An enforced overall time limit per question set, measured as the sum of question
   durations so a paused session costs nothing
-- Per-attempt option to hide the on-screen countdown while still recording timing
+- Per-attempt option to hide the per-question countdown while still recording timing
 - Deterministic fill-in-the-blank and multiple-choice grading, LLM rubric grading
   for free response
 - LaTeX in questions, options and rubrics typeset with KaTeX, offline and with a
@@ -272,8 +272,12 @@ number is halved. It happens at render time rather than at generation, so sets a
 database display correctly without being regenerated — though their stored text, and so the
 `grader_feedback` and rubric strings in an export, keep the extra backslashes.
 
-Typeset formulas are the only elements `MathText` emits; the prose between them is returned as
-fragments, with no element of its own. That is deliberate. A stylesheet rule for bare spans inside
+`MathText` wraps its output in a single inline box, and the prose between formulas is returned as
+fragments with no element of its own. Both details are load-bearing. The wrapper matters because an
+answer option is a flex container with `justify-content: space-between` — for the review's "correct
+answer" note — so an option reading `$+1/12$ and $-1/8$` arrived as three flex items and put a
+number against each edge of the button with the *and* stranded in the middle. Wrapped, it is one
+item and the text flows. That is deliberate. A stylesheet rule for bare spans inside
 a list — `.free-review li span { display: block }`, written for the guidance line under a rubric
 criterion — matched every run as well, so a criterion mentioning three quantities broke into one
 line per symbol. Rules like that now have nothing to catch in prose, and the one that caused it is
@@ -285,7 +289,10 @@ typesetting works with no network at all — which matters for the local-first l
 **The single `$` is guarded**, because these papers discuss money as well as mathematics. The
 content must hug its delimiters, as TeX requires; a backslash, `^`, `_` or brace accepts it
 outright; otherwise a leading digit is read as currency and rejected. So `$n$` and `$x$` typeset —
-single-letter variables are everywhere — while "$30 for the session and $10 more" stays prose.
+single-letter variables are everywhere — while "$30 for the session and $10 more" stays prose. A bare
+fraction is exempt from the currency rule, so `$1/12$` typesets: without that, it stayed prose while
+`$+1/12$` was typeset, and the same quantity rendered two ways depending on whether the model wrote
+the sign.
 The known blemish is that `$thirty$` would be typeset, italic where it should be upright.
 
 **Malformed LaTeX falls back to its source.** Anything KaTeX refuses to parse is shown exactly as
@@ -534,15 +541,19 @@ the clock at creation would record question one as having taken days.
 
 ## Question type colours
 
-Each of the three question types carries a colour used consistently across the interface —
-on its **Add** button, as a coloured left edge and chip on its generation card, on the
-question card during an attempt, and on its review card:
+Each of the three question types carries a colour used consistently across the **researcher's**
+views — on its **Add** button, as a coloured left edge and chip on its generation card, on the
+assessment plan page, on the set overview, and on its review card:
 
 | Type | Colour |
 | --- | --- |
 | Fill in the blank | Green |
 | Multiple choice | Blue |
 | Free response | Amber |
+
+The question card during an attempt carries no type chip. Naming the format tells the participant
+nothing the question itself does not already show, and the label is researcher-side categorisation
+for grouping answers in analysis.
 
 Colour never carries meaning on its own: every coloured element also names its type in text.
 Chip text sits at 6.6:1 or better against its background and the card edge accents at 3.4:1
@@ -633,6 +644,30 @@ does not discard work. Anything not answered is recorded **timed out**: scored 0
 separately from a skip, because "ran out of time" and "declined to answer" are different behaviours
 and merging them would mislead §10's per-family analysis. The review labels those items *Out of
 time* and the CSV carries a `timed_out` column.
+
+When a set carries an overall limit, the question screens show **both clocks** under the
+per-question timer — how much of the budget has been used and how much is left:
+
+```
+        0:38 left of 45s
+   ─────────────────────
+        0:03 of 5m used
+  4:57 left for the set      Question 2 of 8
+```
+
+The clocks sit to the left of the question count, so the count stays the rightmost thing on the
+line. The plan page and the set overview keep their plain stacked column.
+
+The remainder is derived from the figure above it rather than rounded separately, so the two always
+add up to the budget — a participant watching a clock does that arithmetic. Enforcement still runs
+off the unrounded remainder, so display rounding can never end an assessment a second early or
+late. With no overall limit on the set, neither clock appears.
+
+**Hiding the countdown does not hide these two.** That toggle covers the per-question timer, whose
+limit is soft and costs the participant nothing; the overall limit ends the assessment. Cutting
+someone off with no clock on screen is a different thing, and not one the study should do to a
+participant — so the toggle is now labelled *Hide the per-question countdown* to say what it
+actually covers.
 
 **Elapsed time is the sum of the per-question durations**, not wall-clock from the first question.
 The consequence is worth knowing: pausing a session by disabling its link costs nothing against the

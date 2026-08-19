@@ -677,8 +677,10 @@ textarea.control {
    The wrapper stays a plain inline span on purpose: giving it `display` or `overflow` would
    make it a scroll container, whose baseline is its bottom edge, dropping inline formulas
    below the surrounding text. Only display math — already a block — gets to scroll. */
-/* The only element MathText emits. Text runs are Fragments, so a rule for bare spans has nothing
-   to catch in prose; this keeps the formula itself inline where the specificity allows. */
+/* MathText's wrapper and its formula runs. Inline so they flow as text in prose, and so the
+   wrapper collapses to a single flex item inside a flex parent rather than letting each run be
+   spread by the parent's `justify-content`. */
+.math-text,
 .math-run {
   display: inline;
 }
@@ -695,8 +697,31 @@ textarea.control {
 
 /* The set-level countdown. Enforced, unlike the per-question one, so it is given a heavier
    weight and turns amber in its last minute. */
+/* The set's two clocks, stacked under the per-question one. Right-aligned by the status column
+   they sit in; tabular numerals come from `.question-timer`, so the digits do not jitter. */
 .overall-timer {
-  font-weight: 760;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+}
+
+/* Separated from the per-question timer only when there is one to separate from: with the
+   per-question countdown hidden these clocks stand alone, and a rule above nothing reads as a
+   stray line. */
+.question-timer + .overall-timer {
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+/* The remainder is the one being counted down to zero, so it carries the weight. */
+.overall-timer .overall-remaining {
+  font-weight: 780;
+  color: var(--ink);
+}
+
+.overall-timer .overall-remaining.over {
+  color: var(--danger);
 }
 
 /* Landing page before a question set. Nothing is timed while this is on screen. */
@@ -1137,6 +1162,13 @@ textarea.prompt-control {
   padding: clamp(24px, 5vw, 52px);
 }
 
+/* Each question type carries a top margin that used to separate it from the type chip. With the
+   chip gone that margin is a void at the top of the box, so the first element starts at the
+   card's own padding. */
+.question-card > :first-child {
+  margin-top: 0;
+}
+
 .question-number {
   color: var(--muted);
   font-size: 0.78rem;
@@ -1312,6 +1344,23 @@ textarea.prompt-control {
   display: grid;
   justify-items: end;
   gap: 8px;
+}
+
+/* The question screen puts its clocks beside the question count rather than under it, so the
+   count stays the rightmost thing on the line. Scoped to the attempt: the plan page and the set
+   overview keep the plain stacked column. */
+.attempt-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+}
+
+.attempt-clocks {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
 }
 
 .sequence-progress {

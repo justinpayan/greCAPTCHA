@@ -112,9 +112,12 @@ function FieldHint({ text }: { text: string }) {
 }
 
 /**
- * Suppresses the timer in the test-taking interface. Soft limits still apply to the
- * attempt and every duration is still recorded server-side; only the display changes.
- * Fixed for the whole attempt so all of its questions are answered under one condition.
+ * Suppresses the **per-question** timer in the test-taking interface. Soft limits still apply to
+ * the attempt and every duration is still recorded server-side; only the display changes. Fixed
+ * for the whole attempt so all of its questions are answered under one condition.
+ *
+ * A set's overall limit keeps its clock either way. That limit is enforced — it ends the assessment
+ * — so hiding it would mean cutting a participant off with nothing on screen to warn them.
  */
 function CountdownToggle({
   className,
@@ -132,7 +135,7 @@ function CountdownToggle({
         checked={hidden}
         onChange={(event) => onChange(event.target.checked)}
       />
-      Hide the on-screen countdown — every timing is still recorded
+      Hide the per-question countdown — every timing is still recorded
     </label>
   );
 }
