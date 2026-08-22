@@ -1631,13 +1631,12 @@ export function ResearchCaptcha() {
               </div>
               <div className="field full">
                 <label htmlFor="contributions">Claimed author&apos;s stated contributions</label>
+                {/* No length constraint, blank included: with no statement the generator is told
+                    there is no declared scope and covers the whole manuscript. */}
                 <textarea
                   className="control"
                   id="contributions"
                   name="contributions"
-                  minLength={15}
-                  maxLength={10_000}
-                  required
                   placeholder="Describe the experiments, theory, analysis, writing, or other work the claimed author has contributed..."
                 />
               </div>

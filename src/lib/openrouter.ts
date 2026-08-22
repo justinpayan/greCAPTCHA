@@ -446,10 +446,16 @@ export async function generateQuestionBlock(input: {
       rubric: question.rubric,
     };
   });
+  // A blank statement is allowed. Saying so beats leaving the heading above an empty line, which
+  // reads as a truncated prompt and invites the model to guess at a scope nobody declared.
+  const contributionContext = input.contributions.trim()
+    ? `The author reports these contributions:
+${input.contributions}`
+    : "The author has not declared which parts of the work are theirs, so treat the whole manuscript as in scope.";
+
   const sharedContext = `You are part of a system that verifies how well a claimed author understands a submitted manuscript.
 
-The author reports these contributions:
-${input.contributions}
+${contributionContext}
 
 User-authored generation instructions:
 ${input.block.prompt}

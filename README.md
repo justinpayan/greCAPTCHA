@@ -8,7 +8,7 @@ fresh, sequential attempts with rubric-based feedback.
 ## Features
 
 - Password-gated researcher interface with an unauthenticated participant link
-- PDF upload with a free-form contribution statement
+- PDF upload with a free-form contribution statement of any length
 - Repeatable fill-in-the-blank, multiple-choice, and free-response configuration
   cards with editable generation prompts
 - Searchable live OpenRouter model catalog with recommended models highlighted

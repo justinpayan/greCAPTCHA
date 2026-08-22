@@ -58,9 +58,10 @@ export async function POST(request: Request) {
       throw new Error("Only PDF files are supported.");
     }
     if (file.size > MAX_PDF_BYTES) throw new Error("The PDF must be 25 MB or smaller.");
-    if (contributions.length < 15 || contributions.length > 10_000) {
-      throw new Error("Describe the contributions in 15 to 10,000 characters.");
-    }
+    // No length check at all, in either direction. A statement is passed to the generator as
+    // written, so the model's context window is the only ceiling and an over-long one fails with
+    // the model's own error rather than one invented here. Blank is allowed too: the generator is
+    // told there is no declared scope and covers the whole manuscript.
     if (blocks.reduce((sum, block) => sum + block.count, 0) > 50) {
       throw new Error("A question set may contain at most 50 questions.");
     }
