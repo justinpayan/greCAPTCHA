@@ -18,6 +18,7 @@
   box-sizing: border-box;
 }
 
+
 body {
   margin: 0;
   color: var(--ink);
@@ -51,6 +52,28 @@ button {
   margin-bottom: 40px;
   font-weight: 760;
   letter-spacing: -0.02em;
+}
+
+/* The wordmark as a button: reset the chrome so it still reads as a wordmark, and let the mark
+   itself carry the hover so the target is obvious without underlining the product name. */
+.brand-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 760;
+  letter-spacing: -0.02em;
+}
+
+.brand-link .brand-mark {
+  transition: background 150ms, transform 150ms;
+}
+
+.brand-link:hover .brand-mark,
+.brand-link:focus-visible .brand-mark {
+  background: var(--green-dark);
+  transform: translateY(-1px);
 }
 
 .brand-mark {
@@ -237,6 +260,9 @@ h2 {
 .control,
 .search-control {
   width: 100%;
+  /* Form controls default to an `auto` minimum, which for a select is its longest option. Without
+     this they refuse to shrink inside a flex or grid parent and push the page wider instead. */
+  min-width: 0;
   min-height: 48px;
   border: 1px solid #cbd5cf;
   border-radius: 12px;
@@ -576,12 +602,6 @@ textarea.control {
   margin-top: 10px;
 }
 
-.link-state-row .secondary {
-  min-height: 40px;
-  padding: 8px 14px;
-  font-size: 0.82rem;
-}
-
 .link-state {
   display: inline-flex;
   align-items: center;
@@ -667,13 +687,6 @@ textarea.control {
 
 .experiment-head .catalog-meta {
   margin-right: auto;
-}
-
-.experiment-head .secondary,
-.experiment-head .primary {
-  min-height: 36px;
-  padding: 7px 13px;
-  font-size: 0.8rem;
 }
 
 /* Typeset math sits inside ordinary prose, headings and option buttons.
@@ -898,12 +911,6 @@ textarea.control {
   margin-top: 20px;
 }
 
-.catalog-toolbar .secondary {
-  min-height: 40px;
-  padding: 8px 14px;
-  font-size: 0.85rem;
-}
-
 .catalog-list {
   display: grid;
   gap: 8px;
@@ -944,8 +951,16 @@ textarea.control {
   gap: 8px;
 }
 
+/* Compact buttons: the ones that sit inside a list row, a toolbar, or a control strip rather than
+   at the foot of a form. One rule for all of them — three slightly different sizes had accumulated
+   here, so moving between dashboard tabs visibly changed the button type. */
 .catalog-actions .primary,
-.catalog-actions .secondary {
+.catalog-actions .secondary,
+.catalog-toolbar .secondary,
+.experiment-head .primary,
+.experiment-head .secondary,
+.list-toolbar .secondary,
+.link-state-row .secondary {
   min-height: 40px;
   padding: 8px 14px;
   font-size: 0.85rem;
@@ -1063,12 +1078,6 @@ textarea.control {
   justify-content: space-between;
   gap: 12px;
   margin: 22px 0 10px;
-}
-
-.list-toolbar .secondary {
-  min-height: 38px;
-  padding: 8px 14px;
-  font-size: 0.82rem;
 }
 
 /* The generated content of an expanded item: full text, then whatever stands as its key. */
@@ -1766,10 +1775,16 @@ button.option.selected {
 }
 
 @media (max-width: 720px) {
+  /* `minmax(0, 1fr)`, not `1fr`: a bare `1fr` track has an `auto` minimum, so it cannot shrink
+     below its content's min-content width. A select's min-content is its longest option, and the
+     experiment pickers list "pilot-vishisht-unfamiliar · 9 questions" — about 370px with the arrow
+     and padding, against 343px of page on a 375px phone. The column won, the document grew wider
+     than the viewport, and the browser shrank the whole page to fit: a gutter on the right and
+     smaller text, on that tab only. */
   .form-grid,
   .quiz-header,
   .config-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .progress-grid {

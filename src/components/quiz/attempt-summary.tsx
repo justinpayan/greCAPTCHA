@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { Brand } from "@/components/brand";
+
 import { ParticipantId } from "@/components/participant-id";
 import { MathText } from "@/components/quiz/math-text";
 import {
@@ -128,10 +130,7 @@ export function AttemptSummary({
 
   return (
     <main className="app-shell">
-      <div className="brand">
-        <span className="brand-mark">R</span>
-        ResearchCAPTCHA
-      </div>
+      <Brand onHome={onBack} />
 
       <header className="quiz-header sequential-header">
         <div>

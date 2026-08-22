@@ -2,6 +2,8 @@
 
 import { FormEvent, useState } from "react";
 
+import { Brand } from "@/components/brand";
+
 export function LoginForm({ next }: { next: string }) {
   const [password, setPassword] = useState("");
   const [working, setWorking] = useState(false);
@@ -29,10 +31,7 @@ export function LoginForm({ next }: { next: string }) {
 
   return (
     <main className="app-shell">
-      <div className="brand">
-        <span className="brand-mark">R</span>
-        ResearchCAPTCHA
-      </div>
+      <Brand />
       <section>
         <p className="eyebrow">Researcher access</p>
         <h1>Sign in.</h1>

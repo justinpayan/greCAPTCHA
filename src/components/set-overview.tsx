@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { Brand } from "@/components/brand";
+
 import { MathText } from "@/components/quiz/math-text";
 import type { QuestionSetOverview, StoredQuestion } from "@/lib/quiz";
 
@@ -210,10 +212,7 @@ export function SetOverview({
 
   return (
     <main className="app-shell">
-      <div className="brand">
-        <span className="brand-mark">R</span>
-        ResearchCAPTCHA
-      </div>
+      <Brand onHome={onBack} />
 
       <header className="quiz-header sequential-header">
         <div>
