@@ -10,7 +10,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "start:tunnel": "next start -H 127.0.0.1 -p 3000"
+    "start:tunnel": "next start -H 127.0.0.1 -p 3000",
+    "start:tunnel:verbose": "LOG_REQUESTS=1 next start -H 127.0.0.1 -p 3000"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

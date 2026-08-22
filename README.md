@@ -817,6 +817,39 @@ that sleeps takes the tunnel down and strands a participant part-way through.
 a phone on cellular is the quickest test. `https://rc.yourdomain.org/` should redirect to
 the sign-in page.
 
+### Seeing the requests
+
+`next start` prints nothing per request, so a tunnelled session is silent. Run it with logging
+instead:
+
+```bash
+npm run start:tunnel:verbose      # LOG_REQUESTS=1 next start -H 127.0.0.1 -p 3000
+```
+
+One line per request arriving, with what the access gate decided, and one per call the server makes
+out to a model:
+
+```
+20:58:59.860  in   GET    /                       → redirect to /login
+20:58:59.868  in   GET    /api/attempts           → 401 no session
+20:58:59.876  in   GET    /api/attempts/abc       → participant
+20:58:59.899  in   GET    /api/question-sets      → researcher
+20:59:00.010  out  openrouter  GET /models        → 200 in 0.1s
+```
+
+The outcome is the useful half. `participant` versus `401 no session` tells you whether a link is
+being treated as a participant link or bounced, which is the question that usually matters when a
+tunnelled link misbehaves. Outgoing lines are timed, so a generation call that is merely slow is
+distinguishable from one that has stalled — worth knowing against Cloudflare's fixed 100-second
+ceiling.
+
+**No bodies are ever logged, in either direction.** Incoming bodies carry participant answers and
+uploaded manuscripts; outgoing ones carry the PDF and the answer keys. A session log must not become
+a second copy of the study's data, which is also why this is off unless `LOG_REQUESTS=1` is set.
+
+To see the tunnel's own view — useful for telling "never reached the app" apart from "the app said
+no" — run `cloudflared` with `--loglevel debug`.
+
 ### Notes
 
 - **Timings include the round trip.** `duration_ms` is measured server-side from serve to

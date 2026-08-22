@@ -1,5 +1,7 @@
 import "server-only";
 
+import { logOutgoing } from "@/lib/request-log";
+
 import {
   freeResponseGradesSchema,
   generatedFillSetSchema,
@@ -46,13 +48,15 @@ const recommendedPatterns = [
 ];
 
 export async function getOpenRouterModels(): Promise<OpenRouterModel[]> {
-  const response = await fetch(`${OPENROUTER_URL}/models`, {
-    headers: process.env.OPENROUTER_API_KEY
-      ? { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` }
-      : undefined,
-    next: { revalidate: 300 },
-    signal: AbortSignal.timeout(15_000),
-  });
+  const response = await logOutgoing("openrouter", "GET /models", () =>
+    fetch(`${OPENROUTER_URL}/models`, {
+      headers: process.env.OPENROUTER_API_KEY
+        ? { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` }
+        : undefined,
+      next: { revalidate: 300 },
+      signal: AbortSignal.timeout(15_000),
+    }),
+  );
 
   if (!response.ok) {
     throw new Error(`OpenRouter model catalog returned ${response.status}.`);
@@ -72,7 +76,9 @@ export async function getOpenRouterModels(): Promise<OpenRouterModel[]> {
       contextLength: model.context_length,
       inputModalities: model.architecture?.input_modalities ?? ["text"],
       pricing: model.pricing,
-      recommended: recommendedPatterns.some((pattern) => pattern.test(model.id)),
+      recommended: recommendedPatterns.some((pattern) =>
+        pattern.test(model.id),
+      ),
     }));
 
   return models.sort((a, b) => {
@@ -182,7 +188,13 @@ const multipleChoiceJsonSchema = {
             distractors: { type: "array", items: { type: "string" } },
             rationale: { type: "string" },
           },
-          required: ["prompt", "description", "answer", "distractors", "rationale"],
+          required: [
+            "prompt",
+            "description",
+            "answer",
+            "distractors",
+            "rationale",
+          ],
         },
       },
     },
@@ -235,7 +247,9 @@ function extractTextContent(content: unknown): string {
 }
 
 export function usesDirectGemini(modelId: string) {
-  return Boolean(process.env.GEMINI_API_KEY) && /^google\/gemini-/i.test(modelId);
+  return (
+    Boolean(process.env.GEMINI_API_KEY) && /^google\/gemini-/i.test(modelId)
+  );
 }
 
 async function callGeminiDirect(input: {
@@ -265,24 +279,29 @@ async function callGeminiDirect(input: {
     "schema" in input.responseSchema
       ? (input.responseSchema as { schema: object }).schema
       : input.responseSchema;
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(directModelId)}:generateContent`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts }],
-        generationConfig: {
-          temperature: 0.2,
-          responseMimeType: "application/json",
-          responseJsonSchema: schema,
+  const response = await logOutgoing(
+    "gemini",
+    `POST ${directModelId}:generateContent${input.file ? " with pdf" : ""}`,
+    () =>
+      fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(directModelId)}:generateContent`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey,
+          },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts }],
+            generationConfig: {
+              temperature: 0.2,
+              responseMimeType: "application/json",
+              responseJsonSchema: schema,
+            },
+          }),
+          signal: AbortSignal.timeout(180_000),
         },
-      }),
-      signal: AbortSignal.timeout(180_000),
-    },
+      ),
   );
 
   const payload = (await response.json()) as {
@@ -290,7 +309,9 @@ async function callGeminiDirect(input: {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
   if (!response.ok) {
-    throw new Error(payload.error?.message ?? `Gemini returned ${response.status}.`);
+    throw new Error(
+      payload.error?.message ?? `Gemini returned ${response.status}.`,
+    );
   }
   const text = (payload.candidates?.[0]?.content?.parts ?? [])
     .map((part) => part.text ?? "")
@@ -317,7 +338,9 @@ async function callOpenRouter(input: {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY is not configured.");
 
-  const content: Array<Record<string, unknown>> = [{ type: "text", text: input.prompt }];
+  const content: Array<Record<string, unknown>> = [
+    { type: "text", text: input.prompt },
+  ];
   if (input.file) {
     const bytes = Buffer.from(await input.file.arrayBuffer());
     content.push({
@@ -329,42 +352,49 @@ async function callOpenRouter(input: {
     });
   }
 
-  const response = await fetch(`${OPENROUTER_URL}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "http://localhost:3000",
-      "X-Title": "ResearchCAPTCHA",
-    },
-    body: JSON.stringify({
-      model: input.modelId,
-      messages: [{ role: "user", content }],
-      ...(input.file
-        ? {
-            plugins: [
-              {
-                id: "file-parser",
-                pdf: { engine: input.pdfEngine },
-              },
-            ],
-          }
-        : {}),
-      response_format: {
-        type: "json_schema",
-        json_schema: input.responseSchema,
-      },
-      temperature: 0.2,
-    }),
-    signal: AbortSignal.timeout(180_000),
-  });
+  const response = await logOutgoing(
+    "openrouter",
+    `POST /chat/completions model=${input.modelId}${input.file ? " with pdf" : ""}`,
+    () =>
+      fetch(`${OPENROUTER_URL}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "http://localhost:3000",
+          "X-Title": "ResearchCAPTCHA",
+        },
+        body: JSON.stringify({
+          model: input.modelId,
+          messages: [{ role: "user", content }],
+          ...(input.file
+            ? {
+                plugins: [
+                  {
+                    id: "file-parser",
+                    pdf: { engine: input.pdfEngine },
+                  },
+                ],
+              }
+            : {}),
+          response_format: {
+            type: "json_schema",
+            json_schema: input.responseSchema,
+          },
+          temperature: 0.2,
+        }),
+        signal: AbortSignal.timeout(180_000),
+      }),
+  );
 
   const payload = (await response.json()) as {
     error?: { message?: string };
     choices?: Array<{ message?: { content?: unknown } }>;
   };
   if (!response.ok) {
-    throw new Error(payload.error?.message ?? `OpenRouter returned ${response.status}.`);
+    throw new Error(
+      payload.error?.message ?? `OpenRouter returned ${response.status}.`,
+    );
   }
 
   const text = extractTextContent(payload.choices?.[0]?.message?.content);
@@ -402,8 +432,9 @@ export async function generateQuestionBlock(input: {
       return {
         type: question.type,
         prompt: question.prompt,
-        answer: question.options.find((option) => option.id === question.correctOptionId)
-          ?.label,
+        answer: question.options.find(
+          (option) => option.id === question.correctOptionId,
+        )?.label,
         distractors: question.options
           .filter((option) => option.id !== question.correctOptionId)
           .map((option) => option.label),
@@ -446,7 +477,9 @@ Generate exactly ${input.block.count} fill-in-the-blank questions. Provide appro
     });
     const validated = generatedFillSetSchema.parse(parsed);
     if (validated.questions.length !== input.block.count) {
-      throw new Error(`The model returned ${validated.questions.length} questions instead of ${input.block.count}.`);
+      throw new Error(
+        `The model returned ${validated.questions.length} questions instead of ${input.block.count}.`,
+      );
     }
     return { type: "fill_blank" as const, generated: validated };
   }
@@ -464,7 +497,9 @@ Generate exactly ${input.block.count} multiple-choice questions with exactly one
     });
     const validated = generatedMultipleChoiceSetSchema.parse(parsed);
     if (validated.questions.length !== input.block.count) {
-      throw new Error(`The model returned ${validated.questions.length} questions instead of ${input.block.count}.`);
+      throw new Error(
+        `The model returned ${validated.questions.length} questions instead of ${input.block.count}.`,
+      );
     }
     for (const question of validated.questions) {
       if (question.distractors.length !== optionCount - 1) {
@@ -487,12 +522,19 @@ Generate exactly ${input.block.count} free-response questions. Every rubric must
   });
   const validated = generatedFreeResponseSetSchema.parse(parsed);
   if (validated.questions.length !== input.block.count) {
-    throw new Error(`The model returned ${validated.questions.length} questions instead of ${input.block.count}.`);
+    throw new Error(
+      `The model returned ${validated.questions.length} questions instead of ${input.block.count}.`,
+    );
   }
   for (const question of validated.questions) {
-    const total = question.rubric.criteria.reduce((sum, criterion) => sum + criterion.points, 0);
+    const total = question.rubric.criteria.reduce(
+      (sum, criterion) => sum + criterion.points,
+      0,
+    );
     if (Math.abs(total - 100) > 0.01) {
-      throw new Error(`A generated free-response rubric totals ${total} points instead of 100.`);
+      throw new Error(
+        `A generated free-response rubric totals ${total} points instead of 100.`,
+      );
     }
   }
   return { type: "free_response" as const, generated: validated };
@@ -523,7 +565,9 @@ ${JSON.stringify(gradingItems)}`,
     validated.grades.length !== expectedIds.size ||
     validated.grades.some((grade) => !expectedIds.has(grade.questionId))
   ) {
-    throw new Error("The grading model returned an incomplete or mismatched grade set.");
+    throw new Error(
+      "The grading model returned an incomplete or mismatched grade set.",
+    );
   }
   return validated;
 }
