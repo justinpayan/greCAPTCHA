@@ -417,6 +417,7 @@ export async function generateQuestionBlock(input: {
     if (question.type === "fill_blank") {
       return {
         type: question.type,
+        covers: question.description?.trim() ?? "",
         prompt: question.segments
           .map((segment) =>
             segment.type === "text" ? segment.value : `{{${segment.blankId}}}`,
@@ -431,6 +432,7 @@ export async function generateQuestionBlock(input: {
     if (question.type === "multiple_choice") {
       return {
         type: question.type,
+        covers: question.description?.trim() ?? "",
         prompt: question.prompt,
         answer: question.options.find(
           (option) => option.id === question.correctOptionId,
@@ -442,6 +444,7 @@ export async function generateQuestionBlock(input: {
     }
     return {
       type: question.type,
+      covers: question.description?.trim() ?? "",
       prompt: question.prompt,
       rubric: question.rubric,
     };
@@ -462,12 +465,14 @@ ${input.block.prompt}
 
 For every question also supply a "description": one sentence, at most 25 words, naming what the question probes and which part of the manuscript it draws on. It is read only by the researcher reviewing the item bank and is never shown to the person taking the assessment, so state the target plainly rather than hinting at it. Do not reveal the correct answer in the description.
 
+Spread the questions across the manuscript. No two questions in this batch may draw on the same section or subsection, or on the same table, figure, or equation. Where the manuscript is too short for that, make each question draw on a distinct claim, result, or design decision rather than on the same passage twice. Before returning, read your own descriptions back: if they name the same part of the paper, replace a question rather than reword it. A set of questions that all land in one part of the paper measures understanding of one part of the paper.
+
 ${
   previousQuestionContext.length
     ? `Questions and answer criteria already generated for this question set:
 ${JSON.stringify(previousQuestionContext)}
 
-Generate questions that test meaningfully different concepts. Do not repeat or closely paraphrase any prior question, answer, or rubric criterion.`
+Each entry above carries a "covers" line naming the part of the manuscript that question draws on. Generate questions that test meaningfully different concepts and draw on parts not already accounted for there. Do not repeat or closely paraphrase any prior question, answer, or rubric criterion.`
     : "No questions have been generated for this set yet."
 }`;
 
