@@ -104,6 +104,7 @@ export async function getQuestionSetOverview(id: string): Promise<QuestionSetOve
       description: question.description?.trim() ?? "",
       timeLimitSeconds: questionTimeLimit(question),
       warmup: isWarmup(question),
+      question,
     })),
   };
 }

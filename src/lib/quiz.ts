@@ -103,6 +103,14 @@ export type QuestionSetOverviewItem = {
   description: string;
   timeLimitSeconds: number | null;
   warmup: boolean;
+  /**
+   * The whole stored question, answer key included, for the expanded view.
+   *
+   * Nothing is withheld because nothing can be: this endpoint is behind the password, and the
+   * point of reading a bank before a session (§8.4) is to check the keys, the distractors and the
+   * rubrics — which is exactly what a participant-facing payload strips out.
+   */
+  question: StoredQuestion;
 };
 
 export type QuestionSetOverview = {

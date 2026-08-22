@@ -27,6 +27,8 @@ rather than a join through block UUIDs.
 | F4 provenance | Multiple choice | 4 | 1 | 60s | ⚠️ key is a guess |
 | F5 cross-reference | Free response | — | 1 | 120s | ✅ |
 | F7 background concept | Free response | — | 1–2 | 120s | ✅ new, see below |
+| F8 load-bearing choice | Free response | — | 1 | 120s | ✅ new, order before F3 |
+| F9 failure mode | Free response | — | 1 | 120s | ✅ new, check the wording |
 
 For F5, set the PDF extractor to **Native** or **Mistral OCR**. Cloudflare's markdown
 conversion degrades figures and captions, which is exactly what this family binds against.
@@ -218,6 +220,124 @@ survive model assistance and which do not.
 
 Adopting it means a seventh family: §3.2 needs an F7 entry with its falsifiable prediction, and
 §10's per-family discrimination table gains a row.
+
+---
+
+---
+
+## F8 · Load-bearing choice
+
+*V3 · free response · predicted **HIGH, confounded like F3***
+
+Asks the participant to name the one design choice, assumption, or construct the paper stands on,
+and to say what falls over without it.
+
+```
+Generate one item asking which single design choice, assumption, or construct this paper's conclusions depend on most, and what would go wrong without it.
+
+Keep the question to one or two sentences, and ask for a short answer of two or three sentences. This item is about picking the right thing, not about writing at length.
+
+Load-bearing means the conclusions travel through it: reverse it and a headline claim weakens, a comparison stops being fair, or a measure stops measuring what it is said to measure. Choices about convenience, cost, or presentation do not count, however prominently the paper discusses them.
+
+Do not use anything the paper itself calls its key assumption, its main design decision, or its main limitation, and nothing from the abstract. The participant reads with the paper open, so those are lookups. Never name a section, table, or figure in the question text.
+
+Reasonable people disagree about what matters most, so the rubric must not require the one choice you had in mind. In the guidance, list every choice in this paper that qualifies as load-bearing, and list the prominent ones that do not — the peripheral decisions a reader is most likely to offer instead. A peripheral answer earns nothing, however well it is argued.
+
+Split the points between naming something from the qualifying list and saying what specifically stops holding without it, weighted towards the second. Award nothing for fluency, length, or for restating the paper's framing.
+```
+
+Use a **free-response** card, count 1, soft limit around 120s. Name it `F8 load-bearing choice`.
+
+Two sub-asks, not three. An earlier draft also asked what would change had the choice gone the other
+way, which made both the stem and the expected answer long enough to crowd out the rest of the form.
+Naming the load-bearing choice and saying what fails without it already carries the signal; the
+counterfactual mostly restated the second half at greater length.
+
+### Order it before F3
+
+If both are on the form, this card must come first. Cards generate in creation order and that is also
+presentation order, so putting F3 above it would hand the answer over: *"why is a paired test
+appropriate for this comparison"* tells the participant that the choice of test is what matters. The
+same applies to F4, which names a decision in its stem. This item is only hard while the participant
+still has to choose what is important.
+
+### Why the rubric enumerates both lists
+
+The grading call is an LLM against a rubric, so the rubric has to remove the judgement. Listing the
+qualifying choices turns "is this the most crucial one?" into a membership check, and listing the
+prominent peripheral ones stops a fluent answer about a real-but-minor decision from collecting
+marks — the failure mode this family invites. It is the same move as stating the correct value in
+F2's guidance.
+
+Check that list before the session. The bank is human-checked anyway (§8.4), and this is the one
+family where a generated answer key encodes a judgement about the paper that you may disagree with —
+if the model's qualifying list is wrong, the item is unfair in a way no participant can recover from.
+
+### What it measures
+
+The same caution as F3, for the same reason: naming what a paper stands on is partly field expertise,
+so an in-field non-author may do well. Report it beside F3 in the in-field / out-of-field breakdown
+rather than pooling them.
+
+What makes it harder to fake than F3 even so: the paper lists many design choices and only some are
+load-bearing, so the selection itself carries signal before a word of explanation is written.
+
+---
+
+---
+
+## F9 · Failure mode
+
+*V3 · free response · predicted **HIGH, and the strongest family against adversary C***
+
+Asks where the work stops working, and why.
+
+```
+Generate one item asking the participant to name a realistic condition under which this work's method or central finding would degrade, and to say why it would.
+
+Keep the question to one or two sentences, and ask for a short answer of two or three sentences. Word it neutrally: a condition the work was not built for, not a flaw in it. A scored item that reads as an attack on the participant's own paper invites a defensive answer rather than an informative one.
+
+The condition must be specific to this setup and plausible in this domain — a property of the data, a regime, a scale, a population, or an interaction this pipeline would mishandle. Its mechanism must follow from how this work is built, not from general methodological caution.
+
+Do not use anything the paper names itself: its limitations, its future work, its statements about what it did not test, or anything in the abstract. The participant reads with the paper open, so those are lookups. Never name a section, table, or figure in the question text.
+
+In the guidance, list the qualifying conditions for this paper, each with the mechanism that makes it fail. Any one of them earns the naming points, since reasonable people will pick different edges.
+
+Then list the answers that earn nothing: that the sample is small, that the results may not generalise, that more data or more baselines are needed, that the method is untested in other settings, and anything else that could be written without having read this paper. A fluent, confident answer of exactly that kind is the most likely wrong answer here, and it must score zero.
+
+Weight the mechanism above the condition. Award nothing for fluency, length, hedging, or for restating what the paper already says about its own scope.
+```
+
+Use a **free-response** card, count 1, soft limit around 120s. Name it `F9 failure mode`.
+
+### The zero-credit list is the point
+
+Every other family leans on timing to defend against a model open beside the paper (§7.3). This one
+attacks the answer itself. Asked where a method breaks, a frontier model with the PDF produces
+well-written generic caution — small sample, may not generalise, needs more baselines — because
+that is what the genre supplies when the specifics are absent. Naming that shape as scoring zero
+turns adversary C's characteristic output into a graded failure rather than something the clock has
+to catch. Nothing else on the form has that property, which is why it is worth a slot even though
+the facet is already crowded.
+
+It cuts both ways, and say so in the paper: a genuine author who happens to answer at that level of
+generality also scores zero. Report the family's own false-negative rate rather than folding it into
+the total.
+
+### Wording is a fairness matter, not politeness
+
+§9 asks whether the instrument treats people equitably, and an item that reads as *what is wrong
+with your work* is a poor measurement instrument before it is anything else — a defensive author
+under-answers and scores like a non-author. Hence the instruction to phrase the condition as
+something the work was not built for. Check the generated wording for this specifically; it is the
+one thing here a model gets wrong in a way that looks fine.
+
+### What it measures
+
+Tacit rationale (V3), so it carries F3's confound: an in-field non-author can sometimes reason to a
+real edge from the method alone. Report it beside F3 and F8 in the in-field / out-of-field
+breakdown. What it adds over those two is that the answer lives nowhere in the artifact — the paper
+states its scope, not its mechanisms of failure — which is the cleanest case of V3 on the form.
 
 ---
 

@@ -435,6 +435,9 @@ textarea.control {
 
 .mode-tabs {
   display: inline-flex;
+  /* Four tabs are wider than a phone. Without this the row pushes the whole document wider than
+     the viewport, so the page scrolls sideways rather than the control adapting. */
+  flex-wrap: wrap;
   gap: 5px;
   margin-bottom: 14px;
   border: 1px solid var(--line);
@@ -1017,6 +1020,137 @@ textarea.control {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+}
+
+/* The head doubles as the expand control on the set overview. Reset the button chrome so it still
+   reads as a row of chips, and give it the full width so the whole row is the target. */
+.item-toggle {
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: none;
+  text-align: left;
+  font: inherit;
+}
+
+.item-toggle .summary-limit {
+  margin-left: auto;
+}
+
+.item-caret {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--muted);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.item-toggle:hover .item-caret,
+.item-toggle:focus-visible .item-caret {
+  color: var(--green-dark);
+  border-color: var(--green);
+  background: var(--green-soft);
+}
+
+.list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 22px 0 10px;
+}
+
+.list-toolbar .secondary {
+  min-height: 38px;
+  padding: 8px 14px;
+  font-size: 0.82rem;
+}
+
+/* The generated content of an expanded item: full text, then whatever stands as its key. */
+.item-detail {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.item-text {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.item-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+/* An answer shown in the gap it fills, so the sentence still reads as a sentence. */
+.item-blank {
+  display: inline-block;
+  margin: 0 3px;
+  border-bottom: 2px solid var(--green);
+  padding: 0 4px;
+  color: var(--green-dark);
+  font-weight: 720;
+}
+
+.item-options {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item-options li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+  background: var(--paper);
+  font-size: 0.92rem;
+}
+
+.item-options li.correct {
+  border-color: var(--green);
+  background: var(--green-soft);
+  color: var(--green-dark);
+  font-weight: 700;
+}
+
+.item-options li small {
+  margin-left: auto;
+  color: var(--green-dark);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.item-criteria {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 20px;
+  font-size: 0.88rem;
+}
+
+.item-criteria li > span {
+  display: block;
+  color: var(--muted);
 }
 
 .summary-position {
@@ -1670,6 +1804,20 @@ button.option.selected {
 
   .add-buttons {
     display: grid;
+  }
+
+  /* Two by two, full width: every tab stays visible and reachable, rather than wrapping into a
+     ragged row or hiding the last one off the edge. */
+  .mode-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .mode-tabs button {
+    min-height: 44px;
+    padding: 10px 8px;
+    font-size: 0.85rem;
   }
 
   .question-card {

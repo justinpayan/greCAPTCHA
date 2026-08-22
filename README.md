@@ -127,6 +127,18 @@ generated description, alongside the set's model, extractor, overall limit, atte
 counts, and the date it was generated. Items appear in stored order — warm-ups only move to the
 front when an attempt is built, and the rest are shuffled only if that attempt randomizes them.
 
+Each item **expands** to show what was generated for it: the full question text, and the answer key
+in whatever form that item has one. Multiple-choice shows every option with the correct one marked
+and its rationale; fill-in-the-blank shows the sentence with each answer sitting in the gap it
+fills, plus the word bank with the answers marked; free response shows the prompt and the rubric
+with its criteria and point allocations. **Expand all** opens the set in one go, which is the shape
+of the §8.4 bank check — reading a set before a session means reading the keys and the distractors,
+not the one-line descriptions.
+
+Nothing is withheld here because nothing can be: the endpoint is behind the password, and checking a
+bank is exactly the task a participant-facing payload strips the information out for. The served
+question is unaffected — it still carries no key.
+
 **Renaming happens on that page**, in a Set name field, rather than as an inline edit in the list:
 inspecting a set and naming it are the same act, and the old inline rename gave no way to see what
 you were naming. Leaving the field blank falls back to the PDF filename. Renaming touches nothing

@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { MathText } from "@/components/quiz/math-text";
-import type { QuestionSetOverview } from "@/lib/quiz";
+import type { QuestionSetOverview, StoredQuestion } from "@/lib/quiz";
 
 const TYPE_LABELS = {
   fill_blank: "Fill in the blank",
@@ -17,6 +17,95 @@ function formatLimit(seconds: number | null) {
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
   return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
+}
+
+/**
+ * The generated content of one item: its full text, and whatever stands as its answer key.
+ *
+ * Shown only when the researcher expands the item. This is the view the §8.4 bank check needs —
+ * reading a set the night before means reading the keys, the distractors and the rubrics, not just
+ * the one-line descriptions.
+ */
+function ItemDetail({ question }: { question: StoredQuestion }) {
+  if (question.type === "fill_blank") {
+    const answered = new Set(question.blanks.map((blank) => blank.correctChoiceId));
+    const answerFor = new Map(question.blanks.map((blank) => [blank.id, blank.answer]));
+    return (
+      <div className="item-detail">
+        <p className="item-text">
+          {question.segments.map((segment, index) =>
+            segment.type === "text" ? (
+              <MathText key={`${index}-text`} text={segment.value} />
+            ) : (
+              // The answer sits in the gap it belongs to, so the sentence reads as a whole rather
+              // than as a puzzle plus a separate key.
+              <span className="item-blank" key={`${index}-${segment.blankId}`}>
+                <MathText text={answerFor.get(segment.blankId) ?? "?"} />
+              </span>
+            ),
+          )}
+        </p>
+        <span className="review-label">Word bank</span>
+        <ul className="item-options">
+          {question.choices.map((choice) => (
+            <li className={answered.has(choice.id) ? "correct" : ""} key={choice.id}>
+              <MathText text={choice.label} />
+              {answered.has(choice.id) && <small>answer</small>}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  if (question.type === "multiple_choice") {
+    return (
+      <div className="item-detail">
+        <p className="item-text">
+          <MathText text={question.prompt} />
+        </p>
+        <ul className="item-options">
+          {question.options.map((option) => {
+            const correct = option.id === question.correctOptionId;
+            return (
+              <li className={correct ? "correct" : ""} key={option.id}>
+                <MathText text={option.label} />
+                {correct && <small>correct</small>}
+              </li>
+            );
+          })}
+        </ul>
+        <span className="review-label">Why</span>
+        <p className="item-note">
+          <MathText text={question.rationale} />
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="item-detail">
+      <p className="item-text">
+        <MathText text={question.prompt} />
+      </p>
+      <span className="review-label">Rubric</span>
+      <p className="item-note">
+        <MathText text={question.rubric.summary} />
+      </p>
+      <ul className="item-criteria">
+        {question.rubric.criteria.map((criterion) => (
+          <li key={criterion.criterion}>
+            <strong>
+              <MathText text={criterion.criterion} /> ({criterion.points} points)
+            </strong>
+            <span>
+              <MathText text={criterion.guidance} />
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 /**
@@ -45,6 +134,19 @@ export function SetOverview({
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  /** Items whose full text is showing. Several at once, since checking a bank means reading it. */
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const allOpen = expanded.size === overview.items.length && overview.items.length > 0;
+
+  function toggleItem(questionId: string) {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(questionId)) next.delete(questionId);
+      else next.add(questionId);
+      return next;
+    });
+  }
 
   const warmups = overview.items.filter((item) => item.warmup).length;
   const savedMinutes = limitToMinutes(overview.overallTimeLimitSeconds);
@@ -216,25 +318,55 @@ export function SetOverview({
         </span>
       </div>
 
+      <div className="list-toolbar">
+        <span className="hint">
+          {overview.items.length} {overview.items.length === 1 ? "item" : "items"}
+          {expanded.size > 0 && ` · ${expanded.size} expanded`}
+        </span>
+        <button
+          className="secondary"
+          type="button"
+          disabled={overview.items.length === 0}
+          onClick={() =>
+            setExpanded(allOpen ? new Set() : new Set(overview.items.map((i) => i.questionId)))
+          }
+        >
+          {allOpen ? "Collapse all" : "Expand all"}
+        </button>
+      </div>
+
       <section className="summary-list">
-        {overview.items.map((item) => (
-          <article className={`card summary-item type-${item.type}`} key={item.questionId}>
-            <div className="summary-item-head">
-              <span className="summary-position">{item.position}</span>
-              <span className={`type-chip type-${item.type}`}>{TYPE_LABELS[item.type]}</span>
-              {item.blockName && <span className="summary-block">{item.blockName}</span>}
-              {item.warmup && <span className="pill">Warm-up</span>}
-              <span className="summary-limit">{formatLimit(item.timeLimitSeconds)}</span>
-            </div>
-            <p className="summary-description">
-              {item.description ? (
-                <MathText text={item.description} />
-              ) : (
-                "No description was generated for this item."
-              )}
-            </p>
-          </article>
-        ))}
+        {overview.items.map((item) => {
+          const open = expanded.has(item.questionId);
+          return (
+            <article className={`card summary-item type-${item.type}`} key={item.questionId}>
+              {/* The whole head is the control, so the target is the row rather than a chevron. */}
+              <button
+                className="summary-item-head item-toggle"
+                type="button"
+                aria-expanded={open}
+                onClick={() => toggleItem(item.questionId)}
+              >
+                <span className="summary-position">{item.position}</span>
+                <span className={`type-chip type-${item.type}`}>{TYPE_LABELS[item.type]}</span>
+                {item.blockName && <span className="summary-block">{item.blockName}</span>}
+                {item.warmup && <span className="pill">Warm-up</span>}
+                <span className="summary-limit">{formatLimit(item.timeLimitSeconds)}</span>
+                <span className="item-caret" aria-hidden="true">
+                  {open ? "−" : "+"}
+                </span>
+              </button>
+              <p className="summary-description">
+                {item.description ? (
+                  <MathText text={item.description} />
+                ) : (
+                  "No description was generated for this item."
+                )}
+              </p>
+              {open && <ItemDetail question={item.question} />}
+            </article>
+          );
+        })}
       </section>
 
       {error && (
