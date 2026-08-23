@@ -44,7 +44,9 @@ export async function listQuestionSets(): Promise<QuestionSetListEntry[]> {
     .from(experiments);
   const experimentsBySet = new Map<string, number>();
   for (const use of experimentUses) {
-    for (const setId of new Set([use.own, use.foreign])) {
+    // Either paper may be unassigned, and an experiment counts once per set it actually uses.
+    const used = new Set([use.own, use.foreign].filter((id): id is string => Boolean(id)));
+    for (const setId of used) {
       experimentsBySet.set(setId, (experimentsBySet.get(setId) ?? 0) + 1);
     }
   }

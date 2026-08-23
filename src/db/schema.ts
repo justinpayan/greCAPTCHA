@@ -62,14 +62,28 @@ export const experiments = sqliteTable(
     id: text("id").primaryKey(),
     /** Short human-readable code, unique. Used in exports and spoken aloud in sessions. */
     participantId: text("participant_id").notNull(),
-    ownQuestionSetId: text("own_question_set_id")
-      .notNull()
-      .references(() => questionSets.id, { onDelete: "restrict" }),
-    foreignQuestionSetId: text("foreign_question_set_id")
-      .notNull()
-      .references(() => questionSets.id, { onDelete: "restrict" }),
+    /**
+     * Either paper may be absent. An experiment is created to reserve a participant ID and its
+     * allocation — which tells the researcher what kind of unfamiliar paper to go and find — and
+     * the banks are attached as they are generated.
+     */
+    ownQuestionSetId: text("own_question_set_id").references(() => questionSets.id, {
+      onDelete: "restrict",
+    }),
+    foreignQuestionSetId: text("foreign_question_set_id").references(() => questionSets.id, {
+      onDelete: "restrict",
+    }),
     /** Counterbalanced block order: true when the unfamiliar paper is block A. */
     foreignFirst: integer("foreign_first", { mode: "boolean" }).notNull(),
+    /**
+     * The two attempt settings, captured at creation and reused for a block attached later. Both
+     * blocks of one experiment must run under identical conditions or the within-person comparison
+     * is confounded by them, so they cannot be re-read from the dashboard at attach time.
+     */
+    randomize: integer("randomize", { mode: "boolean" }).notNull().default(false),
+    countdownHidden: integer("countdown_hidden", { mode: "boolean" })
+      .notNull()
+      .default(false),
     /** Between-subjects split of the unfamiliar paper: `in_field` or `out_of_field`. */
     foreignStratum: text("foreign_stratum").notNull(),
     createdAt: text("created_at").notNull(),

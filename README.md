@@ -401,6 +401,24 @@ Both links are created disabled, like any attempt, so a pair can be prepared the
 and armed block by block during the session. Neither attempt serves a question at creation, so
 no clock starts.
 
+**Either paper may be left unset.** An experiment created without one reserves the participant ID
+and its allocation, and each block's card then shows a picker: choose a question set, press
+**Assign**, and that block's attempt is created. This is the order the work actually happens in — a
+participant books, you allocate them a stratum, and only then do you go and find an unfamiliar paper
+of that kind and generate its bank.
+
+The allocation is made at creation even with no papers, which is the point: the card can tell you
+which stratum of paper to look for. A placeholder counts towards the counterbalance immediately, and
+deleting it frees the slot again, as deleting any experiment does.
+
+A block attached later inherits the **experiment's** randomize and hide-countdown settings, captured
+when it was created, rather than whatever the dashboard shows at the time. Both blocks of one
+experiment have to run under identical conditions or the within-person comparison is confounded by
+the difference.
+
+An experiment with a missing block cannot be run or handed out: **Run both blocks** and **Copy
+session link** both require two blocks, and the chained link requires both links enabled.
+
 ### How the two allocations stay balanced
 
 Neither is an independent coin flip. With N≈24 a fair coin lands on a 16/8 split often enough

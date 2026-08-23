@@ -863,6 +863,25 @@ textarea.control {
   background: var(--paper);
 }
 
+/* A block whose paper has not been chosen yet: dashed, so an unfinished experiment reads as
+   unfinished at a glance rather than looking like a row that failed to load. */
+.experiment-block.unassigned {
+  border-style: dashed;
+  background: white;
+}
+
+.unassigned-pill {
+  color: #7a4a11;
+  background: #fbf0db;
+}
+
+.assign-select {
+  min-width: min(100%, 220px);
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+}
+
 .block-chip {
   display: inline-flex;
   align-items: center;

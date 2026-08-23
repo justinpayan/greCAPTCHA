@@ -33,11 +33,10 @@ export async function POST(request: Request) {
       randomize?: unknown;
       countdownHidden?: unknown;
     };
-    const ownQuestionSetId = String(body.ownQuestionSetId ?? "").trim();
-    const foreignQuestionSetId = String(body.foreignQuestionSetId ?? "").trim();
-    if (!ownQuestionSetId || !foreignQuestionSetId) {
-      throw new Error("Choose a question set for each paper.");
-    }
+    // Either paper may be omitted: the experiment then reserves the participant ID and its
+    // allocation, and each block's bank is attached later through PATCH.
+    const ownQuestionSetId = String(body.ownQuestionSetId ?? "").trim() || null;
+    const foreignQuestionSetId = String(body.foreignQuestionSetId ?? "").trim() || null;
 
     const created = await createExperiment({
       ownQuestionSetId,

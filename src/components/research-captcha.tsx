@@ -53,6 +53,21 @@ const BLOCK_LABELS: Record<QuestionBlockConfig["type"], string> = {
  * link walks straight from the first into the second, so a disabled second block would strand
  * the participant mid-session.
  */
+/**
+ * Both blocks of an experiment in the order they will be asked, whether or not their paper has been
+ * assigned yet. An unassigned block still has a position, because the order is allocated at
+ * creation — which is what lets the card say which stratum of paper to go and find.
+ */
+function experimentBlocks(entry: ExperimentListEntry) {
+  return (["own", "foreign"] as const)
+    .map((condition) => ({
+      condition,
+      position: (condition === "foreign") === entry.foreignFirst ? 1 : 2,
+      row: entry.attempts.find((attempt) => attempt.condition === condition),
+    }))
+    .sort((a, b) => a.position - b.position);
+}
+
 function bothLinksEnabled(entry: ExperimentListEntry) {
   return entry.attempts.length === 2 && entry.attempts.every((row) => row.linkEnabled);
 }
@@ -198,6 +213,9 @@ export function ResearchCaptcha() {
   const [ownSetId, setOwnSetId] = useState("");
   const [foreignSetId, setForeignSetId] = useState("");
   const [experimentSearch, setExperimentSearch] = useState("");
+  /** Set chosen in an unfilled block's picker, keyed by `experimentId:condition`. */
+  const [assignChoice, setAssignChoice] = useState<Record<string, string>>({});
+  const [assigningKey, setAssigningKey] = useState("");
   /** Origin for participant links, from PUBLIC_BASE_URL; empty falls back to this origin. */
   const [participantBaseUrl, setParticipantBaseUrl] = useState("");
   /** Experiment whose session link was just copied, for the button's confirmation. */
@@ -529,6 +547,32 @@ export function ResearchCaptcha() {
     }
   }
 
+  /** Attaches a paper to an unfilled block, which creates that block's attempt. */
+  async function assignPaper(
+    entry: ExperimentListEntry,
+    condition: "own" | "foreign",
+    questionSetId: string,
+  ) {
+    const key = `${entry.id}:${condition}`;
+    setAssigningKey(key);
+    setError("");
+    try {
+      const response = await fetch(`/api/experiments/${encodeURIComponent(entry.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ condition, questionSetId }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to assign the paper.");
+      setAssignChoice((current) => ({ ...current, [key]: "" }));
+      await refreshCatalog();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to assign the paper.");
+    } finally {
+      setAssigningKey("");
+    }
+  }
+
   /**
    * Copies the chained link for an experiment: one URL that runs both blocks in order.
    *
@@ -665,11 +709,9 @@ export function ResearchCaptcha() {
   }
 
   async function createExperiment() {
-    if (!ownSetId || !foreignSetId) {
-      setError("Choose a question set for each paper.");
-      return;
-    }
-    if (ownSetId === foreignSetId) {
+    // Either paper may be left unset: the experiment reserves the participant ID and the
+    // allocation, and the banks are attached from the card as they are generated.
+    if (ownSetId && ownSetId === foreignSetId) {
       setError("The own paper and the unfamiliar paper must be different question sets.");
       return;
     }
@@ -680,8 +722,8 @@ export function ResearchCaptcha() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ownQuestionSetId: ownSetId,
-          foreignQuestionSetId: foreignSetId,
+          ownQuestionSetId: ownSetId || null,
+          foreignQuestionSetId: foreignSetId || null,
           randomize,
           countdownHidden,
         }),
@@ -1266,12 +1308,13 @@ export function ResearchCaptcha() {
 
           <div className="experiment-create">
             <span className="hint">
-              Both links are created disabled, so they can be sent out before the session.
+              Both links are created disabled, so they can be sent out before the session. Either
+              paper may be left unset and assigned from the card once its bank exists.
             </span>
             <button
               className="primary"
               type="button"
-              disabled={working || !ownSetId || !foreignSetId}
+              disabled={working}
               onClick={() => void createExperiment()}
             >
               {working ? "Creating…" : "Create experiment"}
@@ -1337,7 +1380,8 @@ export function ResearchCaptcha() {
                     Run both blocks
                   </button>
                 </div>
-                {entry.attempts.map((row) => (
+                {experimentBlocks(entry).map(({ condition, position, row }) =>
+                  row ? (
                   <div className="experiment-block" key={row.attemptId}>
                     <div className="catalog-main">
                       <div className="catalog-title-row">
@@ -1383,7 +1427,66 @@ export function ResearchCaptcha() {
                       </button>
                     </div>
                   </div>
-                ))}
+                  ) : (
+                    // No paper yet: pick a bank and it becomes this block's attempt.
+                    <div className="experiment-block unassigned" key={`${entry.id}:${condition}`}>
+                      <div className="catalog-main">
+                        <div className="catalog-title-row">
+                          <span className="block-chip">Block {position}</span>
+                          <strong>{CONDITION_LABELS[condition]}</strong>
+                          <span className="pill unassigned-pill">No paper yet</span>
+                        </div>
+                        <span className="catalog-meta">
+                          Assign a question set to create this block. It inherits the
+                          experiment&apos;s own randomize and countdown settings, so both blocks run
+                          the same way.
+                        </span>
+                      </div>
+                      <div className="catalog-actions">
+                        <select
+                          className="control assign-select"
+                          value={assignChoice[`${entry.id}:${condition}`] ?? ""}
+                          onChange={(event) =>
+                            setAssignChoice((current) => ({
+                              ...current,
+                              [`${entry.id}:${condition}`]: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">
+                            {savedSets.length ? "Select a question set…" : "No question sets yet"}
+                          </option>
+                          {savedSets.map((set) => (
+                            <option
+                              key={set.id}
+                              value={set.id}
+                              disabled={entry.attempts.some((a) => a.questionSetId === set.id)}
+                            >
+                              {set.label} · {set.questionCount} questions
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          className="primary"
+                          type="button"
+                          disabled={
+                            assigningKey === `${entry.id}:${condition}` ||
+                            !assignChoice[`${entry.id}:${condition}`]
+                          }
+                          onClick={() =>
+                            void assignPaper(
+                              entry,
+                              condition,
+                              assignChoice[`${entry.id}:${condition}`],
+                            )
+                          }
+                        >
+                          {assigningKey === `${entry.id}:${condition}` ? "Assigning…" : "Assign"}
+                        </button>
+                      </div>
+                    </div>
+                  ),
+                )}
               </article>
             ))}
           </div>

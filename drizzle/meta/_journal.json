@@ -71,6 +71,13 @@
       "when": 1787155122382,
       "tag": "0009_same_mentallo",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1787442258047,
+      "tag": "0010_illegal_iron_monger",
+      "breakpoints": true
     }
   ]
 }

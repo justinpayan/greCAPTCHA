@@ -8,6 +8,7 @@ import { attemptAnswers, attempts, experiments, questionSets } from "@/db/schema
 import { questionSetLabel } from "@/lib/catalog";
 import {
   foreignStrata,
+  type AttemptCondition,
   type ExperimentAllocation,
   type ExperimentAttempt,
   type ExperimentListEntry,
@@ -145,23 +146,32 @@ function questionOrder(set: { questionsJson: string }, randomize: boolean): stri
  * so no clock starts.
  */
 export async function createExperiment(input: {
-  ownQuestionSetId: string;
-  foreignQuestionSetId: string;
+  ownQuestionSetId: string | null;
+  foreignQuestionSetId: string | null;
   randomize: boolean;
   countdownHidden: boolean;
 }): Promise<{ experimentId: string; participantId: string }> {
-  if (input.ownQuestionSetId === input.foreignQuestionSetId) {
+  if (
+    input.ownQuestionSetId &&
+    input.ownQuestionSetId === input.foreignQuestionSetId
+  ) {
     throw new Error("An experiment needs two different question sets.");
   }
 
-  const sets = await db
-    .select()
-    .from(questionSets)
-    .where(inArray(questionSets.id, [input.ownQuestionSetId, input.foreignQuestionSetId]));
+  const wanted = [input.ownQuestionSetId, input.foreignQuestionSetId].filter(
+    (id): id is string => Boolean(id),
+  );
+  const sets = wanted.length
+    ? await db.select().from(questionSets).where(inArray(questionSets.id, wanted))
+    : [];
   const own = sets.find((set) => set.id === input.ownQuestionSetId);
   const foreign = sets.find((set) => set.id === input.foreignQuestionSetId);
-  if (!own) throw new Error("The own-paper question set was not found.");
-  if (!foreign) throw new Error("The unfamiliar-paper question set was not found.");
+  if (input.ownQuestionSetId && !own) {
+    throw new Error("The own-paper question set was not found.");
+  }
+  if (input.foreignQuestionSetId && !foreign) {
+    throw new Error("The unfamiliar-paper question set was not found.");
+  }
 
   const foreignStratum = await allocateStratum();
   const foreignFirst = await allocateForeignFirst(foreignStratum);
@@ -174,10 +184,13 @@ export async function createExperiment(input: {
       .values({
         id: experimentId,
         participantId: candidate,
-        ownQuestionSetId: own.id,
-        foreignQuestionSetId: foreign.id,
+        ownQuestionSetId: own?.id ?? null,
+        foreignQuestionSetId: foreign?.id ?? null,
         foreignFirst,
         foreignStratum,
+        // Kept so a block attached later runs under the same conditions as its sibling.
+        randomize: input.randomize,
+        countdownHidden: input.countdownHidden,
         createdAt,
       })
       .run();
@@ -187,6 +200,7 @@ export async function createExperiment(input: {
     ["own", own],
     ["foreign", foreign],
   ] as const) {
+    if (!set) continue;
     await db.insert(attempts).values({
       id: randomUUID(),
       questionSetId: set.id,
@@ -323,6 +337,80 @@ export async function getExperimentSession(id: string): Promise<ExperimentSessio
     .sort((a, b) => a.position - b.position);
 
   return { experimentId: id, blocks };
+}
+
+/**
+ * Attaches a paper to an experiment that was created without one, and builds its attempt.
+ *
+ * The attempt takes the experiment's stored `randomize` and `countdownHidden` rather than whatever
+ * the dashboard currently shows: both blocks of one experiment have to run under identical
+ * conditions, or the within-person comparison is confounded by the difference. As with any new
+ * attempt, its link starts closed and no question is served, so no clock starts.
+ */
+export async function assignExperimentPaper(input: {
+  experimentId: string;
+  condition: AttemptCondition;
+  questionSetId: string;
+}): Promise<{ attemptId: string }> {
+  const experiment = await db
+    .select()
+    .from(experiments)
+    .where(eq(experiments.id, input.experimentId))
+    .get();
+  if (!experiment) throw new Error("Experiment not found.");
+
+  const already =
+    input.condition === "own"
+      ? experiment.ownQuestionSetId
+      : experiment.foreignQuestionSetId;
+  if (already) {
+    throw new Error(
+      "That paper is already assigned. Delete the experiment to change it, which removes both blocks.",
+    );
+  }
+
+  const other =
+    input.condition === "own"
+      ? experiment.foreignQuestionSetId
+      : experiment.ownQuestionSetId;
+  if (other === input.questionSetId) {
+    throw new Error("An experiment needs two different question sets.");
+  }
+
+  const set = await db
+    .select()
+    .from(questionSets)
+    .where(eq(questionSets.id, input.questionSetId))
+    .get();
+  if (!set) throw new Error("Question set not found.");
+
+  const attemptId = randomUUID();
+  await db.insert(attempts).values({
+    id: attemptId,
+    questionSetId: set.id,
+    experimentId: experiment.id,
+    condition: input.condition,
+    randomize: experiment.randomize,
+    countdownHidden: experiment.countdownHidden,
+    linkEnabled: false,
+    overallTimeLimitSeconds: set.overallTimeLimitSeconds,
+    questionOrderJson: JSON.stringify(questionOrder(set, experiment.randomize)),
+    currentIndex: 0,
+    status: "active",
+    createdAt: new Date().toISOString(),
+  });
+
+  await db
+    .update(experiments)
+    .set(
+      input.condition === "own"
+        ? { ownQuestionSetId: set.id }
+        : { foreignQuestionSetId: set.id },
+    )
+    .where(eq(experiments.id, experiment.id))
+    .run();
+
+  return { attemptId };
 }
 
 /** Submitted answers across both attempts, so a deletion can say what it destroys. */
