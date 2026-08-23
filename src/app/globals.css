@@ -19,32 +19,12 @@
 }
 
 
-/* Paper reaches past the body: overscroll, and any page shorter than the viewport. */
-html {
-  background-color: var(--paper);
-}
-
 body {
   margin: 0;
-  min-height: 100dvh;
   color: var(--ink);
-  background-color: var(--paper);
-  /*
-   * A single glow at the top-left corner.
-   *
-   * `no-repeat` is the point: a gradient is an image, its tile is the size of the background
-   * positioning area, and `background-repeat` defaults to `repeat` — so the glow started over
-   * again further down the page, with a hard edge where one tile met the next.
-   *
-   * It fades to a transparent *green* rather than to `transparent`, which is transparent black and
-   * makes the midtones drift grey as they interpolate towards it.
-   */
-  background-image: radial-gradient(
-    circle at 8% 0%,
-    rgba(23, 107, 75, 0.09),
-    rgba(23, 107, 75, 0) 30rem
-  );
-  background-repeat: no-repeat;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(23, 107, 75, 0.09), transparent 30rem),
+    var(--paper);
   font-family: Arial, Helvetica, sans-serif;
 }
 
@@ -197,10 +177,7 @@ h2 {
   font-weight: 720;
 }
 
-.field label,
-/* A `.field-label` span that carries a hint beside it. Not applied to `.field-label` itself, which
-   also labels section headings where a flex row would change unrelated layout. */
-.field-label-row {
+.field label {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -405,14 +382,6 @@ textarea.control {
   display: flex;
   gap: 10px;
   padding-top: 26px;
-}
-
-/* The generation wait notice: same voice as a template status, but it needs to read as ongoing
-   rather than done, so it keeps the amber of an unfinished state. */
-.generation-status {
-  border-left: 3px solid var(--amber);
-  padding-left: 12px;
-  color: var(--amber);
 }
 
 .template-status {

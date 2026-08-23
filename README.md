@@ -115,11 +115,11 @@ Give the set a **Test set name** to identify it later. Leaving it blank falls ba
 the PDF filename, and a set can be renamed at any time from the saved-set list without
 touching its questions, attempts, or answers.
 
-**Saved sets** shows every saved set — name, paper, question count, how many attempts
+**Load saved set** shows every saved set — name, paper, question count, how many attempts
 it has already produced, and its model — with a search box filtering on any of those. Pick
 one to start a fresh attempt with its own answers, timings, scores, and optional randomized
-order. **Attempts** shows every attempt with its progress, status, and score, and reopens one exactly
-where it was left.
+order. **Resume attempt** shows every attempt with its progress, status, and score, and
+reopens one exactly where it was left.
 
 Each saved set carries an **Overview** button, which opens the set's contents without creating an
 attempt to see them. It lists every item with its type, card name, soft limit, warm-up marker and
@@ -248,8 +248,8 @@ submitted, the answers stay locked and the attempt stays ungraded; opening its p
 pressing the button grades it without re-answering anything. This is the offline-fallback
 path §11.1 of the research plan asks for.
 
-**Attempts** on the start screen lists every attempt with its progress and status, and reopens
-one on its plan page, keeping every answer and timing.
+**Resume attempt** on the start screen lists every attempt with its progress and status,
+and reopens one on its plan page, keeping every answer and timing.
 
 ## LaTeX in questions
 
@@ -542,8 +542,8 @@ Participant links are usually sent out before a session, so **a new attempt is c
 its link disabled**. The link is safe to mail immediately: anyone who opens it early sees a
 *not open yet* page instead of the first question, and no clock starts.
 
-The switch sits beside the link on the plan page, and on every row of **Attempts** so several
-links can be armed at once without opening each attempt:
+The switch sits beside the link on the plan page, and on every row of **Resume attempt** so
+several links can be armed at once without opening each attempt:
 
 | Link state | Participant opening the link | Researcher pressing the plan page button |
 | --- | --- | --- |
@@ -835,26 +835,6 @@ that sleeps takes the tunnel down and strands a participant part-way through.
 a phone on cellular is the quickest test. `https://rc.yourdomain.org/` should redirect to
 the sign-in page.
 
-### Generation outlives the request
-
-A multi-card set can take minutes: one model call per card, sequentially, each allowed up to three
-minutes. Cloudflare cuts a tunnelled request off at a fixed **100 seconds** and answers with its own
-HTML error page, so the browser's request fails while the server carries on and finishes the set.
-
-The generation screen now survives that. It records which attempts exist before submitting, and if
-the response comes back unreadable — an HTML error page, an empty gateway body — it says so and
-polls for the attempt generation creates, then opens its plan page as though nothing had gone wrong.
-It gives up after six minutes and tells you to check **Saved sets** before generating again, so
-several minutes of model calls are not repeated for nothing.
-
-An error the app itself returns is treated differently: a JSON body with a message is a real refusal
-— a missing PDF, a model that declined — and nothing will arrive later, so it is shown immediately
-and nothing is polled.
-
-**The reliable answer is not to generate through the tunnel.** Generation is a researcher-side
-operation and the tunnel exists for participants, so run it against `http://127.0.0.1:3000`, where
-no proxy is in the way and the 100-second ceiling does not apply.
-
 ### Seeing the requests
 
 `next start` prints nothing per request, so a tunnelled session is silent. Run it with logging
@@ -970,7 +950,7 @@ password has full access to every set and every attempt.
 
 ## Exporting responses
 
-**Export all attempts as CSV** on the Saved sets and Attempts tabs downloads every
+**Export all attempts as CSV** on the Load saved set and Resume attempt tabs downloads every
 recorded answer across every attempt, one row per question served, with attempt and set
 fields denormalized onto each row so the file stands alone with no joins.
 

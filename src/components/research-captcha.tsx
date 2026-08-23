@@ -4,7 +4,6 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 
 import { ParticipantId } from "@/components/participant-id";
 import { SetOverview } from "@/components/set-overview";
-import { NonJsonResponseError, readJsonResponse } from "@/lib/http-json";
 import {
   loadAttemptEntry,
   serveAttempt,
@@ -241,8 +240,6 @@ export function ResearchCaptcha() {
   const [templateId, setTemplateId] = useState("");
   const [templateName, setTemplateName] = useState("");
   const [templateStatus, setTemplateStatus] = useState("");
-  /** Shown while waiting out a generation whose request did not come back. */
-  const [generationStatus, setGenerationStatus] = useState("");
   // Blocks autosaving until the stored draft has been applied, so the restore is never
   // overwritten by the component's own initial state.
   const [restored, setRestored] = useState(false);
@@ -960,48 +957,12 @@ export function ResearchCaptcha() {
     );
   }
 
-  /** Attempt IDs that exist right now, or null if they could not be read. */
-  async function currentAttemptIds(): Promise<Set<string> | null> {
-    try {
-      const response = await fetch("/api/attempts");
-      const payload = await readJsonResponse<{ attempts: AttemptListEntry[] }>(
-        response,
-        "Unable to list attempts.",
-      );
-      return new Set(payload.attempts.map((entry) => entry.id));
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Waits for generation to land after the request itself failed to come back.
-   *
-   * The server keeps working when a proxy gives up on a long request, so the set usually appears a
-   * little later. Polling for the attempt that generation creates turns a gateway timeout into the
-   * plan page the run was heading for, rather than losing several minutes of model calls.
-   */
-  async function waitForGeneratedAttempt(before: Set<string>): Promise<string | null> {
-    const deadline = Date.now() + 6 * 60 * 1000;
-    while (Date.now() < deadline) {
-      await new Promise((resolve) => window.setTimeout(resolve, 5000));
-      const now = await currentAttemptIds();
-      if (!now) continue;
-      const fresh = [...now].filter((id) => !before.has(id));
-      if (fresh.length > 0) return fresh[0];
-    }
-    return null;
-  }
-
   async function generateSet(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedModel) return setError("Choose an OpenRouter model.");
     if (blocks.length === 0) return setError("Add at least one question type.");
     setWorking(true);
     setError("");
-    setGenerationStatus("");
-    // Read before the request, so a set that lands after a timeout can be told from an older one.
-    const attemptsBefore = await currentAttemptIds();
     const form = new FormData(event.currentTarget);
     form.set("modelId", selectedModel.id);
     form.set("pdfEngine", pdfEngine);
@@ -1015,34 +976,13 @@ export function ResearchCaptcha() {
     form.set("name", setName);
     try {
       const response = await fetch("/api/question-sets", { method: "POST", body: form });
-      const payload = await readJsonResponse<{ attemptId: string }>(
-        response,
-        "Unable to generate questions.",
-      );
-      await showSummary(payload.attemptId);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to generate questions.");
+      await showSummary(payload.attemptId as string);
     } catch (caught) {
-      // Only a body we could not read means the server may still be working. A JSON error from the
-      // API is a real refusal — validation, a model rejection — and nothing will arrive later.
-      const unreadable = caught instanceof NonJsonResponseError || caught instanceof TypeError;
-      if (unreadable && attemptsBefore) {
-        setGenerationStatus(
-          "The connection dropped before generation finished, but the server is still working. Waiting for the set to appear…",
-        );
-        const attemptId = await waitForGeneratedAttempt(attemptsBefore);
-        setGenerationStatus("");
-        if (attemptId) {
-          await showSummary(attemptId);
-          return;
-        }
-        setError(
-          `${caught.message} Nothing appeared within six minutes — check Saved sets before generating again, so the work is not repeated.`,
-        );
-      } else {
-        setError(caught instanceof Error ? caught.message : "Question generation failed.");
-      }
+      setError(caught instanceof Error ? caught.message : "Question generation failed.");
     } finally {
       setWorking(false);
-      setGenerationStatus("");
     }
   }
 
@@ -1171,21 +1111,21 @@ export function ResearchCaptcha() {
           className={mode === "generate" ? "active" : ""}
           onClick={() => setMode("generate")}
         >
-          New set
+          Generate new set
         </button>
         <button
           type="button"
           className={mode === "load" ? "active" : ""}
           onClick={() => setMode("load")}
         >
-          Saved sets
+          Load saved set
         </button>
         <button
           type="button"
           className={mode === "resume" ? "active" : ""}
           onClick={() => setMode("resume")}
         >
-          Attempts
+          Resume attempt
         </button>
         <button
           type="button"
@@ -1817,10 +1757,7 @@ export function ResearchCaptcha() {
             </div>
             <div className="form-grid">
             <div className="field full">
-              <span className="field-label field-label-row">
-                Evaluator model
-                <FieldHint text="Type to filter the live OpenRouter catalogue, then pick a model from the list. Recommended models are marked." />
-              </span>
+              <span className="field-label">Question-generation model</span>
               <div className="model-picker">
                 <input
                   className="search-control"
@@ -2108,12 +2045,6 @@ export function ResearchCaptcha() {
           </div>
 
           {error && <p className="error" role="alert">{error}</p>}
-          {generationStatus && (
-            <p className="template-status generation-status" role="status">
-              {generationStatus}
-            </p>
-          )}
-
           <div className="submit-row">
             <span className="hint">
               Free-response grading makes one additional model call per free-response card.
