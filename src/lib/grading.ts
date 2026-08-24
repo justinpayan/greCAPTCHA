@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { attemptAnswers, attempts } from "@/db/schema";
 import { attemptPaperLabel, buildResult, loadAttemptContext } from "@/lib/attempts";
+import { backupInBackground } from "@/lib/backup";
 import { gradeFreeResponseBlock } from "@/lib/openrouter";
 import type { AssessmentResult, StoredFreeResponseQuestion } from "@/lib/quiz";
 
@@ -94,6 +95,12 @@ export async function finalizeAttempt(input: Awaited<ReturnType<typeof loadAttem
     })
     .where(eq(attempts.id, input.attempt.id))
     .run();
+
+  // A completed submission is the point at which there is new data worth losing, so it is also
+  // the point to back up. Deliberately not awaited: the participant sees their result without
+  // waiting on a file copy, and a backup that fails cannot fail the grading that earned it.
+  backupInBackground("grading");
+
   return result;
 }
 

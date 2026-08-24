@@ -1008,6 +1008,58 @@ deltas = {
 The file contains submitted responses and answer keys, so treat it as sensitive research
 data under the retention terms in the IRB protocol.
 
+## Backups
+
+Backups are written whenever `BACKUP_DIR` is set, and switched off entirely when
+it is not:
+
+```dotenv
+BACKUP_DIR=./backups
+BACKUP_INTERVAL_MINUTES=60
+BACKUP_KEEP=48
+```
+
+One is taken when the server starts, once per interval after that, and after
+every graded submission — which is the moment new data exists that cannot be
+recreated. Each lands in its own timestamped folder, named for what set it off:
+
+```
+backups/
+  2026-08-24T21-49-14Z-startup/
+    research-captcha.db     consistent snapshot of the database
+    answers.csv             the same export the dashboard offers
+    ...                     everything else in the database folder, verbatim
+  2026-08-24T22-49-14Z-interval/
+  2026-08-24T22-58-02Z-grading/
+```
+
+The database is captured through SQLite's online backup API rather than copied.
+It runs in WAL mode, so the newest commits sit in `research-captcha.db-wal`
+until a checkpoint folds them in: copying the `.db` file on its own can lose
+recent work, or resurrect rows that were deleted after the last checkpoint, and
+copying the pair mid-write can capture two files that disagree. The snapshot is
+one self-contained file with every committed transaction in it, and the
+`-wal`/`-shm` sidecars are deliberately not copied beside it.
+
+To restore, stop the server and put the snapshot back where `DATABASE_URL`
+points, deleting any `-wal` and `-shm` left next to it:
+
+```bash
+cp backups/2026-08-24T21-49-14Z-startup/research-captcha.db data/
+rm -f data/research-captcha.db-wal data/research-captcha.db-shm
+```
+
+`BACKUP_KEEP` bounds the folder: once there are more backups than that, the
+oldest are deleted. Only folders matching the timestamped naming above are ever
+considered, so anything else kept in the backup directory is left alone. Note
+that interval and grading backups share the one window, so a day of heavy
+sessions shortens how far back the hourly history reaches — raise `BACKUP_KEEP`
+if that matters.
+
+A backup that fails is logged with a `[backup]` prefix and otherwise ignored.
+This is deliberate: losing an hour of backups is recoverable, and failing a
+participant's submission because a disk was full is not.
+
 ## Inspecting the database
 
 The application stores its records in `data/research-captcha.db`. This is a

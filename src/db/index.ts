@@ -19,6 +19,24 @@ sqlite.pragma("busy_timeout = 15000");
 
 export const db = drizzle(sqlite, { schema });
 
+/** Where the database lives, so a backup can find the folder holding it. */
+export const databaseFile = absolutePath;
+
+/**
+ * Writes a consistent copy of the database to `destination`, via SQLite's online backup API.
+ *
+ * The reason a backup cannot simply copy the file: this connection runs in WAL mode, so recent
+ * commits live in the `-wal` sidecar until a checkpoint folds them in. Copying the `.db` alone
+ * would silently lose them, and copying the pair while a write is in flight can capture two files
+ * that disagree. The backup API takes a proper read lock and produces one self-contained file with
+ * every committed transaction in it, without blocking writers for the duration.
+ *
+ * The raw connection stays private to this module — callers get the operation, not the handle.
+ */
+export function snapshotDatabase(destination: string): Promise<unknown> {
+  return sqlite.backup(destination);
+}
+
 // `next build` imports this module from several worker processes at once. Every step below
 // needs brief exclusive access to the database, so they run under one cross-process mutex.
 withMigrationLock(absolutePath, () => {
