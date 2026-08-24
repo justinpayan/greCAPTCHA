@@ -12,6 +12,12 @@ import {
   usesDirectGemini,
 } from "@/lib/openrouter";
 import {
+  MAX_PDF_BYTES,
+  MAX_UPLOAD_BYTES,
+  pdfTooLargeMessage,
+  uploadTooLargeMessage,
+} from "@/lib/uploads";
+import {
   generationConfigSchema,
   pdfEngineSchema,
   prepareFillQuestions,
@@ -33,12 +39,65 @@ export async function GET() {
   }
 }
 
-const MAX_PDF_BYTES = 25 * 1024 * 1024;
+/**
+ * Refusal for an upload that is too big to be read, thrown before the body is touched.
+ *
+ * Carries its own status because 413 is the honest answer and the catch-all below would
+ * otherwise report a size problem as a 400 alongside every validation error.
+ */
+class UploadTooLargeError extends Error {}
+
+/**
+ * Reads the multipart form, turning "too big" into something a researcher can act on.
+ *
+ * Two guards, because the failure has two shapes. `Content-Length` is checked first and is the
+ * useful one: it is known before a single byte of body is parsed, so an oversized upload is
+ * refused with its actual size named. The parse itself is then wrapped, because a body that
+ * arrives without a length header — or is truncated by a proxy in front of this server — reaches
+ * `formData()` and fails there, and Next's own "Failed to parse body as FormData" is the cryptic
+ * message this exists to replace.
+ *
+ * The browser checks the file before uploading, so in practice this is the backstop for direct
+ * API callers and for a form filled in with an unusually long contributions statement.
+ */
+async function readUploadForm(request: Request): Promise<FormData> {
+  const declared = Number(request.headers.get("content-length"));
+  const declaredBytes = Number.isFinite(declared) && declared > 0 ? declared : null;
+  if (declaredBytes !== null && declaredBytes > MAX_UPLOAD_BYTES) {
+    throw new UploadTooLargeError(uploadTooLargeMessage(declaredBytes));
+  }
+  try {
+    return await request.formData();
+  } catch {
+    // A declared length that fitted the budget rules truncation out: the body was genuinely
+    // malformed, and calling that "too large" would send the researcher after the wrong problem.
+    if (declaredBytes !== null) {
+      throw new Error(
+        "The upload could not be read. Send the form again, and if it keeps failing, re-save the PDF.",
+      );
+    }
+    // No length header, so the size is unknown and truncation is the likely cause — that is the
+    // shape a chunked upload past the cap arrives in.
+    throw new UploadTooLargeError(uploadTooLargeMessage(null));
+  }
+}
 
 export async function POST(request: Request) {
   try {
-    const form = await request.formData();
+    const form = await readUploadForm(request);
+
+    // The PDF is checked first, ahead of every other field. A manuscript that is too big is the
+    // one problem the researcher has already spent an upload on, and hearing about a mis-set
+    // block count instead would send them looking in the wrong place.
     const file = form.get("paper");
+    if (!(file instanceof File) || file.size === 0) throw new Error("Choose a PDF manuscript.");
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      throw new Error("Only PDF files are supported.");
+    }
+    // Reachable only in the narrow band where the whole body fits the budget but the PDF alone is
+    // over its share of it. The browser applies the same ceiling before uploading.
+    if (file.size > MAX_PDF_BYTES) throw new UploadTooLargeError(pdfTooLargeMessage(file.size));
+
     const contributions = String(form.get("contributions") ?? "").trim();
     const setName = String(form.get("name") ?? "").trim().slice(0, 120);
     const modelId = String(form.get("modelId") ?? "").trim();
@@ -53,11 +112,6 @@ export async function POST(request: Request) {
       JSON.parse(String(form.get("blocks") ?? "[]")),
     );
 
-    if (!(file instanceof File) || file.size === 0) throw new Error("Choose a PDF manuscript.");
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      throw new Error("Only PDF files are supported.");
-    }
-    if (file.size > MAX_PDF_BYTES) throw new Error("The PDF must be 25 MB or smaller.");
     // No length check at all, in either direction. A statement is passed to the generator as
     // written, so the model's context window is the only ceiling and an over-long one fails with
     // the model's own error rather than one invented here. Blank is allowed too: the generator is
@@ -115,6 +169,9 @@ export async function POST(request: Request) {
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Question generation failed.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    // 413 for a size refusal, so a caller that is not this app's own form can tell an upload
+    // that was too big apart from a form that was filled in wrongly.
+    const status = error instanceof UploadTooLargeError ? 413 : 400;
+    return NextResponse.json({ error: message }, { status });
   }
 }

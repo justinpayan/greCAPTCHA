@@ -2,6 +2,8 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { MAX_PDF_BYTES, MAX_PDF_LABEL, pdfTooLargeMessage } from "@/lib/uploads";
+
 import { ParticipantId } from "@/components/participant-id";
 import { SetOverview } from "@/components/set-overview";
 import {
@@ -194,6 +196,8 @@ export function ResearchCaptcha() {
   const [catalogSearch, setCatalogSearch] = useState("");
   /** Attempt whose link is mid-update, so only that row's button shows a pending state. */
   const [togglingLinkId, setTogglingLinkId] = useState("");
+  const [resettingId, setResettingId] = useState("");
+  const [paperError, setPaperError] = useState("");
   /** The set whose overview is open. Replaces the old inline rename in the list. */
   const [setOverview, setSetOverview] = useState<QuestionSetOverview | null>(null);
   /**
@@ -510,6 +514,50 @@ export function ResearchCaptcha() {
       await refreshCatalog();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to delete the attempt.");
+    }
+  }
+
+  /**
+   * Clears an attempt's progress so the same link can be run again from the start.
+   *
+   * The confirmation spells out what is destroyed rather than asking a bare "are you sure",
+   * because none of it is recoverable and a graded attempt loses a whole session's data. It also
+   * says what is *kept* — the link and the question order — since that is the reason to reset
+   * rather than delete, and the only route back for an experiment block, which cannot be deleted
+   * on its own.
+   */
+  async function resetAttemptRow(row: {
+    id: string;
+    setLabel: string;
+    status: string;
+    score: number | null;
+    answeredCount: number;
+    totalQuestions: number;
+  }) {
+    const state =
+      row.status === "graded"
+        ? `It is graded${row.score === null ? "" : ` at ${row.score}%`}. That score and every recorded answer, timing and piece of grader feedback will be destroyed.`
+        : `${row.answeredCount} of ${row.totalQuestions} questions are answered. Those answers and their timings will be destroyed.`;
+    if (
+      !window.confirm(
+        `Reset this attempt of \u201c${row.setLabel}\u201d?\n\n${state}\n\nThe link and the question order stay the same, so it can be run again from the beginning. The link is disabled by the reset \u2014 enable it when the participant is ready to start.\n\nThis cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    setResettingId(row.id);
+    setError("");
+    try {
+      const response = await fetch(`/api/attempts/${encodeURIComponent(row.id)}/reset`, {
+        method: "POST",
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to reset the attempt.");
+      await refreshCatalog();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to reset the attempt.");
+    } finally {
+      setResettingId("");
     }
   }
 
@@ -961,9 +1009,17 @@ export function ResearchCaptcha() {
     event.preventDefault();
     if (!selectedModel) return setError("Choose an OpenRouter model.");
     if (blocks.length === 0) return setError("Add at least one question type.");
+    const form = new FormData(event.currentTarget);
+    // Checked before the upload starts, not after: the server can only refuse an oversized PDF
+    // once it has arrived, and over a tunnel that is minutes of waiting for a no.
+    const paper = form.get("paper");
+    if (paper instanceof File && paper.size > MAX_PDF_BYTES) {
+      setError("");
+      return setPaperError(pdfTooLargeMessage(paper.size));
+    }
+    setPaperError("");
     setWorking(true);
     setError("");
-    const form = new FormData(event.currentTarget);
     form.set("modelId", selectedModel.id);
     form.set("pdfEngine", pdfEngine);
     form.set("blocks", JSON.stringify(blocks));
@@ -1111,21 +1167,21 @@ export function ResearchCaptcha() {
           className={mode === "generate" ? "active" : ""}
           onClick={() => setMode("generate")}
         >
-          Generate new set
+          New set
         </button>
         <button
           type="button"
           className={mode === "load" ? "active" : ""}
           onClick={() => setMode("load")}
         >
-          Load saved set
+          Saved sets
         </button>
         <button
           type="button"
           className={mode === "resume" ? "active" : ""}
           onClick={() => setMode("resume")}
         >
-          Resume attempt
+          Attempts
         </button>
         <button
           type="button"
@@ -1401,6 +1457,24 @@ export function ResearchCaptcha() {
                     </div>
                     <div className="catalog-actions">
                       <button
+                        className="secondary"
+                        type="button"
+                        disabled={resettingId === row.attemptId}
+                        title="Clear this block's answers and run it again from the start. The link and the question order are kept."
+                        onClick={() =>
+                          void resetAttemptRow({
+                            id: row.attemptId,
+                            setLabel: row.setLabel,
+                            status: row.status,
+                            score: row.score,
+                            answeredCount: row.answeredCount,
+                            totalQuestions: row.totalQuestions,
+                          })
+                        }
+                      >
+                        {resettingId === row.attemptId ? "Resetting…" : "Reset"}
+                      </button>
+                      <button
                         className={`secondary ${row.linkEnabled ? "danger" : ""}`}
                         type="button"
                         disabled={togglingLinkId === row.attemptId}
@@ -1663,6 +1737,15 @@ export function ResearchCaptcha() {
                         Delete
                       </button>
                       <button
+                        className="secondary"
+                        type="button"
+                        disabled={resettingId === entry.id}
+                        title="Clear this attempt's answers and run it again from the start. The link and the question order are kept."
+                        onClick={() => void resetAttemptRow(entry)}
+                      >
+                        {resettingId === entry.id ? "Resetting…" : "Reset"}
+                      </button>
+                      <button
                         className={`secondary ${entry.linkEnabled ? "danger" : ""}`}
                         type="button"
                         disabled={togglingLinkId === entry.id}
@@ -1729,8 +1812,23 @@ export function ResearchCaptcha() {
                   type="file"
                   accept="application/pdf,.pdf"
                   required
+                  // Judged the moment a file is picked, so the size is known before the
+                  // configuration below is filled in rather than after pressing Generate.
+                  onChange={(event) => {
+                    const picked = event.target.files?.[0];
+                    setPaperError(
+                      picked && picked.size > MAX_PDF_BYTES
+                        ? pdfTooLargeMessage(picked.size)
+                        : "",
+                    );
+                  }}
                 />
-                <small>PDF only, up to 25 MB.</small>
+                <small>PDF only, up to {MAX_PDF_LABEL}.</small>
+                {paperError && (
+                  <p className="error" role="alert">
+                    {paperError}
+                  </p>
+                )}
               </div>
               <div className="field full">
                 <label htmlFor="contributions">Claimed author&apos;s stated contributions</label>
@@ -1757,7 +1855,10 @@ export function ResearchCaptcha() {
             </div>
             <div className="form-grid">
             <div className="field full">
-              <span className="field-label">Question-generation model</span>
+              <span className="field-label field-label-row">
+                Evaluator model
+                <FieldHint text="Type to filter the live OpenRouter catalogue, then pick a model from the list. Recommended models are marked." />
+              </span>
               <div className="model-picker">
                 <input
                   className="search-control"

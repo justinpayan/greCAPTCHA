@@ -765,9 +765,17 @@ returns an API error, avoiding unexpected OpenRouter charges.
 - **Mistral OCR** is paid per page and is the better choice for scanned,
   image-heavy, or complex-layout papers.
 
-PDFs are limited to 25 MB by the application. Password-protected, damaged, very
-large, or unusually structured manuscripts may fail. Extraction quality
-directly affects question quality.
+An upload may total 10 MiB, so a manuscript PDF must be 9.9 MiB or smaller —
+the rest of that budget is taken by the contributions statement and the form's
+own multipart overhead. The ceiling is Next's `middlewareClientMaxBodySize`,
+which caps the request body it clones for middleware and would otherwise
+truncate a larger upload silently; the form checks the file's size before
+sending it, and the route refuses anything oversized with a 413. Raising it
+means setting `experimental.middlewareClientMaxBodySize` in `next.config.ts`
+and widening `MAX_UPLOAD_BYTES` in `src/lib/uploads.ts` to match.
+
+Password-protected, damaged, or unusually structured manuscripts may fail
+regardless of size. Extraction quality directly affects question quality.
 
 ## Hosting through Cloudflare Tunnel
 

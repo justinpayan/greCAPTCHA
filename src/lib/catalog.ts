@@ -237,6 +237,71 @@ export async function deleteAttempt(id: string) {
   if (result.changes !== 1) throw new Error("Attempt not found.");
 }
 
+/**
+ * Wipes an attempt's progress and returns it to the state a freshly created attempt is in.
+ *
+ * Every answer row goes — responses, timings, first-interaction stamps, per-question scores and
+ * grader feedback — along with the attempt's own grade. What survives is the attempt's identity:
+ * the same ID, so a link already handed out still works, and the same question order, so a reset
+ * is a clean re-run of the identical instrument rather than a new draw. That matters most inside
+ * an experiment, where the other block has often already run against its own fixed order.
+ *
+ * The link is closed, as it is on a new attempt: a reset means something went wrong, and the
+ * participant should not be able to walk back in before the researcher says so.
+ *
+ * The overall budget is re-read from the question set rather than kept, on the same reasoning
+ * `createAttempt` uses — the snapshot exists to protect an attempt that is *under way* from an
+ * edit to its set, and after a reset nothing is under way.
+ *
+ * Allowed on a graded attempt, deliberately: discarding a completed run under conditions the
+ * researcher wants to throw away is the main reason this exists. The confirmation lives in the
+ * interface, since the loss is not recoverable here.
+ */
+export async function resetAttempt(id: string): Promise<{
+  answersCleared: number;
+  overallTimeLimitSeconds: number | null;
+}> {
+  const attempt = await db
+    .select({ questionSetId: attempts.questionSetId })
+    .from(attempts)
+    .where(eq(attempts.id, id))
+    .get();
+  if (!attempt) throw new Error("Attempt not found.");
+
+  const set = await db
+    .select({ overallTimeLimitSeconds: questionSets.overallTimeLimitSeconds })
+    .from(questionSets)
+    .where(eq(questionSets.id, attempt.questionSetId))
+    .get();
+  if (!set) throw new Error("Question set not found.");
+
+  // Answers first. A half-finished reset then leaves an attempt whose grade still renders from
+  // `grading_json`, rather than an active attempt sitting on a locked answer row it cannot pass.
+  const cleared = await db
+    .delete(attemptAnswers)
+    .where(eq(attemptAnswers.attemptId, id))
+    .run();
+
+  await db
+    .update(attempts)
+    .set({
+      currentIndex: 0,
+      status: "active",
+      score: null,
+      gradingJson: null,
+      completedAt: null,
+      linkEnabled: false,
+      overallTimeLimitSeconds: set.overallTimeLimitSeconds,
+    })
+    .where(eq(attempts.id, id))
+    .run();
+
+  return {
+    answersCleared: cleared.changes,
+    overallTimeLimitSeconds: set.overallTimeLimitSeconds,
+  };
+}
+
 export async function listAttempts(): Promise<AttemptListEntry[]> {
   const rows = await db
     .select({
