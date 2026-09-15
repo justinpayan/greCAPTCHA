@@ -231,3 +231,4 @@ bak/
 # Migration mutex, created beside whatever DATABASE_URL points at
 *.migrate.lock
 .DS_STORE
+QualCoder/*
