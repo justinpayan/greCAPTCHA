@@ -13,7 +13,7 @@ saved sets and templates; paired experiments; participant links; CSV export;
 and SQLite backups. Answer keys and researcher-only metadata are never sent to
 the participant during an assessment.
 
-This repository provides supplementary material for the [paper]() with the same title as the repo.
+This repository provides supplementary material for the [paper](https://www.cs.cmu.edu/~nihars/preprints/greCAPTCHA.pdf) with the same title as the repo.
 There are two primary artefacts:
 1. **Prototype greCAPTCHA:** A web application to host a prototype greCAPTCHA assessment that elicits evidence about whether claimed authors understand their own paper and could take responsibility for them. See below for setup.
 2. **Anonymized Participant Data:** An anonymized dataset of 31 participants' experience interacting with this system, found in the `data_anonymized/` folder.
