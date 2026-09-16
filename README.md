@@ -1,6 +1,10 @@
-# ResearchCAPTCHA
+# greCAPTCHA: Assessing Understanding as Evidence of Research Authorship Under Generative AI
 
-ResearchCAPTCHA is a manuscript-specific assessment tool. Researchers upload a
+Authors: Justin Payan*, Bálint Gyevnár*, Atoosa Kasirzadeh, Nihar B. Shah; (* equal contribution)
+
+## Summary
+
+greCAPTCHA is a manuscript-specific assessment tool. Researchers upload a
 paper and contribution statement, generate a reusable question set through
 OpenRouter, and run timed participant assessments with rubric-based feedback.
 
@@ -8,6 +12,13 @@ It supports fill-in-the-blank, multiple-choice, and free-response questions;
 saved sets and templates; paired experiments; participant links; CSV export;
 and SQLite backups. Answer keys and researcher-only metadata are never sent to
 the participant during an assessment.
+
+This repository provides supplementary material for the [paper]() with the same title as the repo.
+There are two primary artefacts:
+1. **Prototype greCAPTCHA:** A web application to host a prototype greCAPTCHA assessment that elicits evidence about whether claimed authors understand their own paper and could take responsibility for them. See below for setup.
+2. **Anonymized Participant Data:** An anonymized dataset of 31 participants' experience interacting with this system, found in the `data_anonymized/` folder.
+
+If you use our work please cite it. A bibtex blurb is available [below](#please-cite).
 
 ## Local setup
 
@@ -138,3 +149,19 @@ Schema definitions live in `src/db/schema.ts`; checked-in migrations live in
 `drizzle/`. To reset local data, stop the server and remove the database plus
 its `-wal` and `-shm` files. This permanently deletes saved sets, attempts, and
 answers.
+
+## Please cite
+If you use our work please use the following citation (details TBC):
+
+```
+@misc{payan2026grecaptcha,
+  title         = {{greCAPTCHA}: Assessing Understanding as Evidence of Research Authorship Under Generative {AI}},
+  author        = {Payan, Justin and Gyevn{\'a}r, B{\'a}lint and Kasirzadeh, Atoosa and Shah, Nihar B.},
+  year          = {2026},
+  eprint        = {XXXX.XXXXX},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.XX},
+  url           = {https://arxiv.org/abs/XXXX.XXXXX},
+  note          = {Justin Payan and B{\'a}lint Gyevn{\'a}r contributed equally.}
+}
+```
