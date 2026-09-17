@@ -10,7 +10,7 @@ import { withMigrationLock } from "@/db/migration-lock";
 import * as schema from "@/db/schema";
 
 const databasePath = process.env.DATABASE_URL ?? "./data/research-captcha.db";
-const absolutePath = path.resolve(process.cwd(), databasePath);
+const absolutePath = path.resolve(/*turbopackIgnore: true*/ process.cwd(), databasePath);
 
 fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
 

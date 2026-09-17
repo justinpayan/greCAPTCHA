@@ -52,7 +52,7 @@ function envInteger(name: string, fallback: number, minimum: number) {
 export function backupRoot(): string | null {
   const configured = (process.env.BACKUP_DIR ?? "").trim();
   if (!configured) return null;
-  return path.resolve(process.cwd(), configured);
+  return path.resolve(/*turbopackIgnore: true*/ process.cwd(), configured);
 }
 
 export function backupIntervalMs(): number {
