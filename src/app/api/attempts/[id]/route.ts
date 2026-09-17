@@ -38,7 +38,8 @@ export async function GET(
     // inside getAttemptState, which would stamp a clock start before anyone noticed.
     const budget = await overallBudget(id);
     if (budget.exhausted) {
-      return NextResponse.json({ result: await closeForTimeout(id) });
+      const grading = await closeForTimeout(id);
+      return NextResponse.json(grading, { status: "result" in grading ? 200 : 202 });
     }
     return NextResponse.json(await getAttemptState(id));
   } catch (error) {

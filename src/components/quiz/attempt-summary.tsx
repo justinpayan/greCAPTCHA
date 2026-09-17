@@ -120,7 +120,23 @@ export function AttemptSummary({
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to grade the attempt.");
-      onResult(payload.result as AssessmentResult);
+      if (payload.result) {
+        onResult(payload.result as AssessmentResult);
+        return;
+      }
+      while (true) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+        const poll = await fetch(`/api/attempts/${outline.attemptId}/grading`, {
+          cache: "no-store",
+        });
+        const status = await poll.json();
+        if (!poll.ok) throw new Error(status.error ?? "Unable to check grading.");
+        if (status.status === "failed") throw new Error(status.error ?? "Grading failed.");
+        if (status.result) {
+          onResult(status.result as AssessmentResult);
+          return;
+        }
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to grade the attempt.");
     } finally {

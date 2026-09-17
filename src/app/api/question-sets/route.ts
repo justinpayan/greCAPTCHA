@@ -1,17 +1,8 @@
-import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { db } from "@/db";
-import { questionSets } from "@/db/schema";
-import { getUserOpenRouterKey } from "@/lib/accounts";
-import { createAttempt } from "@/lib/attempts";
 import { listQuestionSets } from "@/lib/catalog";
-import {
-  generateQuestionBlock,
-  getOpenRouterModels,
-  usesDirectGemini,
-} from "@/lib/openrouter";
+import { enqueueGenerationJob } from "@/lib/jobs";
 import {
   MAX_PDF_BYTES,
   MAX_UPLOAD_BYTES,
@@ -19,13 +10,10 @@ import {
   uploadTooLargeMessage,
 } from "@/lib/uploads";
 import { requireUser } from "@/lib/session";
+import { assertSameOrigin } from "@/lib/security";
 import {
   generationConfigSchema,
   pdfEngineSchema,
-  prepareFillQuestions,
-  prepareFreeResponseQuestions,
-  prepareMultipleChoiceQuestions,
-  type StoredQuestion,
 } from "@/lib/quiz";
 
 export const runtime = "nodejs";
@@ -87,8 +75,8 @@ async function readUploadForm(request: Request): Promise<FormData> {
 
 export async function POST(request: Request) {
   try {
+    assertSameOrigin(request);
     const user = await requireUser();
-    const apiKey = await getUserOpenRouterKey(user.id);
     const form = await readUploadForm(request);
 
     // The PDF is checked first, ahead of every other field. A manuscript that is too big is the
@@ -128,57 +116,17 @@ export async function POST(request: Request) {
     const signature = Buffer.from(await file.slice(0, 5).arrayBuffer()).toString("ascii");
     if (signature !== "%PDF-") throw new Error("The selected file is not a valid PDF.");
 
-    const selectedModel = (await getOpenRouterModels(apiKey)).find((model) => model.id === modelId);
-    if (!selectedModel) throw new Error("Choose a model from the OpenRouter catalog.");
-    const effectivePdfEngine = usesDirectGemini(modelId) ? "native" : pdfEngine;
-    if (effectivePdfEngine === "native" && !selectedModel.inputModalities.includes("file")) {
-      throw new Error("The selected model does not advertise native PDF support.");
-    }
-
-    const questions: StoredQuestion[] = [];
-    for (const block of blocks) {
-      const result = await generateQuestionBlock({
-        apiKey,
-        file,
-        contributions,
-        block,
-        previousQuestions: questions,
-        modelId,
-        pdfEngine: effectivePdfEngine,
-      });
-      if (result.type === "fill_blank") {
-        questions.push(...prepareFillQuestions(result.generated, block));
-      } else if (result.type === "multiple_choice") {
-        questions.push(...prepareMultipleChoiceQuestions(result.generated, block));
-      } else {
-        questions.push(...prepareFreeResponseQuestions(result.generated, block));
-      }
-    }
-
-    const questionSetId = randomUUID();
-    await db.insert(questionSets).values({
-      id: questionSetId,
-      ownerUserId: user.id,
-      schemaVersion: 1,
-      name: setName || null,
-      paperName: file.name,
+    const created = await enqueueGenerationJob(user.id, file, {
+      setName,
       contributions,
       modelId,
-      pdfEngine: effectivePdfEngine,
-      overallTimeLimitSeconds,
-      configJson: JSON.stringify(blocks),
-      questionsJson: JSON.stringify(questions),
-      createdAt: new Date().toISOString(),
-    });
-
-    // Returns the attempt ID only; no question is served yet, so nothing starts a clock here.
-    const created = await createAttempt({
-      questionSetId,
-      ownerUserId: user.id,
+      pdfEngine,
       randomize,
       countdownHidden,
+      overallTimeLimitSeconds,
+      blocks,
     });
-    return NextResponse.json(created, { status: 201 });
+    return NextResponse.json(created, { status: 202 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Question generation failed.";
     // 413 for a size refusal, so a caller that is not this app's own form can tell an upload

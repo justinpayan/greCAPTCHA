@@ -6,9 +6,9 @@
  */
 
 /**
- * The real ceiling, and it is not ours: Next clones the request body so that middleware can read
- * it, and `experimental.middlewareClientMaxBodySize` caps that clone at 10 MiB by default. This
- * app's middleware matches every path, so every upload is cloned. Past the cap the body is
+ * The real ceiling, and it is not ours: Next clones the request body so that proxy can read
+ * it, and `experimental.proxyClientMaxBodySize` caps that clone at 10 MiB by default. This
+ * app's proxy matches every path, so every upload is cloned. Past the cap the body is
  * **silently truncated** — the handler then receives half a multipart envelope and
  * `request.formData()` fails with "Failed to parse body as FormData", which tells the researcher
  * nothing at all.

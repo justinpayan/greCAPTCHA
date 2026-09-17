@@ -7,6 +7,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
 
 export const users = sqliteTable(
   "users",
@@ -41,6 +42,50 @@ export const sessions = sqliteTable(
     index("sessions_user_idx").on(table.userId),
     index("sessions_expiry_idx").on(table.expiresAt),
   ],
+);
+
+export const jobs = sqliteTable(
+  "jobs",
+  {
+    id: text("id").primaryKey(),
+    ownerUserId: text("owner_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    status: text("status").notNull().default("queued"),
+    payloadJson: text("payload_json").notNull(),
+    resultJson: text("result_json"),
+    error: text("error"),
+    attemptId: text("attempt_id"),
+    progressCurrent: integer("progress_current").notNull().default(0),
+    progressTotal: integer("progress_total").notNull().default(1),
+    runCount: integer("run_count").notNull().default(0),
+    leaseUntil: text("lease_until"),
+    createdAt: text("created_at").notNull(),
+    startedAt: text("started_at"),
+    completedAt: text("completed_at"),
+  },
+  (table) => [
+    index("jobs_status_created_idx").on(table.status, table.createdAt),
+    index("jobs_owner_created_idx").on(table.ownerUserId, table.createdAt),
+    index("jobs_attempt_idx").on(table.attemptId),
+    uniqueIndex("jobs_one_active_generation")
+      .on(table.ownerUserId)
+      .where(sql`${table.type} = 'generation' AND ${table.status} IN ('queued', 'running')`),
+    uniqueIndex("jobs_one_active_grading")
+      .on(table.attemptId)
+      .where(sql`${table.type} = 'grading' AND ${table.status} IN ('queued', 'running')`),
+  ],
+);
+
+export const rateLimits = sqliteTable(
+  "rate_limits",
+  {
+    key: text("key").primaryKey(),
+    windowStartedAt: text("window_started_at").notNull(),
+    count: integer("count").notNull().default(0),
+  },
+  (table) => [index("rate_limits_window_idx").on(table.windowStartedAt)],
 );
 
 /** Named, reusable generation configurations. Never holds a PDF or a contribution statement. */

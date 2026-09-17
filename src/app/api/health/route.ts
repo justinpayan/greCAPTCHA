@@ -1,4 +1,9 @@
 import { NextResponse } from "next/server";
+import fs from "node:fs";
+import path from "node:path";
+import { sql } from "drizzle-orm";
+
+import { db, databaseFile } from "@/db";
 
 export const runtime = "nodejs";
 
@@ -8,5 +13,11 @@ export const runtime = "nodejs";
  * middleware. It reports nothing about the study data.
  */
 export async function GET() {
-  return NextResponse.json({ ok: true });
+  try {
+    await db.run(sql`SELECT 1`);
+    fs.accessSync(path.dirname(databaseFile), fs.constants.R_OK | fs.constants.W_OK);
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ ok: false }, { status: 503 });
+  }
 }

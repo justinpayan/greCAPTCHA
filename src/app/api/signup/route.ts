@@ -2,11 +2,19 @@ import { NextResponse } from "next/server";
 
 import { createAccountSession, registerAccount } from "@/lib/accounts";
 import { SESSION_COOKIE, SESSION_MAX_AGE_SECONDS } from "@/lib/auth";
+import {
+  assertSameOrigin,
+  enforceRateLimit,
+  rateLimitResponse,
+  RateLimitError,
+} from "@/lib/security";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
+    assertSameOrigin(request);
+    await enforceRateLimit(request, "signup", "", 5, 24 * 60 * 60);
     const body = (await request.json()) as {
       username?: unknown;
       password?: unknown;
@@ -32,6 +40,7 @@ export async function POST(request: Request) {
     });
     return response;
   } catch (error) {
+    if (error instanceof RateLimitError) return rateLimitResponse(error);
     const message = error instanceof Error ? error.message : "Unable to create the account.";
     return NextResponse.json({ error: message }, { status: 400 });
   }

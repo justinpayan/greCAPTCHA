@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { questionSetLabel } from "@/lib/catalog";
@@ -39,6 +39,18 @@ export async function createAttempt(input: {
   randomize: boolean;
   countdownHidden: boolean;
 }): Promise<{ attemptId: string }> {
+  if (input.ownerUserId) {
+    const limit = Math.max(1, Number(process.env.MAX_ATTEMPTS_PER_ACCOUNT ?? "500"));
+    const existing = await db
+      .select({ total: count() })
+      .from(attempts)
+      .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
+      .where(eq(questionSets.ownerUserId, input.ownerUserId))
+      .get();
+    if ((existing?.total ?? 0) >= limit) {
+      throw new Error(`Your account has reached its limit of ${limit} attempts.`);
+    }
+  }
   const set = await db
     .select()
     .from(questionSets)

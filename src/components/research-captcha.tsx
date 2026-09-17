@@ -184,6 +184,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
   const [overallLimitMinutes, setOverallLimitMinutes] = useState("");
   const [loadingModels, setLoadingModels] = useState(true);
   const [working, setWorking] = useState(false);
+  const [generationStatus, setGenerationStatus] = useState("");
   const [error, setError] = useState("");
   const [accountOpen, setAccountOpen] = useState(false);
   const [replacementApiKey, setReplacementApiKey] = useState("");
@@ -1016,6 +1017,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
     }
     setPaperError("");
     setWorking(true);
+    setGenerationStatus("Queued for generation…");
     setError("");
     form.set("modelId", selectedModel.id);
     form.set("pdfEngine", pdfEngine);
@@ -1031,11 +1033,38 @@ export function ResearchCaptcha({ username }: { username: string }) {
       const response = await fetch("/api/question-sets", { method: "POST", body: form });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to generate questions.");
-      await showSummary(payload.attemptId as string);
+      const jobId = String(payload.jobId ?? "");
+      if (!jobId) throw new Error("The generation job was not created.");
+      let attemptId = "";
+      while (!attemptId) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+        const jobResponse = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);
+        const jobPayload = await jobResponse.json();
+        if (!jobResponse.ok) throw new Error(jobPayload.error ?? "Unable to check generation.");
+        const job = jobPayload.job as {
+          status: string;
+          progressCurrent: number;
+          progressTotal: number;
+          error?: string;
+          result?: { attemptId?: string };
+        };
+        setGenerationStatus(
+          job.status === "running"
+            ? `Generating block ${Math.min(job.progressCurrent + 1, job.progressTotal)} of ${job.progressTotal}…`
+            : "Waiting for a generation worker…",
+        );
+        if (job.status === "failed") throw new Error(job.error ?? "Question generation failed.");
+        if (job.status === "completed") {
+          attemptId = String(job.result?.attemptId ?? "");
+          if (!attemptId) throw new Error("Generation completed without an attempt.");
+        }
+      }
+      await showSummary(attemptId);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Question generation failed.");
     } finally {
       setWorking(false);
+      setGenerationStatus("");
     }
   }
 
@@ -2193,7 +2222,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
               type="submit"
               disabled={working || !selectedModel || blocks.length === 0}
             >
-              {working ? "Generating question set…" : "Generate question set"}
+              {working ? generationStatus || "Preparing upload…" : "Generate question set"}
             </button>
           </div>
         </form>

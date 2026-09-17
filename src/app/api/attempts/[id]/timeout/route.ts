@@ -27,7 +27,11 @@ export async function POST(
     if (!budget.exhausted) {
       return NextResponse.json({ ...(await getAttemptState(id)), closed: false });
     }
-    return NextResponse.json({ result: await closeForTimeout(id), closed: true });
+    const grading = await closeForTimeout(id);
+    return NextResponse.json(
+      { ...grading, closed: true },
+      { status: "result" in grading ? 200 : 202 },
+    );
   } catch (error) {
     if (error instanceof AttemptClosedError) {
       return NextResponse.json(

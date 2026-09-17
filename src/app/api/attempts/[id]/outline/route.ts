@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getAttemptOutline, requireAttemptOwner } from "@/lib/attempts";
-import { ensureGraded } from "@/lib/grading";
+import { enqueueGradingJob } from "@/lib/jobs";
 import { requireUser } from "@/lib/session";
 
 export const runtime = "nodejs";
@@ -42,7 +42,8 @@ export async function POST(
     const user = await requireUser();
     const { id } = await context.params;
     await requireAttemptOwner(id, user.id);
-    return NextResponse.json({ result: await ensureGraded(id) });
+    const grading = await enqueueGradingJob(id);
+    return NextResponse.json(grading, { status: "result" in grading ? 200 : 202 });
   } catch (error) {
     return errorResponse(error, "Unable to grade the attempt.");
   }

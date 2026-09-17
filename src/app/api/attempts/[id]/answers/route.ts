@@ -6,7 +6,7 @@ import { attemptAnswers, attempts } from "@/db/schema";
 import { AttemptClosedError, requireOpenAttempt } from "@/lib/attempt-access";
 import { closeForTimeout, overallBudget } from "@/lib/attempt-close";
 import { getAttemptState, getCurrentAnswer, loadAttemptContext } from "@/lib/attempts";
-import { finalizeAttempt } from "@/lib/grading";
+import { enqueueGradingJob } from "@/lib/jobs";
 import { noCreditFeedbackJson } from "@/lib/no-credit";
 import { answerSubmissionSchema, type FillReview } from "@/lib/quiz";
 
@@ -42,7 +42,8 @@ export async function POST(
 
     if (answerRow.submittedAt) {
       if (isFinalQuestion) {
-        return NextResponse.json({ result: await finalizeAttempt(quiz) });
+        const grading = await enqueueGradingJob(id);
+        return NextResponse.json(grading, { status: "result" in grading ? 200 : 202 });
       }
       return NextResponse.json({ error: "This answer is already locked." }, { status: 409 });
     }
@@ -141,13 +142,15 @@ export async function POST(
     }
 
     if (isFinalQuestion) {
-      return NextResponse.json({ result: await finalizeAttempt(quiz) });
+      const grading = await enqueueGradingJob(id);
+      return NextResponse.json(grading, { status: "result" in grading ? 200 : 202 });
     }
 
     // The answer above counted; the bell does not snatch back work already entered. But if it
     // spent the budget, the attempt closes here instead of serving another question.
     if ((await overallBudget(id)).exhausted) {
-      return NextResponse.json({ result: await closeForTimeout(id) });
+      const grading = await closeForTimeout(id);
+      return NextResponse.json(grading, { status: "result" in grading ? 200 : 202 });
     }
 
     await db

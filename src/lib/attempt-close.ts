@@ -6,9 +6,9 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { attemptAnswers, attempts } from "@/db/schema";
 import { attemptElapsedMs, loadAttemptContext } from "@/lib/attempts";
-import { finalizeAttempt } from "@/lib/grading";
+import { enqueueGradingJob } from "@/lib/jobs";
 import { noCreditFeedbackJson } from "@/lib/no-credit";
-import { questionTimeLimit, type AssessmentResult } from "@/lib/quiz";
+import { questionTimeLimit } from "@/lib/quiz";
 
 /**
  * Enforcement of the overall time limit.
@@ -69,10 +69,10 @@ export async function overallBudget(attemptId: string): Promise<OverallBudget> {
  * was open when the bell rang keeps the time it had accumulated, and the ones never reached get a
  * zero duration, which keeps "how long did this item take" honest for the items that did run.
  */
-export async function closeForTimeout(attemptId: string): Promise<AssessmentResult> {
+export async function closeForTimeout(attemptId: string) {
   const quiz = await loadAttemptContext(attemptId);
   if (quiz.attempt.status === "graded" && quiz.attempt.gradingJson) {
-    return JSON.parse(quiz.attempt.gradingJson) as AssessmentResult;
+    return { result: JSON.parse(quiz.attempt.gradingJson) };
   }
 
   const existing = await db
@@ -132,5 +132,5 @@ export async function closeForTimeout(attemptId: string): Promise<AssessmentResu
     .where(eq(attempts.id, attemptId))
     .run();
 
-  return finalizeAttempt(quiz);
+  return enqueueGradingJob(attemptId);
 }

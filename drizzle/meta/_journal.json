@@ -85,6 +85,20 @@
       "when": 1789680176267,
       "tag": "0011_vengeful_the_phantom",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1789681612353,
+      "tag": "0012_far_kulan_gath",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1789681848194,
+      "tag": "0013_dapper_lorna_dane",
+      "breakpoints": true
     }
   ]
 }

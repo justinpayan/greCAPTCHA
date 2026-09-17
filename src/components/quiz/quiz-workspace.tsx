@@ -569,6 +569,19 @@ export function QuizWorkspace({
     });
   }
 
+  async function waitForGrading() {
+    while (true) {
+      await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+      const response = await fetch(`/api/attempts/${attempt.attemptId}/grading`, {
+        cache: "no-store",
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to check grading.");
+      if (payload.status === "failed") throw new Error(payload.error ?? "Grading failed.");
+      if (payload.result) return payload.result as AssessmentResult;
+    }
+  }
+
   /**
    * Fires once when the budget runs out. An answer already entered is submitted first, so the bell
    * does not discard work; otherwise the server is asked to close the attempt. Guarded by a ref so
@@ -598,6 +611,10 @@ export function QuizWorkspace({
       if (!response.ok) throw new Error(payload.error ?? "Unable to close the assessment.");
       if (payload.result) {
         const graded = payload.result as AssessmentResult;
+        if (onFinish) onFinish(graded);
+        else setResult(graded);
+      } else if (payload.jobId) {
+        const graded = await waitForGrading();
         if (onFinish) onFinish(graded);
         else setResult(graded);
       } else if (payload.attempt) {
@@ -646,6 +663,10 @@ export function QuizWorkspace({
       }
       if (payload.result) {
         const graded = payload.result as AssessmentResult;
+        if (onFinish) onFinish(graded);
+        else setResult(graded);
+      } else if (payload.jobId) {
+        const graded = await waitForGrading();
         if (onFinish) onFinish(graded);
         else setResult(graded);
       } else {

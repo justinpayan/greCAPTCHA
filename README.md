@@ -22,7 +22,7 @@ If you use our work please cite it. A bibtex blurb is available [below](#please-
 
 ## Local setup
 
-Requirements: Node.js 20+. Each user supplies an
+Requirements: Node.js 20.9+. Each user supplies an
 [OpenRouter](https://openrouter.ai/) API key when creating an account.
 
 ```bash
@@ -91,13 +91,14 @@ on the server.
 
 The app stores research data in SQLite at `DATABASE_URL`. Exports contain
 submitted responses, scores, answer keys, and timing data; handle them under
-the study's retention and privacy requirements. The app does not provide rate
-limiting, email recovery, or an audit log.
+the study's retention and privacy requirements. Signup and login are throttled,
+and per-account set/attempt limits are configurable. The app does not provide
+email recovery or an audit log.
 
 Enable backups with:
 
 ```dotenv
-BACKUP_DIR=./backups
+BACKUP_DIR=./data/backups
 BACKUP_INTERVAL_MINUTES=60
 BACKUP_KEEP=48
 ```
@@ -106,29 +107,71 @@ Backups include a consistent database snapshot. For a quick
 manual local backup:
 
 ```bash
-sqlite3 data/research-captcha.db ".backup 'backup-$(date +%F).db'"
+sqlite3 data/public-grecaptcha.db ".backup 'backup-$(date +%F).db'"
 ```
 
-## Production and Cloudflare Tunnel
+## Production on Railway
 
-The app can run locally while Cloudflare Tunnel provides the public hostname.
-Production must use HTTPS so session cookies and account credentials are
-protected in transit. Set `PUBLIC_BASE_URL` to that hostname so copied links
-are usable by participants.
+Railway Hobby is the intended low-cost deployment. The app runs as one
+long-lived Node container with one persistent SQLite volume. Do not increase
+the replica count: SQLite and a Railway volume belong to one service instance.
+
+1. Push the repository to GitHub and create a Railway project from it. Railway
+   detects `railway.toml` and builds the included `Dockerfile`.
+2. Add a 1–5 GB volume mounted at `/app/data`.
+3. Set `DATABASE_URL=./data/public-grecaptcha.db`,
+   `BACKUP_DIR=./data/backups`, `ACCOUNT_ENCRYPTION_KEY`,
+   `RATE_LIMIT_SALT`, `PUBLIC_BASE_URL`, and the optional limits shown in
+   `.env.example`. Keep both secrets stable across deployments.
+4. Generate a Railway HTTPS domain or attach a custom domain, then set
+   `PUBLIC_BASE_URL` to that exact `https://` origin.
+5. In the volume Backups tab, schedule daily, weekly, and monthly snapshots.
+   Before a schema deployment, create and lock a manual snapshot.
+
+The `/api/health` readiness probe checks the database and volume directory.
+Question generation and free-response grading run as durable SQLite-backed
+jobs, so browser requests do not remain open during model calls. Two jobs run
+at once by default; adjust `JOB_CONCURRENCY` between 1 and 4 only after checking
+memory and OpenRouter limits. Failed jobs retry up to three times.
+
+Railway volume snapshots can be restored from the Backups tab. To take an
+off-platform copy, use Railway's volume file browser/CLI to download the newest
+database backup directory. A volume wipe also removes Railway-hosted snapshots,
+so retain occasional off-platform copies for important data.
+
+This single-replica design is appropriate for roughly 5–50 concurrent demo
+users. If write contention, high-availability requirements, or hundreds of
+simultaneous users become likely, migrate the data and sessions to managed
+Postgres and run the job worker as a separate service.
+
+## Automated tests
+
+The default suite uses a temporary SQLite database and deterministic fake
+OpenRouter responses. Unexpected network requests fail, so it costs nothing
+and requires no API key.
 
 ```bash
-npm ci
-npm run build
-npm run start:tunnel
-cloudflared tunnel run research-captcha
+npm test
+npm run test:watch
 ```
 
-Use `cloudflared tunnel login`, create a tunnel, route its DNS hostname, and
-configure `cloudflared/config.example.yml` as described by Cloudflare. Run the
-researcher dashboard directly on `127.0.0.1:3000`; long PDF generation and
-grading requests can exceed Cloudflare's proxy timeout. The
-`npm run start:tunnel:verbose` command enables request logging without logging
-request bodies.
+Tests cover account/session security, encrypted API-key rotation, generation,
+all assessment stages, mocked grading, tenant isolation, duplicate job
+prevention, and bounded concurrent provider work.
+
+There is also an explicitly opt-in live grading smoke test. It is excluded from
+`npm test` and can spend OpenRouter credit. Set all three variables before
+running it:
+
+```bash
+RUN_LIVE_OPENROUTER_TEST=1
+OPENROUTER_TEST_API_KEY=your_test_key
+OPENROUTER_TEST_MODEL=provider/model
+npm run test:live-openrouter
+```
+
+Use a restricted low-balance key and a low-cost model. Never put test keys in
+source control or CI logs.
 
 ## Development commands
 
@@ -139,6 +182,7 @@ npm run start        # run a production build
 npm run db:generate  # generate a migration after changing the schema
 npm run db:migrate   # apply pending migrations explicitly
 npm run db:push      # push the Drizzle schema manually
+npm test             # deterministic mocked unit/integration suite
 npx drizzle-kit studio
 ```
 

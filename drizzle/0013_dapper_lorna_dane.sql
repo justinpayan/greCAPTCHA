@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX `jobs_one_active_generation` ON `jobs` (`owner_user_id`) WHERE "jobs"."type" = 'generation' AND "jobs"."status" IN ('queued', 'running');--> statement-breakpoint
+CREATE UNIQUE INDEX `jobs_one_active_grading` ON `jobs` (`attempt_id`) WHERE "jobs"."type" = 'grading' AND "jobs"."status" IN ('queued', 'running');

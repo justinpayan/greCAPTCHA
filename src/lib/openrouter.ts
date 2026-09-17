@@ -14,10 +14,22 @@ import {
 } from "@/lib/quiz";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1";
+export type OpenRouterTransport = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
+let openRouterTransport: OpenRouterTransport = (input, init) => fetch(input, init);
+
+export function setOpenRouterTransportForTests(transport: OpenRouterTransport) {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("The OpenRouter transport cannot be replaced in production.");
+  }
+  openRouterTransport = transport;
+}
 
 export async function validateOpenRouterKey(apiKey: string): Promise<void> {
   const response = await logOutgoing("openrouter", "GET /auth/key", () =>
-    fetch(`${OPENROUTER_URL}/auth/key`, {
+    openRouterTransport(`${OPENROUTER_URL}/auth/key`, {
       headers: { Authorization: `Bearer ${apiKey}` },
       cache: "no-store",
       signal: AbortSignal.timeout(15_000),
@@ -60,7 +72,7 @@ const recommendedPatterns = [
 
 export async function getOpenRouterModels(apiKey: string): Promise<OpenRouterModel[]> {
   const response = await logOutgoing("openrouter", "GET /models", () =>
-    fetch(`${OPENROUTER_URL}/models`, {
+    openRouterTransport(`${OPENROUTER_URL}/models`, {
       headers: { Authorization: `Bearer ${apiKey}` },
       cache: "no-store",
       signal: AbortSignal.timeout(15_000),
@@ -286,7 +298,7 @@ async function callOpenRouter(input: {
     "openrouter",
     `POST /chat/completions model=${input.modelId}${input.file ? " with pdf" : ""}`,
     () =>
-      fetch(`${OPENROUTER_URL}/chat/completions`, {
+      openRouterTransport(`${OPENROUTER_URL}/chat/completions`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${input.apiKey}`,
