@@ -35,13 +35,21 @@ import {
  */
 export async function createAttempt(input: {
   questionSetId: string;
+  ownerUserId?: string;
   randomize: boolean;
   countdownHidden: boolean;
 }): Promise<{ attemptId: string }> {
   const set = await db
     .select()
     .from(questionSets)
-    .where(eq(questionSets.id, input.questionSetId))
+    .where(
+      input.ownerUserId
+        ? and(
+            eq(questionSets.id, input.questionSetId),
+            eq(questionSets.ownerUserId, input.ownerUserId),
+          )
+        : eq(questionSets.id, input.questionSetId),
+    )
     .get();
   if (!set) throw new Error("Question set not found.");
 
@@ -72,6 +80,16 @@ export async function createAttempt(input: {
     createdAt: new Date().toISOString(),
   });
   return { attemptId: id };
+}
+
+export async function requireAttemptOwner(attemptId: string, ownerUserId: string) {
+  const row = await db
+    .select({ id: attempts.id })
+    .from(attempts)
+    .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
+    .where(and(eq(attempts.id, attemptId), eq(questionSets.ownerUserId, ownerUserId)))
+    .get();
+  if (!row) throw new Error("Attempt not found.");
 }
 
 /**

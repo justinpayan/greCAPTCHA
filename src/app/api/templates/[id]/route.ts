@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { deleteTemplate, getTemplate } from "@/lib/templates";
+import { requireUser } from "@/lib/session";
 
 export const runtime = "nodejs";
 
@@ -17,8 +18,9 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
+    const user = await requireUser();
     const { id } = await context.params;
-    return NextResponse.json({ template: await getTemplate(id) });
+    return NextResponse.json({ template: await getTemplate(id, user.id) });
   } catch (error) {
     return errorResponse(error, "Unable to load the template.");
   }
@@ -29,8 +31,9 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
+    const user = await requireUser();
     const { id } = await context.params;
-    await deleteTemplate(id);
+    await deleteTemplate(id, user.id);
     return NextResponse.json({ deleted: true });
   } catch (error) {
     return errorResponse(error, "Unable to delete the template.");

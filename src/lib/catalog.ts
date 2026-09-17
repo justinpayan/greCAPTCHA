@@ -22,10 +22,11 @@ export function questionSetLabel(name: string | null, paperName: string) {
   return name?.trim() || paperName;
 }
 
-export async function listQuestionSets(): Promise<QuestionSetListEntry[]> {
+export async function listQuestionSets(ownerUserId: string): Promise<QuestionSetListEntry[]> {
   const sets = await db
     .select()
     .from(questionSets)
+    .where(eq(questionSets.ownerUserId, ownerUserId))
     .orderBy(desc(questionSets.createdAt))
     .limit(LIST_LIMIT);
 
@@ -71,8 +72,8 @@ export async function listQuestionSets(): Promise<QuestionSetListEntry[]> {
  * cost an attempt. Items come back in generation order — warm-ups only move to the front when an
  * attempt is built, so this is the set as stored rather than as it will be asked.
  */
-export async function getQuestionSetOverview(id: string): Promise<QuestionSetOverview> {
-  const set = await db.select().from(questionSets).where(eq(questionSets.id, id)).get();
+export async function getQuestionSetOverview(id: string, ownerUserId: string): Promise<QuestionSetOverview> {
+  const set = await db.select().from(questionSets).where(and(eq(questionSets.id, id), eq(questionSets.ownerUserId, ownerUserId))).get();
   if (!set) throw new Error("Question set not found.");
 
   const attemptTotal = await db
@@ -111,13 +112,13 @@ export async function getQuestionSetOverview(id: string): Promise<QuestionSetOve
   };
 }
 
-export async function renameQuestionSet(id: string, name: string) {
+export async function renameQuestionSet(id: string, name: string, ownerUserId: string) {
   const trimmed = name.trim();
   if (trimmed.length > 120) throw new Error("Set names are limited to 120 characters.");
   const result = await db
     .update(questionSets)
     .set({ name: trimmed || null })
-    .where(eq(questionSets.id, id))
+    .where(and(eq(questionSets.id, id), eq(questionSets.ownerUserId, ownerUserId)))
     .run();
   if (result.changes !== 1) throw new Error("Question set not found.");
   return trimmed;
@@ -137,6 +138,7 @@ export async function renameQuestionSet(id: string, name: string) {
 export async function setQuestionSetOverallLimit(
   id: string,
   seconds: number | null,
+  ownerUserId: string,
 ): Promise<{ overallTimeLimitSeconds: number | null; attemptsUpdated: number }> {
   if (seconds !== null && (!Number.isInteger(seconds) || seconds < 30 || seconds > 21_600)) {
     throw new Error("An overall limit must be between 30 seconds and 6 hours.");
@@ -145,7 +147,7 @@ export async function setQuestionSetOverallLimit(
   const updated = await db
     .update(questionSets)
     .set({ overallTimeLimitSeconds: seconds })
-    .where(eq(questionSets.id, id))
+    .where(and(eq(questionSets.id, id), eq(questionSets.ownerUserId, ownerUserId)))
     .run();
   if (updated.changes !== 1) throw new Error("Question set not found.");
 
@@ -183,7 +185,10 @@ export async function setQuestionSetOverallLimit(
  * the experiment and take the *other* paper's attempt with it, which is far more destruction
  * than "delete this set" suggests.
  */
-export async function deleteQuestionSet(id: string) {
+export async function deleteQuestionSet(id: string, ownerUserId: string) {
+  const owned = await db.select({ id: questionSets.id }).from(questionSets)
+    .where(and(eq(questionSets.id, id), eq(questionSets.ownerUserId, ownerUserId))).get();
+  if (!owned) throw new Error("Question set not found.");
   const uses = await db
     .select({ participantId: experiments.participantId })
     .from(experiments)
@@ -195,7 +200,7 @@ export async function deleteQuestionSet(id: string) {
       `This set is used by ${uses.length} experiment${plural ? "" : "s"} (participant${plural ? "" : "s"} ${named}). Delete ${plural ? "that experiment" : "those experiments"} first.`,
     );
   }
-  const result = await db.delete(questionSets).where(eq(questionSets.id, id)).run();
+  const result = await db.delete(questionSets).where(and(eq(questionSets.id, id), eq(questionSets.ownerUserId, ownerUserId))).run();
   if (result.changes !== 1) throw new Error("Question set not found.");
 }
 
@@ -205,7 +210,15 @@ export async function deleteQuestionSet(id: string) {
  * Deliberately allowed on an attempt that is already under way: closing one halts it at the
  * next request, which is how a session that has run out of time is stopped.
  */
-export async function setAttemptLinkEnabled(id: string, enabled: boolean) {
+async function requireOwnedAttempt(id: string, ownerUserId: string) {
+  const row = await db.select({ id: attempts.id }).from(attempts)
+    .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
+    .where(and(eq(attempts.id, id), eq(questionSets.ownerUserId, ownerUserId))).get();
+  if (!row) throw new Error("Attempt not found.");
+}
+
+export async function setAttemptLinkEnabled(id: string, enabled: boolean, ownerUserId: string) {
+  await requireOwnedAttempt(id, ownerUserId);
   const result = await db
     .update(attempts)
     .set({ linkEnabled: enabled })
@@ -221,7 +234,8 @@ export async function setAttemptLinkEnabled(id: string, enabled: boolean) {
  * Refused for an attempt that belongs to an experiment: half a pair cannot answer the
  * within-person comparison the experiment exists for, so the pair is deleted as a unit.
  */
-export async function deleteAttempt(id: string) {
+export async function deleteAttempt(id: string, ownerUserId: string) {
+  await requireOwnedAttempt(id, ownerUserId);
   const attempt = await db
     .select({ experimentId: attempts.experimentId })
     .from(attempts)
@@ -257,10 +271,11 @@ export async function deleteAttempt(id: string) {
  * researcher wants to throw away is the main reason this exists. The confirmation lives in the
  * interface, since the loss is not recoverable here.
  */
-export async function resetAttempt(id: string): Promise<{
+export async function resetAttempt(id: string, ownerUserId: string): Promise<{
   answersCleared: number;
   overallTimeLimitSeconds: number | null;
 }> {
+  await requireOwnedAttempt(id, ownerUserId);
   const attempt = await db
     .select({ questionSetId: attempts.questionSetId })
     .from(attempts)
@@ -302,7 +317,7 @@ export async function resetAttempt(id: string): Promise<{
   };
 }
 
-export async function listAttempts(): Promise<AttemptListEntry[]> {
+export async function listAttempts(ownerUserId: string): Promise<AttemptListEntry[]> {
   const rows = await db
     .select({
       id: attempts.id,
@@ -322,6 +337,7 @@ export async function listAttempts(): Promise<AttemptListEntry[]> {
     .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
     // Left join: most attempts are standalone and have no experiment.
     .leftJoin(experiments, eq(experiments.id, attempts.experimentId))
+    .where(eq(questionSets.ownerUserId, ownerUserId))
     .orderBy(desc(attempts.createdAt))
     .limit(LIST_LIMIT);
 

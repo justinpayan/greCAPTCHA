@@ -1,4 +1,5 @@
 import { buildAnswerCsv } from "@/lib/export";
+import { requireUser } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -12,7 +13,8 @@ export const maxDuration = 300;
  */
 export async function GET() {
   try {
-    const csv = await buildAnswerCsv();
+    const user = await requireUser();
+    const csv = await buildAnswerCsv(user.id);
     const stamp = new Date().toISOString().slice(0, 10);
     return new Response(csv, {
       headers: {

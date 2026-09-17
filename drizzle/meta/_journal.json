@@ -78,6 +78,13 @@
       "when": 1787442258047,
       "tag": "0010_illegal_iron_monger",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1789680176267,
+      "tag": "0011_vengeful_the_phantom",
+      "breakpoints": true
     }
   ]
 }

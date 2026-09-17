@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { db } from "@/db";
 import { questionSets } from "@/db/schema";
+import { getUserOpenRouterKey } from "@/lib/accounts";
 import { createAttempt } from "@/lib/attempts";
 import { listQuestionSets } from "@/lib/catalog";
 import {
@@ -17,6 +18,7 @@ import {
   pdfTooLargeMessage,
   uploadTooLargeMessage,
 } from "@/lib/uploads";
+import { requireUser } from "@/lib/session";
 import {
   generationConfigSchema,
   pdfEngineSchema,
@@ -32,7 +34,8 @@ export const maxDuration = 300;
 /** Saved sets for the start screen's searchable list. */
 export async function GET() {
   try {
-    return NextResponse.json({ sets: await listQuestionSets() });
+    const user = await requireUser();
+    return NextResponse.json({ sets: await listQuestionSets(user.id) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to list question sets.";
     return NextResponse.json({ error: message }, { status: 400 });
@@ -84,6 +87,8 @@ async function readUploadForm(request: Request): Promise<FormData> {
 
 export async function POST(request: Request) {
   try {
+    const user = await requireUser();
+    const apiKey = await getUserOpenRouterKey(user.id);
     const form = await readUploadForm(request);
 
     // The PDF is checked first, ahead of every other field. A manuscript that is too big is the
@@ -123,7 +128,7 @@ export async function POST(request: Request) {
     const signature = Buffer.from(await file.slice(0, 5).arrayBuffer()).toString("ascii");
     if (signature !== "%PDF-") throw new Error("The selected file is not a valid PDF.");
 
-    const selectedModel = (await getOpenRouterModels()).find((model) => model.id === modelId);
+    const selectedModel = (await getOpenRouterModels(apiKey)).find((model) => model.id === modelId);
     if (!selectedModel) throw new Error("Choose a model from the OpenRouter catalog.");
     const effectivePdfEngine = usesDirectGemini(modelId) ? "native" : pdfEngine;
     if (effectivePdfEngine === "native" && !selectedModel.inputModalities.includes("file")) {
@@ -133,6 +138,7 @@ export async function POST(request: Request) {
     const questions: StoredQuestion[] = [];
     for (const block of blocks) {
       const result = await generateQuestionBlock({
+        apiKey,
         file,
         contributions,
         block,
@@ -152,6 +158,7 @@ export async function POST(request: Request) {
     const questionSetId = randomUUID();
     await db.insert(questionSets).values({
       id: questionSetId,
+      ownerUserId: user.id,
       schemaVersion: 1,
       name: setName || null,
       paperName: file.name,
@@ -165,7 +172,12 @@ export async function POST(request: Request) {
     });
 
     // Returns the attempt ID only; no question is served yet, so nothing starts a clock here.
-    const created = await createAttempt({ questionSetId, randomize, countdownHidden });
+    const created = await createAttempt({
+      questionSetId,
+      ownerUserId: user.id,
+      randomize,
+      countdownHidden,
+    });
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Question generation failed.";

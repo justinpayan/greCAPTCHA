@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { attemptAnswers, attempts } from "@/db/schema";
+import { getUserOpenRouterKey } from "@/lib/accounts";
 import { attemptPaperLabel, buildResult, loadAttemptContext } from "@/lib/attempts";
 import { backupInBackground } from "@/lib/backup";
 import { gradeFreeResponseBlock } from "@/lib/openrouter";
@@ -46,6 +47,7 @@ export async function finalizeAttempt(input: Awaited<ReturnType<typeof loadAttem
         : "";
     }
     const grades = await gradeFreeResponseBlock({
+      apiKey: await getUserOpenRouterKey(input.set.ownerUserId),
       modelId: input.set.modelId,
       questions,
       answers: responses,

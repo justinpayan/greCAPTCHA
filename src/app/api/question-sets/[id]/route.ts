@@ -6,6 +6,7 @@ import {
   renameQuestionSet,
   setQuestionSetOverallLimit,
 } from "@/lib/catalog";
+import { requireUser } from "@/lib/session";
 
 export const runtime = "nodejs";
 
@@ -18,8 +19,9 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
+    const user = await requireUser();
     const { id } = await context.params;
-    return NextResponse.json({ overview: await getQuestionSetOverview(id) });
+    return NextResponse.json({ overview: await getQuestionSetOverview(id, user.id) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load the set.";
     return NextResponse.json(
@@ -41,6 +43,7 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
+    const user = await requireUser();
     const { id } = await context.params;
     const body = (await request.json()) as {
       name?: unknown;
@@ -53,14 +56,14 @@ export async function PATCH(
     } = {};
 
     if ("name" in body) {
-      result.name = await renameQuestionSet(id, String(body.name ?? ""));
+      result.name = await renameQuestionSet(id, String(body.name ?? ""), user.id);
     }
     if ("overallTimeLimitSeconds" in body) {
       const raw = body.overallTimeLimitSeconds;
       if (raw !== null && typeof raw !== "number") {
         throw new Error("The overall limit must be a number of seconds, or null.");
       }
-      const applied = await setQuestionSetOverallLimit(id, raw as number | null);
+      const applied = await setQuestionSetOverallLimit(id, raw as number | null, user.id);
       result.overallTimeLimitSeconds = applied.overallTimeLimitSeconds;
       result.attemptsUpdated = applied.attemptsUpdated;
     }
@@ -85,8 +88,9 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
+    const user = await requireUser();
     const { id } = await context.params;
-    await deleteQuestionSet(id);
+    await deleteQuestionSet(id, user.id);
     return NextResponse.json({ deleted: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to delete the set.";

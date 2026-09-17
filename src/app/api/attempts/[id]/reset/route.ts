@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { resetAttempt } from "@/lib/catalog";
+import { requireUser } from "@/lib/session";
 
 export const runtime = "nodejs";
 
@@ -17,8 +18,9 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
+    const user = await requireUser();
     const { id } = await context.params;
-    return NextResponse.json(await resetAttempt(id));
+    return NextResponse.json(await resetAttempt(id, user.id));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to reset the attempt.";
     return NextResponse.json(

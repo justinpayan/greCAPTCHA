@@ -4,10 +4,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { databaseFile, snapshotDatabase } from "@/db";
-import { buildAnswerCsv } from "@/lib/export";
 
 /**
- * Backups of the study data: a loadable copy of the database plus the CSV export, taken on a
+ * Backups of the application data: a loadable copy of the database, taken on a
  * timer and after every grading.
  *
  * Everything here is best-effort by design. A backup that fails must never take a participant's
@@ -109,8 +108,7 @@ function prune(root: string, keep: number): number {
 }
 
 /**
- * Takes one backup: a consistent database snapshot, every companion file in the database folder,
- * and the answer-level CSV export.
+ * Takes one backup: a consistent database snapshot and every companion file in its folder.
  *
  * Assembled in a `.partial` folder and renamed into place at the end, so an interrupted backup
  * leaves something obviously incomplete rather than a folder that looks finished, counts towards
@@ -138,11 +136,6 @@ async function writeBackup(trigger: BackupTrigger, now: Date): Promise<BackupOut
       files += 1;
     }
 
-    fs.writeFileSync(path.join(staging, "answers.csv"), await buildAnswerCsv(), "utf8");
-    files += 1;
-
-    // The CSV is derived from the database, so a reader who finds one without the other knows
-    // the backup is incomplete. Renaming last is what makes that guarantee hold.
     fs.rmSync(destination, { recursive: true, force: true });
     fs.renameSync(staging, destination);
   } catch (error) {

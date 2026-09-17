@@ -9,8 +9,8 @@ paper and contribution statement, generate a reusable question set through
 OpenRouter, and run timed participant assessments with rubric-based feedback.
 
 It supports fill-in-the-blank, multiple-choice, and free-response questions;
-saved sets and templates; paired experiments; participant links; CSV export;
-and SQLite backups. Answer keys and researcher-only metadata are never sent to
+private saved sets and templates; participant links; per-account CSV export;
+and SQLite backups. Answer keys and account-only metadata are never sent to
 the participant during an assessment.
 
 This repository provides supplementary material for the [paper](https://www.cs.cmu.edu/~nihars/preprints/greCAPTCHA.pdf) with the same title as the repo.
@@ -22,7 +22,8 @@ If you use our work please cite it. A bibtex blurb is available [below](#please-
 
 ## Local setup
 
-Requirements: Node.js 20+ and an [OpenRouter](https://openrouter.ai/) API key.
+Requirements: Node.js 20+. Each user supplies an
+[OpenRouter](https://openrouter.ai/) API key when creating an account.
 
 ```bash
 npm install
@@ -36,32 +37,27 @@ checked-in Drizzle migrations run automatically on startup.
 Minimum `.env.local` configuration:
 
 ```dotenv
-OPENROUTER_API_KEY=your_key_here
-DATABASE_URL=./data/research-captcha.db
-```
-
-For a deployment, also set:
-
-```dotenv
-RESEARCHER_PASSWORD=use-a-long-random-password
+DATABASE_URL=./data/public-grecaptcha.db
+ACCOUNT_ENCRYPTION_KEY=base64_encoded_32_byte_secret
 PUBLIC_BASE_URL=https://your-public-hostname.example
 ```
 
-`GEMINI_API_KEY` is optional. When set, Gemini models are sent directly to the
-Google API; otherwise they use OpenRouter. See `.env.example` for backup
-settings.
+Generate the encryption key with
+`node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`.
+Keep it secret, stable, and outside source control. Changing it makes stored
+OpenRouter keys unreadable. Use a fresh `DATABASE_URL` for the public demo.
 
 ## Researcher workflow
 
-1. Sign in at `/login`.
+1. Create an account at `/signup` with a username, password, and OpenRouter API
+   key, or return through `/login`.
 2. Upload a PDF and enter the contribution statement.
 3. Choose a model and PDF extractor, then configure question cards. Cards can
    be fill-in-the-blank, multiple-choice, or free response, with optional
    prompts, card names, warm-up status, and soft time limits.
 4. Generate and review the question set. Saved sets can be renamed, inspected,
    reused, or deleted.
-5. Create an attempt from a saved set, or create a paired experiment with an
-   own-paper and unfamiliar-paper block.
+5. Create an attempt from a saved set.
 6. Use the assessment plan to start an in-person session or copy a participant
    link. New participant links are disabled until they are ready to use.
 7. Export responses with **Export all attempts as CSV**.
@@ -82,21 +78,21 @@ ordinary wrong answers in the review and export.
   free responses are graded in grouped model calls using their rubrics.
 - Questions, options, rubrics, feedback, and answers support LaTeX through
   KaTeX. Malformed math is shown as source text.
-- Experiments counterbalance paper order and unfamiliar-paper stratum. A
-  chained experiment link runs both blocks and reveals results together.
-
 ## Access and data
 
-The researcher interface requires `RESEARCHER_PASSWORD` in production.
+Accounts use scrypt password hashes and revocable, opaque server-side sessions.
+OpenRouter keys are validated before storage and encrypted at rest with
+AES-256-GCM under `ACCOUNT_ENCRYPTION_KEY`; raw keys are never returned to the
+browser. Each account can access only its own sets, templates, attempts, and
+exports.
 Participant links are capability URLs, so treat them as sensitive. The server
 keeps API keys and answer keys private, and timing is recorded authoritatively
 on the server.
 
 The app stores research data in SQLite at `DATABASE_URL`. Exports contain
 submitted responses, scores, answer keys, and timing data; handle them under
-the study's retention and privacy requirements. This MVP has one researcher
-password rather than per-user accounts, and does not provide rate limiting or
-an audit log.
+the study's retention and privacy requirements. The app does not provide rate
+limiting, email recovery, or an audit log.
 
 Enable backups with:
 
@@ -106,7 +102,7 @@ BACKUP_INTERVAL_MINUTES=60
 BACKUP_KEEP=48
 ```
 
-Backups include a consistent database snapshot and CSV export. For a quick
+Backups include a consistent database snapshot. For a quick
 manual local backup:
 
 ```bash
@@ -115,9 +111,10 @@ sqlite3 data/research-captcha.db ".backup 'backup-$(date +%F).db'"
 
 ## Production and Cloudflare Tunnel
 
-The app can run locally while Cloudflare Tunnel provides the public participant
-hostname. Set `PUBLIC_BASE_URL` to that hostname so copied links are usable by
-participants.
+The app can run locally while Cloudflare Tunnel provides the public hostname.
+Production must use HTTPS so session cookies and account credentials are
+protected in transit. Set `PUBLIC_BASE_URL` to that hostname so copied links
+are usable by participants.
 
 ```bash
 npm ci

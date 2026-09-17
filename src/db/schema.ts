@@ -1,50 +1,109 @@
 import {
   index,
   integer,
+  primaryKey,
   real,
   sqliteTable,
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
+export const users = sqliteTable(
+  "users",
+  {
+    id: text("id").primaryKey(),
+    username: text("username").notNull(),
+    usernameNormalized: text("username_normalized").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    passwordSalt: text("password_salt").notNull(),
+    openrouterKeyCiphertext: text("openrouter_key_ciphertext").notNull(),
+    openrouterKeyIv: text("openrouter_key_iv").notNull(),
+    openrouterKeyTag: text("openrouter_key_tag").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("users_username_normalized_unique").on(table.usernameNormalized),
+  ],
+);
+
+export const sessions = sqliteTable(
+  "sessions",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: text("created_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+  },
+  (table) => [
+    index("sessions_user_idx").on(table.userId),
+    index("sessions_expiry_idx").on(table.expiresAt),
+  ],
+);
+
 /** Named, reusable generation configurations. Never holds a PDF or a contribution statement. */
 export const studyTemplates = sqliteTable(
   "study_templates",
   {
     id: text("id").primaryKey(),
+    ownerUserId: text("owner_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     configJson: text("config_json").notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [uniqueIndex("study_templates_name_unique").on(table.name)],
+  (table) => [
+    uniqueIndex("study_templates_owner_name_unique").on(table.ownerUserId, table.name),
+    index("study_templates_owner_idx").on(table.ownerUserId),
+  ],
 );
 
 /** Small key/value store. Holds the autosaved working config under `template_draft`. */
-export const appState = sqliteTable("app_state", {
-  key: text("key").primaryKey(),
-  value: text("value").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
+export const appState = sqliteTable(
+  "app_state",
+  {
+    ownerUserId: text("owner_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    value: text("value").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.ownerUserId, table.key] }),
+    index("app_state_owner_idx").on(table.ownerUserId),
+  ],
+);
 
-export const questionSets = sqliteTable("question_sets", {
-  id: text("id").primaryKey(),
-  schemaVersion: integer("schema_version").notNull().default(1),
-  /** Human-chosen label for the set. Falls back to the PDF filename when left blank. */
-  name: text("name"),
-  paperName: text("paper_name").notNull(),
-  contributions: text("contributions").notNull(),
-  modelId: text("model_id").notNull(),
-  pdfEngine: text("pdf_engine").notNull(),
-  /**
-    * Budget for the whole set, in seconds, or null for no overall limit. Unlike the per-question
-    * soft limits this one is enforced: once it is spent no further question is served.
-    */
-  overallTimeLimitSeconds: integer("overall_time_limit_seconds"),
-  configJson: text("config_json").notNull(),
-  questionsJson: text("questions_json").notNull(),
-  createdAt: text("created_at").notNull(),
-});
+export const questionSets = sqliteTable(
+  "question_sets",
+  {
+    id: text("id").primaryKey(),
+    ownerUserId: text("owner_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    schemaVersion: integer("schema_version").notNull().default(1),
+    /** Human-chosen label for the set. Falls back to the PDF filename when left blank. */
+    name: text("name"),
+    paperName: text("paper_name").notNull(),
+    contributions: text("contributions").notNull(),
+    modelId: text("model_id").notNull(),
+    pdfEngine: text("pdf_engine").notNull(),
+    /**
+     * Budget for the whole set, in seconds, or null for no overall limit. Unlike the per-question
+     * soft limits this one is enforced: once it is spent no further question is served.
+     */
+    overallTimeLimitSeconds: integer("overall_time_limit_seconds"),
+    configJson: text("config_json").notNull(),
+    questionsJson: text("questions_json").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("question_sets_owner_idx").on(table.ownerUserId)],
+);
 
 /**
  * One participant's paired session: the same form on their own paper and on an unfamiliar
@@ -190,6 +249,7 @@ export const attemptAnswers = sqliteTable(
 );
 
 export type ExperimentRecord = typeof experiments.$inferSelect;
+export type UserRecord = typeof users.$inferSelect;
 export type StudyTemplateRecord = typeof studyTemplates.$inferSelect;
 export type QuestionSetRecord = typeof questionSets.$inferSelect;
 export type AttemptRecord = typeof attempts.$inferSelect;

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { createAttempt } from "@/lib/attempts";
+import { requireUser } from "@/lib/session";
 
 export const runtime = "nodejs";
 
@@ -14,6 +15,7 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
+    const user = await requireUser();
     const { id } = await context.params;
     const body = (await request.json()) as {
       randomize?: unknown;
@@ -21,6 +23,7 @@ export async function POST(
     };
     const created = await createAttempt({
       questionSetId: id,
+      ownerUserId: user.id,
       randomize: body.randomize === true,
       countdownHidden: body.countdownHidden === true,
     });

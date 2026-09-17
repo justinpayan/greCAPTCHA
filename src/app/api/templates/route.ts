@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { studyTemplateConfigSchema } from "@/lib/quiz";
+import { requireUser } from "@/lib/session";
 import { getDraft, listTemplates, saveDraft, saveTemplate } from "@/lib/templates";
 
 export const runtime = "nodejs";
@@ -8,7 +9,8 @@ export const runtime = "nodejs";
 /** One call for the start screen: every saved template plus the autosaved draft. */
 export async function GET() {
   try {
-    const [templates, draft] = await Promise.all([listTemplates(), getDraft()]);
+    const user = await requireUser();
+    const [templates, draft] = await Promise.all([listTemplates(user.id), getDraft(user.id)]);
     return NextResponse.json({ templates, draft });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load templates.";
@@ -19,9 +21,10 @@ export async function GET() {
 /** Save a named template. An existing name is replaced rather than duplicated. */
 export async function POST(request: Request) {
   try {
+    const user = await requireUser();
     const body = (await request.json()) as { name?: unknown; config?: unknown };
     const config = studyTemplateConfigSchema.parse(body.config);
-    const saved = await saveTemplate(String(body.name ?? ""), config);
+    const saved = await saveTemplate(user.id, String(body.name ?? ""), config);
     return NextResponse.json({ template: saved }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to save the template.";
@@ -32,8 +35,9 @@ export async function POST(request: Request) {
 /** Autosave the working config. Overwrites the single stored draft. */
 export async function PUT(request: Request) {
   try {
+    const user = await requireUser();
     const body = (await request.json()) as { config?: unknown };
-    await saveDraft(studyTemplateConfigSchema.parse(body.config));
+    await saveDraft(user.id, studyTemplateConfigSchema.parse(body.config));
     return NextResponse.json({ saved: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to save the draft.";

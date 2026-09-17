@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { SESSION_COOKIE, safeEqual, sessionToken } from "@/lib/auth";
 import { logIncoming } from "@/lib/request-log";
+
+const SESSION_COOKIE = "rc_session";
 
 /**
  * Everything is researcher-only except the participant assessment route and the three
@@ -19,15 +20,6 @@ const PARTICIPANT_ATTEMPT = /^\/api\/attempts\/[^/]+$/;
 /** `/api/attempts/<id>/intro` — the landing page shown before the questions start. */
 const PARTICIPANT_INTRO = /^\/api\/attempts\/[^/]+\/intro$/;
 
-/** `/experiment/<id>` — the chained link that runs both blocks of an experiment. */
-const PARTICIPANT_EXPERIMENT_PAGE = /^\/experiment\/[^/]+$/;
-
-/**
- * `/api/experiments/<id>/session` — the block order behind a chained link. Deliberately narrow:
- * the experiment list and the DELETE on `/api/experiments/<id>` must stay researcher-only.
- */
-const PARTICIPANT_EXPERIMENT_SESSION = /^\/api\/experiments\/[^/]+\/session$/;
-
 /** `/api/attempts/<id>/answers`, `/interaction` and `/timeout`. */
 const PARTICIPANT_WRITE =
   /^\/api\/attempts\/[^/]+\/(?:answers|interaction|timeout)$/;
@@ -39,7 +31,9 @@ const PARTICIPANT_WRITE =
  */
 const ALWAYS_OPEN = new Set([
   "/login",
+  "/signup",
   "/api/session",
+  "/api/signup",
   "/api/health",
   "/signup",
 ]);
@@ -53,8 +47,6 @@ function isParticipantRequest(method: string, pathname: string) {
   if (PARTICIPANT_PAGE.test(pathname)) return method === "GET";
   if (PARTICIPANT_ATTEMPT.test(pathname)) return method === "GET";
   if (PARTICIPANT_INTRO.test(pathname)) return method === "GET";
-  if (PARTICIPANT_EXPERIMENT_PAGE.test(pathname)) return method === "GET";
-  if (PARTICIPANT_EXPERIMENT_SESSION.test(pathname)) return method === "GET";
   if (PARTICIPANT_WRITE.test(pathname)) return method === "POST";
   return false;
 }
@@ -85,6 +77,10 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const method = request.method;
 
+  if (pathname.startsWith("/experiment") || pathname.startsWith("/api/experiments")) {
+    return new NextResponse("Not found.", { status: 404 });
+  }
+
   if (ALWAYS_OPEN.has(pathname)) {
     logIncoming(method, pathname, "open");
     return NextResponse.next();
@@ -94,24 +90,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const password = process.env.RESEARCHER_PASSWORD;
-  if (!password) {
-    // Frictionless locally; fails closed once built for production, so a deployment
-    // missing the variable is locked rather than wide open.
-    if (process.env.NODE_ENV !== "production") {
-      logIncoming(method, pathname, "dev, no password set");
-      return NextResponse.next();
-    }
-    logIncoming(method, pathname, "503 RESEARCHER_PASSWORD missing");
-    return new NextResponse(
-      "RESEARCHER_PASSWORD is not set on this deployment, so the researcher interface is locked.",
-      { status: 503 },
-    );
-  }
-
   const presented = request.cookies.get(SESSION_COOKIE)?.value ?? "";
-  if (presented && safeEqual(presented, await sessionToken(password))) {
-    logIncoming(method, pathname, "researcher");
+  if (presented) {
+    // Routes and server pages validate this opaque token against the sessions table.
+    logIncoming(method, pathname, "session presented");
     return NextResponse.next();
   }
 
@@ -120,8 +102,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.json({ error: "Not authorised." }, { status: 401 });
   }
 
-  logIncoming(method, pathname, "redirect to /login");
-  const target = new URL("/login", requestOrigin(request));
+  logIncoming(method, pathname, "redirect to /signup");
+  const target = new URL("/signup", requestOrigin(request));
   if (pathname !== "/") target.searchParams.set("next", pathname);
   return NextResponse.redirect(target);
 }

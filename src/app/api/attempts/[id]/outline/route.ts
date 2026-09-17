@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { getAttemptOutline } from "@/lib/attempts";
+import { getAttemptOutline, requireAttemptOwner } from "@/lib/attempts";
 import { ensureGraded } from "@/lib/grading";
+import { requireUser } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -20,7 +21,9 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
+    const user = await requireUser();
     const { id } = await context.params;
+    await requireAttemptOwner(id, user.id);
     return NextResponse.json({ outline: await getAttemptOutline(id) });
   } catch (error) {
     return errorResponse(error, "Unable to load the attempt summary.");
@@ -36,7 +39,9 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
+    const user = await requireUser();
     const { id } = await context.params;
+    await requireAttemptOwner(id, user.id);
     return NextResponse.json({ result: await ensureGraded(id) });
   } catch (error) {
     return errorResponse(error, "Unable to grade the attempt.");

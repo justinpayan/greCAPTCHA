@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ResearchCAPTCHA",
-  description: "Verify author understanding through manuscript-specific questions.",
+  title: "greCAPTCHA Demo",
+  description: "Try manuscript-specific authorship understanding assessments.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

@@ -117,7 +117,7 @@ function describeAnswer(question: StoredQuestion | undefined, answerJson: string
   return { response: chosen, correctAnswer: key, correct: "" };
 }
 
-export async function buildAnswerCsv(): Promise<string> {
+export async function buildAnswerCsv(ownerUserId: string): Promise<string> {
   const rows = await db
     .select({
       answer: attemptAnswers,
@@ -130,6 +130,7 @@ export async function buildAnswerCsv(): Promise<string> {
     .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
     // Left join: standalone attempts have no experiment and still belong in the export.
     .leftJoin(experiments, eq(experiments.id, attempts.experimentId))
+    .where(eq(questionSets.ownerUserId, ownerUserId))
     .orderBy(asc(attempts.createdAt), asc(attemptAnswers.startedAt));
 
   // Question sets are parsed once each; a set with 50 questions is shared by every attempt.

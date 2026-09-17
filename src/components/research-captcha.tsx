@@ -157,7 +157,7 @@ function CountdownToggle({
   );
 }
 
-export function ResearchCaptcha() {
+export function ResearchCaptcha({ username }: { username: string }) {
   const [mode, setMode] = useState<"generate" | "load" | "resume" | "experiments">(
     "generate",
   );
@@ -185,6 +185,9 @@ export function ResearchCaptcha() {
   const [loadingModels, setLoadingModels] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [replacementApiKey, setReplacementApiKey] = useState("");
+  const [savingApiKey, setSavingApiKey] = useState(false);
   const [attempt, setAttempt] = useState<AttemptView | null>(null);
   /** Landing page for a question set that has not been served yet. */
   const [intro, setIntro] = useState<AttemptIntro | null>(null);
@@ -374,21 +377,15 @@ export function ResearchCaptcha() {
   }, [modelSearch, models]);
 
   const refreshCatalog = useCallback(async () => {
-    const [setsResult, attemptsResult, experimentsResult] = await Promise.allSettled([
+    const [setsResult, attemptsResult] = await Promise.allSettled([
       fetch("/api/question-sets").then((response) => response.json()),
       fetch("/api/attempts").then((response) => response.json()),
-      fetch("/api/experiments").then((response) => response.json()),
     ]);
     if (setsResult.status === "fulfilled" && setsResult.value.sets) {
       setSavedSets(setsResult.value.sets as QuestionSetListEntry[]);
     }
     if (attemptsResult.status === "fulfilled" && attemptsResult.value.attempts) {
       setAttemptList(attemptsResult.value.attempts as AttemptListEntry[]);
-    }
-    if (experimentsResult.status === "fulfilled" && experimentsResult.value.experiments) {
-      setExperiments(experimentsResult.value.experiments as ExperimentListEntry[]);
-      setAllocation(experimentsResult.value.allocation as ExperimentAllocation);
-      setParticipantBaseUrl((experimentsResult.value.participantBaseUrl as string) ?? "");
     }
   }, []);
 
@@ -1141,6 +1138,9 @@ export function ResearchCaptcha() {
       <div className="brand">
         <span className="brand-mark">R</span>
         ResearchCAPTCHA
+        <button className="sign-out" type="button" onClick={() => setAccountOpen((open) => !open)}>
+          {username}
+        </button>
         <button
           className="sign-out"
           type="button"
@@ -1152,9 +1152,54 @@ export function ResearchCaptcha() {
           Sign out
         </button>
       </div>
+      {accountOpen && (
+        <form
+          className="card form-card login-card"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            setSavingApiKey(true);
+            setError("");
+            try {
+              const response = await fetch("/api/account", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ openrouterApiKey: replacementApiKey }),
+              });
+              const payload = await response.json();
+              if (!response.ok) throw new Error(payload.error ?? "Unable to update the API key.");
+              setReplacementApiKey("");
+              setAccountOpen(false);
+            } catch (caught) {
+              setError(caught instanceof Error ? caught.message : "Unable to update the API key.");
+            } finally {
+              setSavingApiKey(false);
+            }
+          }}
+        >
+          <div className="field">
+            <label htmlFor="replacementApiKey">Replace OpenRouter API key</label>
+            <input
+              className="control"
+              id="replacementApiKey"
+              type="password"
+              autoComplete="off"
+              value={replacementApiKey}
+              onChange={(event) => setReplacementApiKey(event.target.value)}
+              required
+            />
+          </div>
+          {error && <p className="error" role="alert">{error}</p>}
+          <div className="submit-row">
+            <span className="hint">The replacement is validated and encrypted before storage.</span>
+            <button className="primary" type="submit" disabled={savingApiKey}>
+              {savingApiKey ? "Saving…" : "Update key"}
+            </button>
+          </div>
+        </form>
+      )}
       <section>
         <p className="eyebrow">Authorship understanding assessment</p>
-        <h1>Researcher Dashboard</h1>
+        <h1>greCAPTCHA Demo</h1>
         <p className="lede">
           Generate a reusable mixed-format question set, start a fresh attempt from one you
           have already built, or reopen an assessment already under way.
@@ -1182,13 +1227,6 @@ export function ResearchCaptcha() {
           onClick={() => setMode("resume")}
         >
           Attempts
-        </button>
-        <button
-          type="button"
-          className={mode === "experiments" ? "active" : ""}
-          onClick={() => setMode("experiments")}
-        >
-          Experiments
         </button>
       </div>
 

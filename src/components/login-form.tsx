@@ -1,11 +1,15 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 
 import { Brand } from "@/components/brand";
 
-export function LoginForm({ next }: { next: string }) {
+export function LoginForm({ next, signup = false }: { next: string; signup?: boolean }) {
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
+  const [openrouterApiKey, setOpenrouterApiKey] = useState("");
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
 
@@ -14,10 +18,10 @@ export function LoginForm({ next }: { next: string }) {
     setWorking(true);
     setError("");
     try {
-      const response = await fetch("/api/session", {
+      const response = await fetch(signup ? "/api/signup" : "/api/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ username, password, passwordConfirmation, openrouterApiKey }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to sign in.");
@@ -33,36 +37,83 @@ export function LoginForm({ next }: { next: string }) {
     <main className="app-shell">
       <Brand />
       <section>
-        <p className="eyebrow">Researcher access</p>
-        <h1>Sign in.</h1>
+        <p className="eyebrow">Public demo</p>
+        <h1>{signup ? "Create your account." : "Welcome back."}</h1>
         <p className="lede">
-          The assessment link given to a participant does not need this password. It is only
-          for building sets, reviewing plans, and browsing results.
+          {signup
+            ? "Use your own OpenRouter key to generate and grade test question sets. Your key is encrypted before it is stored."
+            : "Sign in to return to your saved sets and attempts."}
         </p>
       </section>
       <form className="card form-card login-card" onSubmit={submit}>
         <div className="field">
-          <label htmlFor="password">Researcher password</label>
+          <label htmlFor="username">Username</label>
+          <input
+            className="control"
+            id="username"
+            value={username}
+            autoFocus
+            autoComplete="username"
+            onChange={(event) => setUsername(event.target.value)}
+            required
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="password">Password</label>
           <input
             className="control"
             id="password"
             type="password"
             value={password}
-            autoFocus
-            autoComplete="current-password"
+            autoComplete={signup ? "new-password" : "current-password"}
             onChange={(event) => setPassword(event.target.value)}
             required
           />
         </div>
+        {signup && (
+          <>
+            <div className="field">
+              <label htmlFor="passwordConfirmation">Confirm password</label>
+              <input
+                className="control"
+                id="passwordConfirmation"
+                type="password"
+                value={passwordConfirmation}
+                autoComplete="new-password"
+                onChange={(event) => setPasswordConfirmation(event.target.value)}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="openrouterApiKey">OpenRouter API key</label>
+              <input
+                className="control"
+                id="openrouterApiKey"
+                type="password"
+                value={openrouterApiKey}
+                autoComplete="off"
+                onChange={(event) => setOpenrouterApiKey(event.target.value)}
+                required
+              />
+              <span className="hint">The key is validated with OpenRouter and encrypted at rest.</span>
+            </div>
+          </>
+        )}
         {error && (
           <p className="error" role="alert">
             {error}
           </p>
         )}
         <div className="submit-row">
-          <span className="hint">Sessions last 12 hours.</span>
-          <button className="primary" type="submit" disabled={working || !password}>
-            {working ? "Signing in…" : "Sign in"}
+          <span className="hint">
+            {signup ? (
+              <>Already registered? <Link href="/login">Sign in</Link>.</>
+            ) : (
+              <>Need an account? <Link href="/signup">Create one</Link>.</>
+            )}
+          </span>
+          <button className="primary" type="submit" disabled={working || !username || !password}>
+            {working ? "Working…" : signup ? "Create account" : "Sign in"}
           </button>
         </div>
       </form>

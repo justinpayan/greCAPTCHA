@@ -15,6 +15,17 @@ import {
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1";
 
+export async function validateOpenRouterKey(apiKey: string): Promise<void> {
+  const response = await logOutgoing("openrouter", "GET /auth/key", () =>
+    fetch(`${OPENROUTER_URL}/auth/key`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    }),
+  );
+  if (!response.ok) throw new Error("OpenRouter rejected that API key.");
+}
+
 export type OpenRouterModel = {
   id: string;
   name: string;
@@ -47,13 +58,11 @@ const recommendedPatterns = [
   /deepseek\/deepseek/i,
 ];
 
-export async function getOpenRouterModels(): Promise<OpenRouterModel[]> {
+export async function getOpenRouterModels(apiKey: string): Promise<OpenRouterModel[]> {
   const response = await logOutgoing("openrouter", "GET /models", () =>
     fetch(`${OPENROUTER_URL}/models`, {
-      headers: process.env.OPENROUTER_API_KEY
-        ? { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` }
-        : undefined,
-      next: { revalidate: 300 },
+      headers: { Authorization: `Bearer ${apiKey}` },
+      cache: "no-store",
       signal: AbortSignal.timeout(15_000),
     }),
   );
@@ -247,97 +256,18 @@ function extractTextContent(content: unknown): string {
 }
 
 export function usesDirectGemini(modelId: string) {
-  return (
-    Boolean(process.env.GEMINI_API_KEY) && /^google\/gemini-/i.test(modelId)
-  );
-}
-
-async function callGeminiDirect(input: {
-  modelId: string;
-  prompt: string;
-  responseSchema: object;
-  file?: File;
-}) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured.");
-
-  const parts: Array<Record<string, unknown>> = [{ text: input.prompt }];
-  if (input.file) {
-    const bytes = Buffer.from(await input.file.arrayBuffer());
-    parts.unshift({
-      inlineData: {
-        mimeType: "application/pdf",
-        data: bytes.toString("base64"),
-      },
-    });
-  }
-
-  const directModelId = input.modelId
-    .slice("google/".length)
-    .replace(/:[a-z0-9_-]+$/i, "");
-  const schema =
-    "schema" in input.responseSchema
-      ? (input.responseSchema as { schema: object }).schema
-      : input.responseSchema;
-  const response = await logOutgoing(
-    "gemini",
-    `POST ${directModelId}:generateContent${input.file ? " with pdf" : ""}`,
-    () =>
-      fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(directModelId)}:generateContent`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": apiKey,
-          },
-          body: JSON.stringify({
-            contents: [{ role: "user", parts }],
-            generationConfig: {
-              temperature: 0.2,
-              responseMimeType: "application/json",
-              responseJsonSchema: schema,
-            },
-          }),
-          signal: AbortSignal.timeout(180_000),
-        },
-      ),
-  );
-
-  const payload = (await response.json()) as {
-    error?: { message?: string };
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
-  if (!response.ok) {
-    throw new Error(
-      payload.error?.message ?? `Gemini returned ${response.status}.`,
-    );
-  }
-  const text = (payload.candidates?.[0]?.content?.parts ?? [])
-    .map((part) => part.text ?? "")
-    .join("");
-  if (!text) throw new Error("Gemini returned no text content.");
-  try {
-    return JSON.parse(text.replace(/^```json\s*|\s*```$/g, "")) as unknown;
-  } catch {
-    throw new Error("Gemini returned malformed JSON.");
-  }
+  void modelId;
+  return false;
 }
 
 async function callOpenRouter(input: {
+  apiKey: string;
   modelId: string;
   prompt: string;
   responseSchema: object;
   file?: File;
   pdfEngine?: PdfEngine;
 }) {
-  if (usesDirectGemini(input.modelId)) {
-    return callGeminiDirect(input);
-  }
-
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not configured.");
-
   const content: Array<Record<string, unknown>> = [
     { type: "text", text: input.prompt },
   ];
@@ -359,7 +289,7 @@ async function callOpenRouter(input: {
       fetch(`${OPENROUTER_URL}/chat/completions`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${input.apiKey}`,
           "Content-Type": "application/json",
           "HTTP-Referer": "http://localhost:3000",
           "X-Title": "ResearchCAPTCHA",
@@ -406,6 +336,7 @@ async function callOpenRouter(input: {
 }
 
 export async function generateQuestionBlock(input: {
+  apiKey: string;
   file: File;
   contributions: string;
   block: QuestionBlockConfig;
@@ -478,6 +409,7 @@ Each entry above carries a "covers" line naming the part of the manuscript that 
 
   if (input.block.type === "fill_blank") {
     const parsed = await callOpenRouter({
+      apiKey: input.apiKey,
       modelId: input.modelId,
       file: input.file,
       pdfEngine: input.pdfEngine,
@@ -498,6 +430,7 @@ Generate exactly ${input.block.count} fill-in-the-blank questions. Provide appro
   if (input.block.type === "multiple_choice") {
     const optionCount = input.block.optionsPerQuestion;
     const parsed = await callOpenRouter({
+      apiKey: input.apiKey,
       modelId: input.modelId,
       file: input.file,
       pdfEngine: input.pdfEngine,
@@ -523,6 +456,7 @@ Generate exactly ${input.block.count} multiple-choice questions with exactly one
   }
 
   const parsed = await callOpenRouter({
+    apiKey: input.apiKey,
     modelId: input.modelId,
     file: input.file,
     pdfEngine: input.pdfEngine,
@@ -552,6 +486,7 @@ Generate exactly ${input.block.count} free-response questions. Every rubric must
 }
 
 export async function gradeFreeResponseBlock(input: {
+  apiKey: string;
   modelId: string;
   questions: StoredFreeResponseQuestion[];
   answers: Record<string, string>;
@@ -563,6 +498,7 @@ export async function gradeFreeResponseBlock(input: {
     response: input.answers[question.id] ?? "",
   }));
   const parsed = await callOpenRouter({
+    apiKey: input.apiKey,
     modelId: input.modelId,
     responseSchema: gradingJsonSchema,
     prompt: `Grade each submitted response against only its supplied rubric. Apply criteria consistently, allow substantively equivalent wording, and provide concise actionable feedback. Return one 0–100 score and feedback string for every question ID. Do not omit or add IDs.

@@ -1,5 +1,10 @@
-import { ResearchCaptcha } from "@/components/research-captcha";
+import { redirect } from "next/navigation";
 
-export default function Home() {
-  return <ResearchCaptcha />;
+import { ResearchCaptcha } from "@/components/research-captcha";
+import { currentUser } from "@/lib/session";
+
+export default async function Home() {
+  const user = await currentUser();
+  if (!user) redirect("/signup");
+  return <ResearchCaptcha username={user.username} />;
 }
