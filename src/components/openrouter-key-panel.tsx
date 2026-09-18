@@ -15,10 +15,12 @@ export function OpenRouterKeyPanel({
   apiKey,
   source,
   onChange,
+  onReady,
 }: {
   apiKey: string;
   source: KeySource;
   onChange: (apiKey: string, source: KeySource) => void;
+  onReady?: (apiKey: string, source: KeySource) => void;
 }) {
   const [browserKey, setBrowserKey] = useState<BrowserOpenRouterKey | null>(null);
   const [checking, setChecking] = useState(false);
@@ -41,6 +43,7 @@ export function OpenRouterKeyPanel({
       const checked = await validateBrowserOpenRouterKey();
       setBrowserKey(checked);
       onChange(checked.key, "oauth");
+      onReady?.(checked.key, "oauth");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to verify the key.");
     } finally {
@@ -64,12 +67,18 @@ export function OpenRouterKeyPanel({
         <input
           className="control"
           id="openrouterApiKey"
+          name="grecaptcha-openrouter-api-key"
           type="password"
-          autoComplete="off"
+          autoComplete="new-password"
+          data-1p-ignore
+          data-lpignore="true"
           value={source === "paste" ? apiKey : ""}
           disabled={source === "oauth"}
           placeholder={source === "oauth" ? "Using browser-managed key" : "Paste for this action"}
           onChange={(event) => onChange(event.target.value, "paste")}
+          onBlur={() => {
+            if (source === "paste" && apiKey.trim()) onReady?.(apiKey.trim(), "paste");
+          }}
         />
         <small>
           Pasted keys are sent over HTTPS for this job, held only in server memory, and never

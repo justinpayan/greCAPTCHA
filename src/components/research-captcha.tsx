@@ -361,11 +361,13 @@ export function ResearchCaptcha({ username }: { username: string }) {
         if (connected) {
           setOpenrouterApiKey(connected.key);
           setKeySource("oauth");
+          void loadModelCatalog(connected.key, "oauth");
         } else {
           const browserKey = readBrowserOpenRouterKey(username);
           if (browserKey) {
             setOpenrouterApiKey(browserKey.key);
             setKeySource("oauth");
+            void loadModelCatalog(browserKey.key, "oauth");
           }
         }
         const defaultPreferred = preferredModel(catalog);
@@ -469,8 +471,11 @@ export function ResearchCaptcha({ username }: { username: string }) {
       .slice(0, 60);
   }, [defaultModel, defaultModelSearch, models]);
 
-  async function loadModelCatalog() {
-    if (!openrouterApiKey) {
+  async function loadModelCatalog(
+    requestedKey = openrouterApiKey,
+    requestedSource: KeySource = keySource,
+  ) {
+    if (!requestedKey) {
       setError("Paste or connect an OpenRouter API key before loading models.");
       return;
     }
@@ -478,11 +483,13 @@ export function ResearchCaptcha({ username }: { username: string }) {
     setError("");
     try {
       const keyForRequest =
-        keySource === "oauth" ? (await validateBrowserOpenRouterKey()).key : openrouterApiKey;
+        requestedSource === "oauth"
+          ? (await validateBrowserOpenRouterKey()).key
+          : requestedKey;
       const response = await fetch("/api/openrouter/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ openrouterApiKey: keyForRequest, keySource }),
+        body: JSON.stringify({ openrouterApiKey: keyForRequest, keySource: requestedSource }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to load models.");
@@ -2512,13 +2519,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
 
           {mode === "default" && (
             <div className="default-template-summary">
-              <div>
-                <strong>Standard eight-question assessment</strong>
-                <p>
-                  Two questions each on planted errors, unstated rationale, background concepts,
-                  and failure modes.
-                </p>
-              </div>
               <div className="field">
                 <span className="field-label field-label-row">
                   Generator and Evaluator model
@@ -2582,20 +2582,10 @@ export function ResearchCaptcha({ username }: { username: string }) {
               setOpenrouterApiKey(nextKey);
               setKeySource(nextSource);
             }}
+            onReady={(nextKey, nextSource) =>
+              void loadModelCatalog(nextKey, nextSource)
+            }
           />
-          <div className="key-catalog-actions">
-            <button
-              className="secondary"
-              type="button"
-              disabled={loadingModels || !openrouterApiKey}
-              onClick={() => void loadModelCatalog()}
-            >
-              {loadingModels ? "Loading models…" : "Load full model catalog"}
-            </button>
-            <span className="hint">
-              Featured models are available immediately. Load the catalog to search every model.
-            </span>
-          </div>
           {error && <p className="error" role="alert">{error}</p>}
           <div className="submit-row">
             {failedGenerationJobId && (

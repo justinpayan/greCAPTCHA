@@ -646,8 +646,7 @@ textarea.control {
   font-weight: 680;
 }
 
-.key-source-actions,
-.key-catalog-actions {
+.key-source-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -658,10 +657,6 @@ textarea.control {
   display: inline-flex;
   align-items: center;
   text-decoration: none;
-}
-
-.key-catalog-actions {
-  margin-top: 12px;
 }
 
 .mode-tabs button {
