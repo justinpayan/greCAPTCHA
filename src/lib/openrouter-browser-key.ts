@@ -134,7 +134,7 @@ export async function completeOpenRouterOAuth(): Promise<BrowserOpenRouterKey | 
 
   const flowRaw = sessionStorage.getItem(FLOW_STORAGE);
   sessionStorage.removeItem(FLOW_STORAGE);
-  if (!flowRaw || !nonce || !code) throw new Error("The OpenRouter connection could not be verified.");
+  if (!flowRaw || !code) throw new Error("The OpenRouter connection could not be verified.");
   const flow = JSON.parse(flowRaw) as {
     verifier?: string;
     nonce?: string;
@@ -143,7 +143,10 @@ export async function completeOpenRouterOAuth(): Promise<BrowserOpenRouterKey | 
   };
   if (
     !flow.verifier ||
-    flow.nonce !== nonce ||
+    // OpenRouter may rebuild the callback URL when appending `code`, dropping its existing
+    // query string. When it preserves our nonce it must match; otherwise the authorization code
+    // remains bound to this browser by the secret S256 verifier stored in sessionStorage.
+    (nonce !== null && flow.nonce !== nonce) ||
     !flow.createdAt ||
     Date.now() - flow.createdAt > 10 * 60 * 1000
   ) {
