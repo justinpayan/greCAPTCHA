@@ -78,7 +78,16 @@ export async function requireOpenAttempt(
     .where(eq(attempts.id, attemptId))
     .get();
   if (!attempt) throw new Error("Attempt not found.");
-  if (attempt.ownerUserId === user.id) return;
+  if (attempt.ownerUserId === user.id) {
+    if (options.claim && !attempt.takerUserId) {
+      await db
+        .update(attempts)
+        .set({ takerUserId: user.id, takerUsername: user.username })
+        .where(and(eq(attempts.id, attemptId), isNull(attempts.takerUserId)))
+        .run();
+    }
+    return;
+  }
   const expired =
     attempt.linkExpiresAt !== null &&
     new Date(attempt.linkExpiresAt).getTime() <= Date.now();

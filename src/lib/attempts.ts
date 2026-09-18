@@ -5,7 +5,7 @@ import { and, count, desc, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/db";
 import { questionSetLabel } from "@/lib/catalog";
-import { attemptAnswers, attempts, experiments, questionSets } from "@/db/schema";
+import { attemptAnswers, attempts, experiments, questionSets, users } from "@/db/schema";
 import {
   isWarmup,
   questionBlockName,
@@ -133,12 +133,27 @@ export async function createSharedAttempt(questionSetId: string, ownerUserId: st
 
 export async function requireAttemptOwner(attemptId: string, ownerUserId: string) {
   const row = await db
-    .select({ id: attempts.id })
+    .select({
+      id: attempts.id,
+      status: attempts.status,
+      takerUserId: attempts.takerUserId,
+      ownerUsername: users.username,
+    })
     .from(attempts)
     .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
+    .innerJoin(users, eq(users.id, questionSets.ownerUserId))
     .where(and(eq(attempts.id, attemptId), eq(questionSets.ownerUserId, ownerUserId)))
     .get();
   if (!row) throw new Error("Attempt not found.");
+  // Attempts completed by their owner before taker tracking was introduced have no recorded
+  // taker. Opening their researcher summary is enough to backfill the only identifiable account.
+  if (row.status === "graded" && !row.takerUserId) {
+    await db
+      .update(attempts)
+      .set({ takerUserId: ownerUserId, takerUsername: row.ownerUsername })
+      .where(and(eq(attempts.id, attemptId), isNull(attempts.takerUserId)))
+      .run();
+  }
 }
 
 /**
