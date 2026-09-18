@@ -36,6 +36,15 @@ export function OpenRouterKeyPanel({
       });
   }, []); // The parent callback is intentionally not a subscription.
 
+  // OAuth completion is handled by the dashboard because it owns the callback URL. Reflect the
+  // newly stored key as soon as that async exchange updates the controlled selection, without
+  // requiring a page refresh.
+  useEffect(() => {
+    if (source !== "oauth" || !apiKey) return;
+    const stored = readBrowserOpenRouterKey();
+    if (stored?.key === apiKey) setBrowserKey(stored);
+  }, [apiKey, source]);
+
   async function useBrowserKey() {
     setChecking(true);
     setError("");
