@@ -91,6 +91,7 @@ export async function enqueueGradingJob(attemptId: string) {
       ownerUserId: questionSets.ownerUserId,
       status: attempts.status,
       gradingJson: attempts.gradingJson,
+      takerUsername: attempts.takerUsername,
     })
     .from(attempts)
     .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
@@ -98,7 +99,13 @@ export async function enqueueGradingJob(attemptId: string) {
     .get();
   if (!row) throw new Error("Attempt not found.");
   if (row.status === "graded" && row.gradingJson) {
-    return { result: JSON.parse(row.gradingJson) as AssessmentResult };
+    const result = JSON.parse(row.gradingJson) as AssessmentResult;
+    return {
+      result: {
+        ...result,
+        takerUsername: result.takerUsername ?? row.takerUsername,
+      },
+    };
   }
   const existing = await db
     .select({ id: jobs.id, status: jobs.status })
@@ -158,13 +165,24 @@ export async function getOwnedJob(id: string, ownerUserId: string) {
 
 export async function getAttemptGradingJob(attemptId: string) {
   const attempt = await db
-    .select({ status: attempts.status, gradingJson: attempts.gradingJson })
+    .select({
+      status: attempts.status,
+      gradingJson: attempts.gradingJson,
+      takerUsername: attempts.takerUsername,
+    })
     .from(attempts)
     .where(eq(attempts.id, attemptId))
     .get();
   if (!attempt) throw new Error("Attempt not found.");
   if (attempt.status === "graded" && attempt.gradingJson) {
-    return { status: "completed", result: JSON.parse(attempt.gradingJson) as AssessmentResult };
+    const result = JSON.parse(attempt.gradingJson) as AssessmentResult;
+    return {
+      status: "completed",
+      result: {
+        ...result,
+        takerUsername: result.takerUsername ?? attempt.takerUsername,
+      },
+    };
   }
   const job = await db
     .select()

@@ -80,6 +80,7 @@ export async function finalizeAttempt(input: Awaited<ReturnType<typeof loadAttem
   const result = buildResult({
     attemptId: input.attempt.id,
     questionSetId: input.set.id,
+    takerUsername: input.attempt.takerUsername,
     // Neutral inside an experiment, so the stored result and the payload the participant
     // receives at the end of a block cannot name the paper.
     paperName: await attemptPaperLabel(input.attempt, input.set.paperName),
@@ -111,7 +112,11 @@ export async function finalizeAttempt(input: Awaited<ReturnType<typeof loadAttem
 export async function ensureGraded(attemptId: string): Promise<AssessmentResult> {
   const quiz = await loadAttemptContext(attemptId);
   if (quiz.attempt.status === "graded" && quiz.attempt.gradingJson) {
-    return JSON.parse(quiz.attempt.gradingJson) as AssessmentResult;
+    const result = JSON.parse(quiz.attempt.gradingJson) as AssessmentResult;
+    return {
+      ...result,
+      takerUsername: result.takerUsername ?? quiz.attempt.takerUsername,
+    };
   }
   const answers = await db
     .select()

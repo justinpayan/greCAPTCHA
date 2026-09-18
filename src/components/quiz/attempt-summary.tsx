@@ -107,6 +107,9 @@ export function AttemptSummary({
             {outline.setLabel !== outline.paperName && `${outline.paperName} · `}
             {outline.modelId}
           </div>
+          {outline.takerUsername && (
+            <p className="hint">Completed by {outline.takerUsername}</p>
+          )}
         </div>
         <div className="summary-header-side">
           <div className="sequence-status">
@@ -123,7 +126,13 @@ export function AttemptSummary({
 
       <section className="card attempt-start-card">
         <div>
-          <strong>{started && !complete ? "Continue where you left off" : "Ready to answer?"}</strong>
+          <strong>
+            {complete
+              ? "Completed attempt"
+              : started
+                ? "Continue where you left off"
+                : "Attempt not yet started"}
+          </strong>
           <p className="hint">
             {complete
               ? "Open the completed attempt to see its score and question-by-question results."

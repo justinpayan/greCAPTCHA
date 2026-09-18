@@ -195,7 +195,13 @@ export async function getAttemptState(
   if (!attempt) throw new Error("Attempt not found.");
 
   if (attempt.status === "graded" && attempt.gradingJson) {
-    return { result: JSON.parse(attempt.gradingJson) as AssessmentResult };
+    const result = JSON.parse(attempt.gradingJson) as AssessmentResult;
+    return {
+      result: {
+        ...result,
+        takerUsername: result.takerUsername ?? attempt.takerUsername,
+      },
+    };
   }
 
   const set = await db
@@ -359,6 +365,7 @@ export async function getAttemptOutline(attemptId: string): Promise<AttemptOutli
   return {
     attemptId,
     questionSetId: quiz.set.id,
+    takerUsername: quiz.attempt.takerUsername,
     setLabel: questionSetLabel(quiz.set.name, quiz.set.paperName),
     paperName: quiz.set.paperName,
     modelId: quiz.set.modelId,
@@ -399,6 +406,7 @@ export async function getCurrentAnswer(attemptId: string, questionId: string) {
 export function buildResult(input: {
   attemptId: string;
   questionSetId: string;
+  takerUsername: string | null;
   paperName: string;
   order: string[];
   questions: StoredQuestion[];
@@ -477,6 +485,7 @@ export function buildResult(input: {
   return {
     attemptId: input.attemptId,
     questionSetId: input.questionSetId,
+    takerUsername: input.takerUsername,
     paperName: input.paperName,
     overallScore: scoredReviews.length ? Math.round(overallScore * 10) / 10 : 0,
     scoredQuestionCount: scoredReviews.length,

@@ -1352,9 +1352,11 @@ export function ResearchCaptcha({ username }: { username: string }) {
         <p className="eyebrow">Authorship understanding assessment</p>
         <h1>greCAPTCHA Demo</h1>
         <p className="lede">
-          Generate a question set from a paper, then answer its questions by opening the{" "}
-          <strong>Attempts</strong> tab and selecting the attempt. You can return there at any
-          time to start, resume, or review it.
+          You can generate a question set from a paper in the &lsquo;New question set&rsquo; tab.
+          Once you have generated a question set, copy the one-time, 48-hour link on the right to
+          share the exam with someone (note that the autograder will trigger calls to your
+          OpenRouter API key when the person completes the exam). To see attempts completed on
+          your exams, open the &lsquo;Attempts&rsquo; tab.
         </p>
       </section>
 
@@ -1990,16 +1992,17 @@ export function ResearchCaptcha({ username }: { username: string }) {
           }
         >
           <div className="form-section">
-            <div className="section-heading">
-              <div>
-                <span className="field-label">This paper</span>
-                <p className="hint">
-                  {mode === "default"
-                    ? "Upload a manuscript and describe the claimed author’s work. The standard eight-question template is applied automatically."
-                    : "Specific to one manuscript and one claimed author. Everything below is reusable, so the same question configuration can be run against any paper."}
-                </p>
+            {mode !== "default" && (
+              <div className="section-heading">
+                <div>
+                  <span className="field-label">This paper</span>
+                  <p className="hint">
+                    Specific to one manuscript and one claimed author. Everything below is
+                    reusable, so the same question configuration can be run against any paper.
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
             <div className="form-grid">
               <div className="field full">
                 <label htmlFor="setName">
@@ -2431,9 +2434,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
 
           {error && <p className="error" role="alert">{error}</p>}
           <div className="submit-row">
-            <span className="hint">
-              Free-response grading makes one additional model call per free-response card.
-            </span>
             <button
               className="primary"
               type="submit"

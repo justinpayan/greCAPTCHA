@@ -448,6 +448,8 @@ export type AttemptOutlineItem = {
 export type AttemptOutline = {
   attemptId: string;
   questionSetId: string;
+  /** Username of the account that claimed this shared attempt, when applicable. */
+  takerUsername: string | null;
   /** The set's name, falling back to the PDF filename when it was never named. */
   setLabel: string;
   paperName: string;
@@ -559,6 +561,8 @@ export type QuestionReview = FillReview | FreeResponseReview | MultipleChoiceRev
 export type AssessmentResult = {
   attemptId: string;
   questionSetId: string;
+  /** Username of the account that completed the attempt, when applicable. */
+  takerUsername: string | null;
   paperName: string;
   /** Equal-weight average across scored questions only; warm-ups are excluded. */
   overallScore: number;

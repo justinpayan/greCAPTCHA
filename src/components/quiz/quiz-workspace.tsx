@@ -322,6 +322,7 @@ export function ResultSections({
       <section className="card result neutral-result">
         <p className="eyebrow">{label ?? "Assessment complete"}</p>
         <h1>Overall score</h1>
+        {result.takerUsername && <p className="hint">Completed by {result.takerUsername}</p>}
         <div className="score-ring neutral-score">{result.overallScore}%</div>
         <p className="lede" style={{ marginInline: "auto", marginBottom: 0 }}>
           An equal-weight average across the {result.scoredQuestionCount} scored{" "}
