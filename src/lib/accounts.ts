@@ -65,6 +65,9 @@ function encryptApiKey(apiKey: string) {
 }
 
 function decryptApiKey(user: Pick<UserRecord, "openrouterKeyCiphertext" | "openrouterKeyIv" | "openrouterKeyTag">) {
+  if (!user.openrouterKeyCiphertext || !user.openrouterKeyIv || !user.openrouterKeyTag) {
+    throw new Error("Add an OpenRouter API key to generate or grade question sets.");
+  }
   const decipher = createDecipheriv(
     "aes-256-gcm",
     encryptionKey(),
@@ -80,17 +83,17 @@ function decryptApiKey(user: Pick<UserRecord, "openrouterKeyCiphertext" | "openr
 export async function registerAccount(input: {
   username: string;
   password: string;
-  openrouterApiKey: string;
+  openrouterApiKey?: string;
 }) {
   const username = validateUsername(input.username);
   validatePassword(input.password);
-  const apiKey = input.openrouterApiKey.trim();
-  if (!apiKey || apiKey.length > 512) throw new Error("Enter a valid OpenRouter API key.");
-  await validateOpenRouterKey(apiKey);
+  const apiKey = input.openrouterApiKey?.trim() ?? "";
+  if (apiKey.length > 512) throw new Error("Enter a valid OpenRouter API key.");
+  if (apiKey) await validateOpenRouterKey(apiKey);
 
   const salt = randomBytes(16);
   const passwordHash = await scrypt(input.password, salt);
-  const encrypted = encryptApiKey(apiKey);
+  const encrypted = apiKey ? encryptApiKey(apiKey) : null;
   const now = new Date().toISOString();
   const user = {
     id: randomUUID(),
@@ -98,9 +101,9 @@ export async function registerAccount(input: {
     usernameNormalized: normalizeUsername(username),
     passwordHash: passwordHash.toString("base64"),
     passwordSalt: salt.toString("base64"),
-    openrouterKeyCiphertext: encrypted.ciphertext,
-    openrouterKeyIv: encrypted.iv,
-    openrouterKeyTag: encrypted.tag,
+    openrouterKeyCiphertext: encrypted?.ciphertext ?? null,
+    openrouterKeyIv: encrypted?.iv ?? null,
+    openrouterKeyTag: encrypted?.tag ?? null,
     createdAt: now,
     updatedAt: now,
   };

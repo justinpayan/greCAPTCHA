@@ -331,6 +331,7 @@ export async function listAttempts(ownerUserId: string): Promise<AttemptListEntr
       setName: questionSets.name,
       paperName: questionSets.paperName,
       condition: attempts.condition,
+      takerUsername: attempts.takerUsername,
       participantId: experiments.participantId,
     })
     .from(attempts)
@@ -354,6 +355,7 @@ export async function listAttempts(ownerUserId: string): Promise<AttemptListEntr
     setLabel: questionSetLabel(row.setName, row.paperName),
     paperName: row.paperName,
     participantId: row.participantId ?? null,
+    takerUsername: row.takerUsername ?? null,
     condition: (row.condition as AttemptCondition | null) ?? null,
     status: row.status,
     score: row.score,

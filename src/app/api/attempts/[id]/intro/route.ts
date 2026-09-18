@@ -22,7 +22,7 @@ export async function GET(
 ) {
   try {
     const { id } = await context.params;
-    await requireOpenAttempt(id);
+    await requireOpenAttempt(id, { allowUnclaimed: true });
     return NextResponse.json({ intro: await getAttemptIntro(id) });
   } catch (error) {
     if (error instanceof AttemptClosedError) {
@@ -32,6 +32,7 @@ export async function GET(
           locked: true,
           paused: error.paused,
           expired: error.expired,
+          claimed: error.claimed,
         },
         { status: 403 },
       );

@@ -8,7 +8,13 @@ export type AttemptEntry =
   | { kind: "result"; result: AssessmentResult }
   | { kind: "question"; attempt: AttemptView }
   | { kind: "intro"; intro: AttemptIntro }
-  | { kind: "closed"; message: string; paused: boolean };
+  | {
+      kind: "closed";
+      message: string;
+      paused: boolean;
+      expired: boolean;
+      claimed: boolean;
+    };
 
 async function readJson(response: Response) {
   return (await response.json()) as Record<string, unknown>;
@@ -32,6 +38,8 @@ export async function loadAttemptEntry(attemptId: string): Promise<AttemptEntry>
       kind: "closed",
       message: String(payload.error ?? "This assessment is not open."),
       paused: payload.paused === true,
+      expired: payload.expired === true,
+      claimed: payload.claimed === true,
     };
   }
   if (!response.ok) throw new Error(String(payload.error ?? "Unable to open this assessment."));
@@ -51,6 +59,8 @@ export async function serveAttempt(attemptId: string): Promise<AttemptEntry> {
       kind: "closed",
       message: String(payload.error ?? "This assessment is not open."),
       paused: payload.paused === true,
+      expired: payload.expired === true,
+      claimed: payload.claimed === true,
     };
   }
   if (!response.ok) throw new Error(String(payload.error ?? "Unable to open this assessment."));

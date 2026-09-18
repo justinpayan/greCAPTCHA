@@ -20,7 +20,12 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
   const [attempt, setAttempt] = useState<AttemptView | null>(null);
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [error, setError] = useState("");
-  const [closed, setClosed] = useState<{ message: string; paused: boolean } | null>(null);
+  const [closed, setClosed] = useState<{
+    message: string;
+    paused: boolean;
+    expired: boolean;
+    claimed: boolean;
+  } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -37,7 +42,14 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
   }, [attemptId]);
 
   function applyEntry(entry: Awaited<ReturnType<typeof loadAttemptEntry>>) {
-    if (entry.kind === "closed") setClosed({ message: entry.message, paused: entry.paused });
+    if (entry.kind === "closed") {
+      setClosed({
+        message: entry.message,
+        paused: entry.paused,
+        expired: entry.expired,
+        claimed: entry.claimed,
+      });
+    }
     else if (entry.kind === "result") setResult(entry.result);
     else if (entry.kind === "question") setAttempt(entry.attempt);
     else setIntro(entry.intro);
@@ -47,17 +59,28 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
     return (
       <main className="app-shell">
         <section>
-          <p className="eyebrow">{closed.paused ? "Paused" : "Not open yet"}</p>
+          <p className="eyebrow">
+            {closed.expired
+              ? "Expired"
+              : closed.claimed
+                ? "Already claimed"
+                : closed.paused
+                  ? "Unavailable"
+                  : "Not open yet"}
+          </p>
           <h1>
-            {closed.paused
-              ? "This assessment is paused."
-              : "This assessment has not started."}
+            {closed.expired
+              ? "This assessment link has expired."
+              : closed.claimed
+                ? "This one-time assessment link has already been used."
+              : closed.paused
+                ? "This assessment is paused."
+                : "This assessment has not started."}
           </h1>
           <p className="lede">{closed.message}</p>
-          <p className="lede">
-            Your link stays valid. Keep this page open and reload it when the researcher tells
-            you to.
-          </p>
+          {!closed.expired && (
+            <p className="lede">Contact the person who sent you this link if you need help.</p>
+          )}
         </section>
       </main>
     );
@@ -70,7 +93,7 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
           <p className="eyebrow">Assessment unavailable</p>
           <h1>This link could not be opened.</h1>
           <p className="lede">{error}</p>
-          <p className="lede">Please check with the researcher who sent it.</p>
+          <p className="lede">Please check with the person who sent it.</p>
         </section>
       </main>
     );

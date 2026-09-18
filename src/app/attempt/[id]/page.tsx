@@ -1,8 +1,11 @@
+import { redirect } from "next/navigation";
+
 import { ParticipantSession } from "@/components/quiz/participant-session";
+import { currentUser } from "@/lib/session";
 
 /**
- * The participant's entry point. Deliberately outside the password gate: the attempt ID in
- * the URL is the capability. It never renders the setup screen or the researcher plan.
+ * The participant's entry point. Authentication happens before this page loads, and the
+ * one-time attempt is claimed by the account that starts it.
  */
 export default async function AttemptPage({
   params,
@@ -10,5 +13,8 @@ export default async function AttemptPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  if (!(await currentUser())) {
+    redirect(`/login?next=${encodeURIComponent(`/attempt/${id}`)}`);
+  }
   return <ParticipantSession attemptId={id} />;
 }

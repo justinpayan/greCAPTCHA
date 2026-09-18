@@ -41,7 +41,7 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
         <h1>{signup ? "Create your account." : "Welcome back."}</h1>
         <p className="lede">
           {signup
-            ? "Use your own OpenRouter key to generate and grade test question sets. Your key is encrypted before it is stored."
+            ? "Create an account to take shared assessments. Add an OpenRouter key only if you also want to generate your own question sets."
             : "Sign in to return to your saved sets and attempts."}
         </p>
       </section>
@@ -85,7 +85,7 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
               />
             </div>
             <div className="field">
-              <label htmlFor="openrouterApiKey">OpenRouter API key</label>
+              <label htmlFor="openrouterApiKey">OpenRouter API key (optional)</label>
               <input
                 className="control"
                 id="openrouterApiKey"
@@ -93,9 +93,11 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
                 value={openrouterApiKey}
                 autoComplete="off"
                 onChange={(event) => setOpenrouterApiKey(event.target.value)}
-                required
               />
-              <span className="hint">The key is validated with OpenRouter and encrypted at rest.</span>
+              <span className="hint">
+                Required only for generating question sets. If provided, it is validated and
+                encrypted at rest.
+              </span>
             </div>
           </>
         )}
@@ -107,9 +109,9 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
         <div className="submit-row">
           <span className="hint">
             {signup ? (
-              <>Already registered? <Link href="/login">Sign in</Link>.</>
+              <>Already registered? <Link href={`/login?next=${encodeURIComponent(next)}`}>Sign in</Link>.</>
             ) : (
-              <>Need an account? <Link href="/signup">Create one</Link>.</>
+              <>Need an account? <Link href={`/signup?next=${encodeURIComponent(next)}`}>Create one</Link>.</>
             )}
           </span>
           <button className="primary" type="submit" disabled={working || !username || !password}>

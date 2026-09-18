@@ -212,6 +212,8 @@ export type AttemptListEntry = {
   paperName: string;
   /** Set when the attempt is half of an experiment; both null for a standalone attempt. */
   participantId: string | null;
+  /** Account that claimed a one-time public assessment link. */
+  takerUsername: string | null;
   condition: AttemptCondition | null;
   status: string;
   score: number | null;

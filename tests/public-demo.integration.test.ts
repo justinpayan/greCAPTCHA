@@ -1,6 +1,16 @@
 import { File } from "node:buffer";
 import { and, eq } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const sessionState = vi.hoisted(() => ({ token: "" }));
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: (name: string) =>
+      name === "rc_session" && sessionState.token
+        ? { value: sessionState.token }
+        : undefined,
+  }),
+}));
 
 import { db } from "@/db";
 import { attempts, jobs, sessions, users } from "@/db/schema";
@@ -13,7 +23,12 @@ import {
   registerAccount,
   updateUserOpenRouterKey,
 } from "@/lib/accounts";
-import { getAttemptState, loadAttemptContext } from "@/lib/attempts";
+import {
+  createSharedAttempt,
+  getAttemptState,
+  loadAttemptContext,
+} from "@/lib/attempts";
+import { requireOpenAttempt } from "@/lib/attempt-access";
 import { getQuestionSetOverview } from "@/lib/catalog";
 import {
   enqueueGenerationJob,
@@ -194,9 +209,21 @@ describe("public demo account-to-grade flow", () => {
     if (!alice) throw new Error("Alice fixture missing.");
     const queued = await enqueueSet(alice.id, "complete-flow");
     const completed = await waitForJob(queued.jobId, alice.id);
-    const attemptId = String((completed.result as { attemptId?: string })?.attemptId ?? "");
-    expect(attemptId).toBeTruthy();
-    await db.update(attempts).set({ linkEnabled: true }).where(eq(attempts.id, attemptId)).run();
+    const generatedAttemptId = String(
+      (completed.result as { attemptId?: string })?.attemptId ?? "",
+    );
+    expect(generatedAttemptId).toBeTruthy();
+    const generated = await loadAttemptContext(generatedAttemptId);
+    const shared = await createSharedAttempt(generated.set.id, alice.id);
+    const attemptId = shared.attemptId;
+    const bob = await db
+      .select()
+      .from(users)
+      .where(eq(users.usernameNormalized, "bob.test"))
+      .get();
+    if (!bob) throw new Error("Bob fixture missing.");
+    sessionState.token = await createAccountSession(bob.id);
+    await requireOpenAttempt(attemptId, { claim: true });
 
     await getAttemptState(attemptId);
     let context = await loadAttemptContext(attemptId);
@@ -230,6 +257,10 @@ describe("public demo account-to-grade flow", () => {
     const grading = await getAttemptGradingJob(attemptId);
     expect(grading.status).toBe("completed");
     expect((grading.result as { overallScore: number }).overallScore).toBe(100);
+    const claimed = await db.select().from(attempts).where(eq(attempts.id, attemptId)).get();
+    expect(claimed?.takerUserId).toBe(bob.id);
+    expect(claimed?.takerUsername).toBe(bob.username);
+    sessionState.token = "";
   });
 
   it("isolates tenants and bounds concurrent provider work", async () => {

@@ -3,7 +3,13 @@ import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/login-form";
 import { currentUser } from "@/lib/session";
 
-export default async function SignupPage() {
+export default async function SignupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
   if (await currentUser()) redirect("/");
-  return <LoginForm next="/" signup />;
+  const { next } = await searchParams;
+  const target = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  return <LoginForm next={target} signup />;
 }

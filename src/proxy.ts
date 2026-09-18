@@ -3,12 +3,6 @@ import { NextResponse, type NextRequest } from "next/server";
 import { logIncoming } from "@/lib/request-log";
 
 const SESSION_COOKIE = "rc_session";
-const PARTICIPANT_PAGE = /^\/attempt\/[^/]+$/;
-const PARTICIPANT_ATTEMPT = /^\/api\/attempts\/[^/]+$/;
-const PARTICIPANT_INTRO = /^\/api\/attempts\/[^/]+\/intro$/;
-const PARTICIPANT_GRADING = /^\/api\/attempts\/[^/]+\/grading$/;
-const PARTICIPANT_WRITE =
-  /^\/api\/attempts\/[^/]+\/(?:answers|interaction|timeout)$/;
 
 const ALWAYS_OPEN = new Set([
   "/login",
@@ -17,15 +11,6 @@ const ALWAYS_OPEN = new Set([
   "/api/signup",
   "/api/health",
 ]);
-
-function isParticipantRequest(method: string, pathname: string) {
-  if (PARTICIPANT_PAGE.test(pathname)) return method === "GET";
-  if (PARTICIPANT_ATTEMPT.test(pathname)) return method === "GET";
-  if (PARTICIPANT_INTRO.test(pathname)) return method === "GET";
-  if (PARTICIPANT_GRADING.test(pathname)) return method === "GET";
-  if (PARTICIPANT_WRITE.test(pathname)) return method === "POST";
-  return false;
-}
 
 function requestOrigin(request: NextRequest): string {
   const host = request.headers.get("host");
@@ -49,10 +34,6 @@ export function proxy(request: NextRequest) {
   }
   if (ALWAYS_OPEN.has(pathname)) {
     logIncoming(method, pathname, "open");
-    return NextResponse.next();
-  }
-  if (isParticipantRequest(method, pathname)) {
-    logIncoming(method, pathname, "participant");
     return NextResponse.next();
   }
   if (request.cookies.get(SESSION_COOKIE)?.value) {

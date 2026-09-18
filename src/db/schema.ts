@@ -17,9 +17,10 @@ export const users = sqliteTable(
     usernameNormalized: text("username_normalized").notNull(),
     passwordHash: text("password_hash").notNull(),
     passwordSalt: text("password_salt").notNull(),
-    openrouterKeyCiphertext: text("openrouter_key_ciphertext").notNull(),
-    openrouterKeyIv: text("openrouter_key_iv").notNull(),
-    openrouterKeyTag: text("openrouter_key_tag").notNull(),
+    // Optional for participant-only accounts. A key is required only when generating or grading.
+    openrouterKeyCiphertext: text("openrouter_key_ciphertext"),
+    openrouterKeyIv: text("openrouter_key_iv"),
+    openrouterKeyTag: text("openrouter_key_tag"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -225,6 +226,9 @@ export const attempts = sqliteTable(
     linkEnabled: integer("link_enabled", { mode: "boolean" }).notNull().default(true),
     // Set only for public share links. Null keeps owner-created and legacy attempts unchanged.
     linkExpiresAt: text("link_expires_at"),
+    // The first signed-in account to start a shared attempt owns that one-time response.
+    takerUserId: text("taker_user_id").references(() => users.id),
+    takerUsername: text("taker_username"),
     // Display-only: the participant sees no timer, but every timing is still recorded.
     // Stored because whether a countdown was visible plausibly changes pacing.
     countdownHidden: integer("countdown_hidden", { mode: "boolean" })

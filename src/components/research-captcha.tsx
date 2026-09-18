@@ -500,8 +500,8 @@ export function ResearchCaptcha({ username }: { username: string }) {
     const query = catalogSearch.trim().toLowerCase();
     if (!query) return attemptList;
     return attemptList.filter((entry) =>
-      [entry.setLabel, entry.paperName, entry.status, entry.id].some((field) =>
-        field.toLowerCase().includes(query),
+      [entry.setLabel, entry.paperName, entry.status, entry.id, entry.takerUsername ?? ""].some(
+        (field) => field.toLowerCase().includes(query),
       ),
     );
   }, [catalogSearch, attemptList]);
@@ -1821,7 +1821,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
               placeholder={
                 mode === "load"
                   ? "Filter by set name, paper, or model"
-                  : "Filter by set name, paper, or status"
+                  : "Filter by set name, paper, username, or status"
               }
               onChange={(event) => setCatalogSearch(event.target.value)}
             />
@@ -1933,6 +1933,9 @@ export function ResearchCaptcha({ username }: { username: string }) {
                     <div className="catalog-main">
                       <div className="catalog-title-row">
                         <strong>{entry.setLabel}</strong>
+                        {entry.takerUsername && (
+                          <span className="pill">Taken by {entry.takerUsername}</span>
+                        )}
                       </div>
                       <span className="catalog-meta">
                         {entry.answeredCount} of {entry.totalQuestions} answered ·{" "}

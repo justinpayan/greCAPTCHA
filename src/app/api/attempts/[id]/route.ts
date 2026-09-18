@@ -21,6 +21,7 @@ function errorResponse(error: unknown, fallback: string) {
         locked: true,
         paused: error.paused,
         expired: error.expired,
+        claimed: error.claimed,
       },
       { status: 403 },
     );
@@ -38,7 +39,7 @@ export async function GET(
 ) {
   try {
     const { id } = await context.params;
-    await requireOpenAttempt(id);
+    await requireOpenAttempt(id, { claim: true });
     // No further question is served once the overall budget is spent. Checked here rather than
     // inside getAttemptState, which would stamp a clock start before anyone noticed.
     const budget = await overallBudget(id);
