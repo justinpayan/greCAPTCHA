@@ -127,6 +127,7 @@ export async function getOpenRouterModels(apiKey: string): Promise<OpenRouterMod
     .filter(
       (model): model is RawModel & { id: string } =>
         Boolean(model.id) &&
+        !/:batch$/i.test(model.id ?? "") &&
         (model.architecture?.output_modalities ?? ["text"]).includes("text"),
     )
     .map((model) => ({
