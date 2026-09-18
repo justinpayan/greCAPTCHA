@@ -49,9 +49,15 @@ type CatalogModel = {
   recommended: boolean;
 };
 
+const DEFAULT_MODEL_ID = "openai/gpt-5.6-sol";
+const FEATURED_MODEL_IDS = [
+  "anthropic/claude-fable-5.1",
+  DEFAULT_MODEL_ID,
+] as const;
+
 function preferredModel(catalog: CatalogModel[]) {
   return (
-    catalog.find((model) => model.id === "google/gemini-3.7-flash") ??
+    catalog.find((model) => model.id === DEFAULT_MODEL_ID) ??
     catalog.find((model) => /anthropic\/claude.*sonnet/i.test(model.id)) ??
     catalog.find((model) => model.recommended) ??
     catalog[0] ??
@@ -273,7 +279,13 @@ export function ResearchCaptcha({ username }: { username: string }) {
     [selectedModel, pdfEngine, blocks, randomize, countdownHidden, overallLimitMinutes],
   );
   const defaultConfig = useMemo(
-    () => createDefaultStudyTemplate(defaultModel?.id ?? ""),
+    () => ({
+      ...createDefaultStudyTemplate(defaultModel?.id ?? ""),
+      pdfEngine:
+        defaultModel && !defaultModel.inputModalities.includes("file")
+          ? ("cloudflare-ai" as const)
+          : ("native" as const),
+    }),
     [defaultModel],
   );
 
@@ -314,9 +326,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
         if (!active) return;
         const catalog = modelResult.status === "fulfilled" ? modelResult.value : [];
         setModels(catalog);
-        const defaultPreferred = preferredModel(
-          catalog.filter((model) => model.inputModalities.includes("file")),
-        );
+        const defaultPreferred = preferredModel(catalog);
         setDefaultModel(defaultPreferred);
         setDefaultModelSearch(defaultPreferred?.name ?? "");
         if (modelResult.status === "rejected") {
@@ -387,29 +397,42 @@ export function ResearchCaptcha({ username }: { username: string }) {
   }, [pdfEngine, selectedModel]);
 
   const filteredModels = useMemo(() => {
-    const query = modelSearch.trim().toLowerCase();
+    const query =
+      modelSearch === selectedModel?.name ? "" : modelSearch.trim().toLowerCase();
+    if (!query) {
+      return FEATURED_MODEL_IDS.flatMap((id) => {
+        const model = models.find((candidate) => candidate.id === id);
+        return model ? [model] : [];
+      });
+    }
     return models
       .filter(
         (model) =>
-          model.inputModalities.includes("file") &&
-          (!query ||
-            model.name.toLowerCase().includes(query) ||
-            model.id.toLowerCase().includes(query)),
-      )
-      .slice(0, 60);
-  }, [modelSearch, models]);
-
-  const filteredDefaultModels = useMemo(() => {
-    const query = defaultModelSearch.trim().toLowerCase();
-    return models
-      .filter(
-        (model) =>
-          !query ||
           model.name.toLowerCase().includes(query) ||
           model.id.toLowerCase().includes(query),
       )
       .slice(0, 60);
-  }, [defaultModelSearch, models]);
+  }, [modelSearch, models, selectedModel]);
+
+  const filteredDefaultModels = useMemo(() => {
+    const query =
+      defaultModelSearch === defaultModel?.name
+        ? ""
+        : defaultModelSearch.trim().toLowerCase();
+    if (!query) {
+      return FEATURED_MODEL_IDS.flatMap((id) => {
+        const model = models.find((candidate) => candidate.id === id);
+        return model ? [model] : [];
+      });
+    }
+    return models
+      .filter(
+        (model) =>
+          model.name.toLowerCase().includes(query) ||
+          model.id.toLowerCase().includes(query),
+      )
+      .slice(0, 60);
+  }, [defaultModel, defaultModelSearch, models]);
 
   const refreshCatalog = useCallback(async () => {
     const [setsResult, attemptsResult] = await Promise.allSettled([
@@ -1961,7 +1984,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
             <div className="field full">
               <span className="field-label field-label-row">
                 Generator and Evaluator model
-                <FieldHint text="This model generates the questions and grades free-response answers. Type to filter the live OpenRouter catalogue; recommended models are marked." />
+                <FieldHint text="This model generates the questions and grades free-response answers. Click for featured choices or type to search every model available through OpenRouter." />
               </span>
               <div className="model-picker">
                 <input
@@ -1974,7 +1997,9 @@ export function ResearchCaptcha({ username }: { username: string }) {
                   }}
                   onFocus={() => setModelPickerOpen(true)}
                   onBlur={() => window.setTimeout(() => setModelPickerOpen(false), 150)}
-                  placeholder={loadingModels ? "Loading models..." : "Search models"}
+                  placeholder={
+                    loadingModels ? "Loading models..." : "Click or type to search all models"
+                  }
                   disabled={loadingModels}
                 />
                 {modelPickerOpen && !loadingModels && (
@@ -2002,6 +2027,9 @@ export function ResearchCaptcha({ username }: { username: string }) {
                   </ul>
                 )}
               </div>
+              <small>
+                Click to choose a featured model, or type to search the full OpenRouter catalog.
+              </small>
             </div>
 
             <div className="field full">
@@ -2262,7 +2290,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
               <div className="field">
                 <span className="field-label field-label-row">
                   Generator and Evaluator model
-                  <FieldHint text="This model generates the questions and grades free-response answers using your OpenRouter account." />
+                  <FieldHint text="This model generates the questions and grades free-response answers. Click for featured choices or type to search every model available through OpenRouter." />
                 </span>
                 <div className="model-picker">
                   <input
@@ -2277,7 +2305,9 @@ export function ResearchCaptcha({ username }: { username: string }) {
                     onBlur={() =>
                       window.setTimeout(() => setDefaultModelPickerOpen(false), 150)
                     }
-                    placeholder={loadingModels ? "Loading models..." : "Search models"}
+                    placeholder={
+                      loadingModels ? "Loading models..." : "Click or type to search all models"
+                    }
                     disabled={loadingModels}
                   />
                   {defaultModelPickerOpen && !loadingModels && (
@@ -2305,6 +2335,10 @@ export function ResearchCaptcha({ username }: { username: string }) {
                     </ul>
                   )}
                 </div>
+                  <small>
+                    Click to choose a featured model, or type to search the full OpenRouter
+                    catalog.
+                  </small>
               </div>
             </div>
           )}
