@@ -198,8 +198,16 @@ export function ResearchCaptcha({ username }: { username: string }) {
   const [loadingModels, setLoadingModels] = useState(true);
   const [working, setWorking] = useState(false);
   const [generationStatus, setGenerationStatus] = useState("");
+  const [generationNotice, setGenerationNotice] = useState("");
   const [error, setError] = useState("");
   const [accountOpen, setAccountOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [sharingSetId, setSharingSetId] = useState("");
+  const [copiedSetId, setCopiedSetId] = useState("");
+  const [shareError, setShareError] = useState("");
+  const [shareLinks, setShareLinks] = useState<
+    Record<string, { url: string; expiresAt: string }>
+  >({});
   const [replacementApiKey, setReplacementApiKey] = useState("");
   const [savingApiKey, setSavingApiKey] = useState(false);
   const [attempt, setAttempt] = useState<AttemptView | null>(null);
@@ -450,7 +458,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
   // Reload the lists whenever a browsing tab is opened, so a set generated moments ago and
   // an attempt just answered on this laptop both appear without a page refresh.
   useEffect(() => {
-    if (mode === "default" || mode === "custom") return;
     void refreshCatalog();
   }, [mode, refreshCatalog]);
 
@@ -498,6 +505,39 @@ export function ResearchCaptcha({ username }: { username: string }) {
       ),
     );
   }, [catalogSearch, attemptList]);
+
+  async function copyRecentAssessmentLink(set: QuestionSetListEntry) {
+    setSharingSetId(set.id);
+    setShareError("");
+    try {
+      let shared = shareLinks[set.id];
+      if (!shared || new Date(shared.expiresAt).getTime() <= Date.now()) {
+        const response = await fetch(
+          `/api/question-sets/${encodeURIComponent(set.id)}/share`,
+          { method: "POST" },
+        );
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Unable to create an assessment link.");
+        }
+        shared = {
+          url: new URL(String(payload.participantPath), window.location.origin).toString(),
+          expiresAt: String(payload.expiresAt),
+        };
+        setShareLinks((current) => ({ ...current, [set.id]: shared! }));
+        await refreshCatalog();
+      }
+      await navigator.clipboard.writeText(shared.url);
+      setCopiedSetId(set.id);
+      window.setTimeout(() => setCopiedSetId(""), 2_000);
+    } catch (caught) {
+      setShareError(
+        caught instanceof Error ? caught.message : "Unable to copy the assessment link.",
+      );
+    } finally {
+      setSharingSetId("");
+    }
+  }
 
   async function startFromSet(questionSetId: string) {
     setWorking(true);
@@ -1088,6 +1128,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
     setPaperError("");
     setWorking(true);
     setGenerationStatus("Queued for generation…");
+    setGenerationNotice("");
     setError("");
     form.set("modelId", config.modelId);
     form.set("pdfEngine", config.pdfEngine);
@@ -1131,7 +1172,10 @@ export function ResearchCaptcha({ username }: { username: string }) {
           if (!attemptId) throw new Error("Generation completed without an attempt.");
         }
       }
-      await showSummary(attemptId);
+      await refreshCatalog();
+      setGenerationNotice(
+        "Question set generated. Create and copy its 48-hour assessment link from Recent question sets.",
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Question generation failed.");
     } finally {
@@ -1238,8 +1282,8 @@ export function ResearchCaptcha({ username }: { username: string }) {
   return (
     <main className="app-shell">
       <div className="brand">
-        <span className="brand-mark">R</span>
-        ResearchCAPTCHA
+        <span className="brand-mark">G</span>
+        greCAPTCHA
         <span className="account-name">Signed in as {username}</span>
         <button
           className="sign-out account-action"
@@ -1314,36 +1358,75 @@ export function ResearchCaptcha({ username }: { username: string }) {
         </p>
       </section>
 
-      <div className="mode-tabs" role="tablist" aria-label="Assessment setup mode">
-        <button
-          type="button"
-          className={mode === "default" ? "active" : ""}
-          onClick={() => setMode("default")}
-        >
-          New set from default template
-        </button>
-        <button
-          type="button"
-          className={mode === "custom" ? "active" : ""}
-          onClick={() => setMode("custom")}
-        >
-          New set from new template
-        </button>
-        <button
-          type="button"
-          className={mode === "load" ? "active" : ""}
-          onClick={() => setMode("load")}
-        >
-          Saved sets
-        </button>
-        <button
-          type="button"
-          className={mode === "resume" ? "active" : ""}
-          onClick={() => setMode("resume")}
-        >
-          Attempts
-        </button>
+      <div className="dashboard-layout">
+      <div className="dashboard-main">
+      <div className="dashboard-navigation">
+        <div className="mode-tabs" role="tablist" aria-label="Dashboard section">
+          <button
+            type="button"
+            className={mode === "default" ? "active" : ""}
+            onClick={() => {
+              setMode("default");
+              setAdvancedOpen(false);
+            }}
+          >
+            New question set
+          </button>
+          <button
+            type="button"
+            className={mode === "resume" ? "active" : ""}
+            onClick={() => {
+              setMode("resume");
+              setAdvancedOpen(false);
+            }}
+          >
+            Attempts
+          </button>
+        </div>
+        <div className="advanced-navigation">
+          <button
+            className={`secondary advanced-button ${
+              mode === "custom" || mode === "load" ? "active" : ""
+            }`}
+            type="button"
+            aria-expanded={advancedOpen}
+            aria-haspopup="menu"
+            onClick={() => setAdvancedOpen((open) => !open)}
+          >
+            Advanced
+          </button>
+          {advancedOpen && (
+            <div className="advanced-menu" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMode("custom");
+                  setAdvancedOpen(false);
+                }}
+              >
+                New question set from new template
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMode("load");
+                  setAdvancedOpen(false);
+                }}
+              >
+                Saved question sets
+              </button>
+            </div>
+          )}
+        </div>
       </div>
+
+      {generationNotice && (
+        <p className="template-status dashboard-notice" role="status">
+          {generationNotice}
+        </p>
+      )}
 
       {mode === "custom" && (
         <section className="card template-card">
@@ -2363,6 +2446,65 @@ export function ResearchCaptcha({ username }: { username: string }) {
           </div>
         </form>
       )}
+      </div>
+      <aside className="card recent-sets">
+        <div className="recent-sets-heading">
+          <div>
+            <p className="eyebrow">Quick access</p>
+            <h2>Recent question sets</h2>
+          </div>
+          <span className="pill">{Math.min(savedSets.length, 5)} of 5</span>
+        </div>
+        {savedSets.length === 0 ? (
+          <p className="hint">Your five most recently generated question sets will appear here.</p>
+        ) : (
+          <div className="recent-set-list">
+            {savedSets.slice(0, 5).map((set) => (
+              <article className="recent-set" key={set.id}>
+                <strong>{set.label}</strong>
+                <span>
+                  {set.questionCount} {set.questionCount === 1 ? "question" : "questions"} ·{" "}
+                  {new Date(set.createdAt).toLocaleDateString()}
+                </span>
+                {shareLinks[set.id] && (
+                  <div className="recent-link">
+                    <input
+                      className="control"
+                      aria-label={`Assessment link for ${set.label}`}
+                      value={shareLinks[set.id].url}
+                      readOnly
+                      onFocus={(event) => event.currentTarget.select()}
+                    />
+                    <small>
+                      Expires {new Date(shareLinks[set.id].expiresAt).toLocaleString()}
+                    </small>
+                  </div>
+                )}
+                <button
+                  className="secondary"
+                  type="button"
+                  disabled={sharingSetId === set.id}
+                  onClick={() => void copyRecentAssessmentLink(set)}
+                >
+                  {sharingSetId === set.id
+                    ? "Creating link…"
+                    : copiedSetId === set.id
+                      ? "Link copied"
+                      : shareLinks[set.id]
+                        ? "Copy link again"
+                        : "Create and copy 48-hour link"}
+                </button>
+              </article>
+            ))}
+          </div>
+        )}
+        {shareError && (
+          <p className="error recent-share-error" role="alert">
+            {shareError}
+          </p>
+        )}
+      </aside>
+      </div>
     </main>
   );
 }

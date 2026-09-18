@@ -1,0 +1,1 @@
+ALTER TABLE `attempts` ADD `link_expires_at` text;

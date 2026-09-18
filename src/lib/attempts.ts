@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, count, eq } from "drizzle-orm";
+import { and, count, desc, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/db";
 import { questionSetLabel } from "@/lib/catalog";
@@ -32,12 +32,14 @@ import {
  * for question one. The first question is stamped when it is actually served instead.
  *
  * The link starts closed, so an ID that reaches a participant early cannot be used.
+ * A dedicated public share may instead supply an expiry; that attempt starts open until then.
  */
 export async function createAttempt(input: {
   questionSetId: string;
   ownerUserId?: string;
   randomize: boolean;
   countdownHidden: boolean;
+  publicLinkExpiresAt?: string;
 }): Promise<{ attemptId: string }> {
   if (input.ownerUserId) {
     const limit = Math.max(1, Number(process.env.MAX_ATTEMPTS_PER_ACCOUNT ?? "500"));
@@ -85,13 +87,48 @@ export async function createAttempt(input: {
     overallTimeLimitSeconds: set.overallTimeLimitSeconds,
     randomize: input.randomize,
     countdownHidden: input.countdownHidden,
-    linkEnabled: false,
+    linkEnabled: Boolean(input.publicLinkExpiresAt),
+    linkExpiresAt: input.publicLinkExpiresAt ?? null,
     questionOrderJson: JSON.stringify(order),
     currentIndex: 0,
     status: "active",
     createdAt: new Date().toISOString(),
   });
   return { attemptId: id };
+}
+
+/** Creates one fresh public attempt whose capability link remains valid for 48 hours. */
+export async function createSharedAttempt(questionSetId: string, ownerUserId: string) {
+  const previous = await db
+    .select({
+      randomize: attempts.randomize,
+      countdownHidden: attempts.countdownHidden,
+    })
+    .from(attempts)
+    .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
+    .where(
+      and(
+        eq(attempts.questionSetId, questionSetId),
+        eq(questionSets.ownerUserId, ownerUserId),
+        isNull(attempts.experimentId),
+      ),
+    )
+    .orderBy(desc(attempts.createdAt))
+    .get();
+
+  const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+  const created = await createAttempt({
+    questionSetId,
+    ownerUserId,
+    randomize: previous?.randomize ?? false,
+    countdownHidden: previous?.countdownHidden ?? false,
+    publicLinkExpiresAt: expiresAt,
+  });
+  return {
+    ...created,
+    participantPath: `/attempt/${created.attemptId}`,
+    expiresAt,
+  };
 }
 
 export async function requireAttemptOwner(attemptId: string, ownerUserId: string) {

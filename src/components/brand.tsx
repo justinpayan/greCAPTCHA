@@ -12,8 +12,8 @@ export function Brand({ onHome }: { onHome?: () => void }) {
   if (!onHome) {
     return (
       <div className="brand">
-        <span className="brand-mark">R</span>
-        ResearchCAPTCHA
+        <span className="brand-mark">G</span>
+        greCAPTCHA
       </div>
     );
   }
@@ -22,14 +22,14 @@ export function Brand({ onHome }: { onHome?: () => void }) {
     <button
       className="brand brand-link"
       type="button"
-      aria-label="ResearchCAPTCHA — back to the researcher dashboard"
-      title="Back to the researcher dashboard"
+      aria-label="greCAPTCHA — back to the dashboard"
+      title="Back to the dashboard"
       onClick={onHome}
     >
       <span className="brand-mark" aria-hidden="true">
-        R
+        G
       </span>
-      ResearchCAPTCHA
+      greCAPTCHA
     </button>
   );
 }

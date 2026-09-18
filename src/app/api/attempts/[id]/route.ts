@@ -16,7 +16,12 @@ export const runtime = "nodejs";
 function errorResponse(error: unknown, fallback: string) {
   if (error instanceof AttemptClosedError) {
     return NextResponse.json(
-      { error: error.message, locked: true, paused: error.paused },
+      {
+        error: error.message,
+        locked: true,
+        paused: error.paused,
+        expired: error.expired,
+      },
       { status: 403 },
     );
   }

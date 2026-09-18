@@ -507,12 +507,105 @@ textarea.control {
   border-top: 1px solid var(--line);
 }
 
+.dashboard-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 22px;
+  align-items: start;
+}
+
+.dashboard-main {
+  min-width: 0;
+}
+
+.dashboard-notice {
+  margin: 0 0 14px;
+  border-left: 3px solid var(--green);
+  padding: 10px 12px;
+  background: var(--green-soft);
+}
+
+.recent-sets {
+  position: sticky;
+  top: 20px;
+  padding: 20px;
+}
+
+.recent-sets-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.recent-sets-heading .eyebrow {
+  margin-bottom: 5px;
+}
+
+.recent-sets-heading h2 {
+  margin: 0;
+  font-size: 1.12rem;
+}
+
+.recent-set-list {
+  display: grid;
+  gap: 10px;
+}
+
+.recent-set {
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.recent-set > span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.recent-set > .secondary {
+  width: 100%;
+  margin-top: 5px;
+  padding: 8px 10px;
+  font-size: 0.78rem;
+}
+
+.recent-link {
+  display: grid;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.recent-link .control {
+  min-height: 38px;
+  padding: 7px 9px;
+  font-size: 0.72rem;
+}
+
+.recent-link small {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.recent-share-error {
+  margin-bottom: 0;
+  font-size: 0.78rem;
+}
+
+.dashboard-navigation {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
 .mode-tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  flex: 1;
   gap: 5px;
-  margin-bottom: 14px;
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 4px;
@@ -532,6 +625,63 @@ textarea.control {
 .mode-tabs button.active {
   color: white;
   background: var(--green);
+}
+
+.advanced-navigation {
+  position: relative;
+  display: flex;
+}
+
+.advanced-button {
+  min-width: 112px;
+}
+
+.advanced-button.active {
+  color: var(--green-dark);
+  border-color: var(--green);
+  background: var(--green-soft);
+}
+
+.advanced-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 7px);
+  right: 0;
+  display: grid;
+  width: min(310px, calc(100vw - 32px));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: white;
+  box-shadow: var(--shadow);
+}
+
+.advanced-menu button {
+  border: 0;
+  padding: 13px 16px;
+  background: white;
+  color: var(--ink);
+  text-align: left;
+  font-weight: 680;
+}
+
+.advanced-menu button + button {
+  border-top: 1px solid var(--line);
+}
+
+.advanced-menu button:hover,
+.advanced-menu button:focus-visible {
+  background: var(--paper);
+}
+
+@media (max-width: 900px) {
+  .dashboard-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .recent-sets {
+    position: static;
+  }
 }
 
 .toggle-row {
@@ -1928,8 +2078,10 @@ button.option.selected {
     display: grid;
   }
 
-  /* Two by two, full width: every tab stays visible and reachable, rather than wrapping into a
-     ragged row or hiding the last one off the edge. */
+  .dashboard-navigation {
+    flex-wrap: wrap;
+  }
+
   .mode-tabs {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1940,6 +2092,16 @@ button.option.selected {
     min-height: 44px;
     padding: 10px 8px;
     font-size: 0.85rem;
+  }
+
+  .advanced-navigation,
+  .advanced-button {
+    width: 100%;
+  }
+
+  .advanced-menu {
+    right: auto;
+    left: 0;
   }
 
   .question-card {

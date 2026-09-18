@@ -223,6 +223,8 @@ export const attempts = sqliteTable(
     // `requireOpenAttempt`. Defaults to true at the column level so attempts that predate
     // the flag stay reachable — the closed default belongs to `createAttempt`, not here.
     linkEnabled: integer("link_enabled", { mode: "boolean" }).notNull().default(true),
+    // Set only for public share links. Null keeps owner-created and legacy attempts unchanged.
+    linkExpiresAt: text("link_expires_at"),
     // Display-only: the participant sees no timer, but every timing is still recorded.
     // Stored because whether a countdown was visible plausibly changes pacing.
     countdownHidden: integer("countdown_hidden", { mode: "boolean" })

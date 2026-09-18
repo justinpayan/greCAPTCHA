@@ -21,18 +21,22 @@ import { hasResearcherSession } from "@/lib/session";
  * for someone who has been answering questions for ten minutes.
  */
 export const ATTEMPT_CLOSED_MESSAGE =
-  "This assessment is not open yet. The researcher opens it when your session starts.";
+  "This assessment link is not active.";
 export const ATTEMPT_PAUSED_MESSAGE =
-  "The researcher has paused this assessment. Every answer you have submitted is saved.";
+  "This assessment is no longer available. Every answer you submitted is saved.";
+export const ATTEMPT_EXPIRED_MESSAGE =
+  "This assessment link has expired. Ask the person who created it for a new link.";
 
 export class AttemptClosedError extends Error {
   /** True when the attempt had progressed past its first question before being closed. */
   readonly paused: boolean;
+  readonly expired: boolean;
 
-  constructor(paused: boolean) {
-    super(paused ? ATTEMPT_PAUSED_MESSAGE : ATTEMPT_CLOSED_MESSAGE);
+  constructor(paused: boolean, expired = false) {
+    super(expired ? ATTEMPT_EXPIRED_MESSAGE : paused ? ATTEMPT_PAUSED_MESSAGE : ATTEMPT_CLOSED_MESSAGE);
     this.name = "AttemptClosedError";
     this.paused = paused;
+    this.expired = expired;
   }
 }
 
@@ -45,12 +49,19 @@ export class AttemptClosedError extends Error {
  */
 export async function requireOpenAttempt(attemptId: string) {
   const attempt = await db
-    .select({ linkEnabled: attempts.linkEnabled, currentIndex: attempts.currentIndex })
+    .select({
+      linkEnabled: attempts.linkEnabled,
+      linkExpiresAt: attempts.linkExpiresAt,
+      currentIndex: attempts.currentIndex,
+    })
     .from(attempts)
     .where(eq(attempts.id, attemptId))
     .get();
   if (!attempt) throw new Error("Attempt not found.");
-  if (attempt.linkEnabled) return;
+  const expired =
+    attempt.linkExpiresAt !== null &&
+    new Date(attempt.linkExpiresAt).getTime() <= Date.now();
+  if (attempt.linkEnabled && !expired) return;
   if (await hasResearcherSession()) return;
-  throw new AttemptClosedError(attempt.currentIndex > 0);
+  throw new AttemptClosedError(attempt.currentIndex > 0, expired);
 }
