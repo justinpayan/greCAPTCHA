@@ -72,16 +72,22 @@ export function AttemptSummary({
     setWorking(true);
     setError("");
     try {
-      const keyForJob =
-        keySource === "oauth" ? (await validateBrowserOpenRouterKey()).key : apiKey;
-      const response = await fetch(`/api/attempts/${outline.attemptId}/outline`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ openrouterApiKey: keyForJob, keySource }),
-      });
+      const response = outline.graded
+        ? await fetch(`/api/attempts/${outline.attemptId}/grading`, {
+            cache: "no-store",
+          })
+        : await (async () => {
+            const keyForJob =
+              keySource === "oauth" ? (await validateBrowserOpenRouterKey()).key : apiKey;
+            return fetch(`/api/attempts/${outline.attemptId}/outline`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ openrouterApiKey: keyForJob, keySource }),
+            });
+          })();
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to grade the attempt.");
-      if (keySource === "paste") setApiKey("");
+      if (!outline.graded && keySource === "paste") setApiKey("");
       if (payload.result) {
         onResult(payload.result as AssessmentResult);
         return;

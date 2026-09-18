@@ -105,11 +105,22 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
     );
   }
 
-  if (result) return <ResultView result={result} />;
+  if (result) {
+    return <ResultView result={result} onBack={() => { window.location.href = "/"; }} />;
+  }
   if (pendingEvaluation) {
     return <PendingEvaluationView onBack={() => { window.location.href = "/"; }} />;
   }
-  if (attempt) return <QuizWorkspace initialAttempt={attempt} />;
+  if (attempt) {
+    return (
+      <QuizWorkspace
+        initialAttempt={attempt}
+        onBack={() => {
+          window.location.href = "/";
+        }}
+      />
+    );
+  }
   if (intro) {
     return (
       <AttemptIntroPage
