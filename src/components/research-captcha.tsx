@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { createDefaultStudyTemplate } from "@/lib/default-study-template";
 import { MAX_PDF_BYTES, MAX_PDF_LABEL, pdfTooLargeMessage } from "@/lib/uploads";
 
 import { ParticipantId } from "@/components/participant-id";
@@ -43,6 +44,16 @@ type CatalogModel = {
   inputModalities: string[];
   recommended: boolean;
 };
+
+function preferredModel(catalog: CatalogModel[]) {
+  return (
+    catalog.find((model) => model.id === "google/gemini-3.7-flash") ??
+    catalog.find((model) => /anthropic\/claude.*sonnet/i.test(model.id)) ??
+    catalog.find((model) => model.recommended) ??
+    catalog[0] ??
+    null
+  );
+}
 
 const BLOCK_LABELS: Record<QuestionBlockConfig["type"], string> = {
   fill_blank: "Fill in the blank",
@@ -158,10 +169,11 @@ function CountdownToggle({
 }
 
 export function ResearchCaptcha({ username }: { username: string }) {
-  const [mode, setMode] = useState<"generate" | "load" | "resume" | "experiments">(
-    "generate",
-  );
+  const [mode, setMode] = useState<
+    "default" | "custom" | "load" | "resume" | "experiments"
+  >("default");
   const [models, setModels] = useState<CatalogModel[]>([]);
+  const [defaultModel, setDefaultModel] = useState<CatalogModel | null>(null);
   const [selectedModel, setSelectedModel] = useState<CatalogModel | null>(null);
   const [modelSearch, setModelSearch] = useState("");
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -265,6 +277,10 @@ export function ResearchCaptcha({ username }: { username: string }) {
     }),
     [selectedModel, pdfEngine, blocks, randomize, countdownHidden, overallLimitMinutes],
   );
+  const defaultConfig = useMemo(
+    () => createDefaultStudyTemplate(defaultModel?.id ?? ""),
+    [defaultModel],
+  );
 
   function applyConfig(config: StudyTemplateConfig, catalog: CatalogModel[]) {
     setPdfEngine(config.pdfEngine);
@@ -303,6 +319,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
         if (!active) return;
         const catalog = modelResult.status === "fulfilled" ? modelResult.value : [];
         setModels(catalog);
+        setDefaultModel(preferredModel(catalog));
         if (modelResult.status === "rejected") {
           setError(
             modelResult.reason instanceof Error
@@ -319,12 +336,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
         // resolved together rather than racing to set the selection.
         const restoredModel = stored?.draft ? applyConfig(stored.draft, catalog) : false;
         if (!restoredModel && catalog.length) {
-          const preferred =
-            catalog.find((model) => model.id === "google/gemini-3.7-flash") ??
-            catalog.find((model) => /anthropic\/claude.*sonnet/i.test(model.id)) ??
-            catalog.find((model) => model.recommended) ??
-            catalog[0] ??
-            null;
+          const preferred = preferredModel(catalog);
           setSelectedModel(preferred);
           setModelSearch(preferred?.name ?? "");
         }
@@ -393,7 +405,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
   // Reload the lists whenever a browsing tab is opened, so a set generated moments ago and
   // an attempt just answered on this laptop both appear without a page refresh.
   useEffect(() => {
-    if (mode === "generate") return;
+    if (mode === "default" || mode === "custom") return;
     void refreshCatalog();
   }, [mode, refreshCatalog]);
 
@@ -538,7 +550,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
         : `${row.answeredCount} of ${row.totalQuestions} questions are answered. Those answers and their timings will be destroyed.`;
     if (
       !window.confirm(
-        `Reset this attempt of \u201c${row.setLabel}\u201d?\n\n${state}\n\nThe link and the question order stay the same, so it can be run again from the beginning. The link is disabled by the reset \u2014 enable it when the participant is ready to start.\n\nThis cannot be undone.`,
+        `Reset this attempt of \u201c${row.setLabel}\u201d?\n\n${state}\n\nThe question order stays the same, and the attempt can be run again from the beginning.\n\nThis cannot be undone.`,
       )
     ) {
       return;
@@ -1003,10 +1015,13 @@ export function ResearchCaptcha({ username }: { username: string }) {
     );
   }
 
-  async function generateSet(event: FormEvent<HTMLFormElement>) {
+  async function generateSet(
+    event: FormEvent<HTMLFormElement>,
+    config: StudyTemplateConfig,
+  ) {
     event.preventDefault();
-    if (!selectedModel) return setError("Choose an OpenRouter model.");
-    if (blocks.length === 0) return setError("Add at least one question type.");
+    if (!config.modelId) return setError("No compatible OpenRouter model is available.");
+    if (config.blocks.length === 0) return setError("Add at least one question type.");
     const form = new FormData(event.currentTarget);
     // Checked before the upload starts, not after: the server can only refuse an oversized PDF
     // once it has arrived, and over a tunnel that is minutes of waiting for a no.
@@ -1019,14 +1034,16 @@ export function ResearchCaptcha({ username }: { username: string }) {
     setWorking(true);
     setGenerationStatus("Queued for generation…");
     setError("");
-    form.set("modelId", selectedModel.id);
-    form.set("pdfEngine", pdfEngine);
-    form.set("blocks", JSON.stringify(blocks));
-    form.set("randomize", String(randomize));
-    form.set("countdownHidden", String(countdownHidden));
+    form.set("modelId", config.modelId);
+    form.set("pdfEngine", config.pdfEngine);
+    form.set("blocks", JSON.stringify(config.blocks));
+    form.set("randomize", String(config.randomize));
+    form.set("countdownHidden", String(config.countdownHidden));
     form.set(
       "overallTimeLimitSeconds",
-      overallLimitMinutes ? String(Number(overallLimitMinutes) * 60) : "",
+      config.overallTimeLimitSeconds === null
+        ? ""
+        : String(config.overallTimeLimitSeconds),
     );
     form.set("name", setName);
     try {
@@ -1230,18 +1247,26 @@ export function ResearchCaptcha({ username }: { username: string }) {
         <p className="eyebrow">Authorship understanding assessment</p>
         <h1>greCAPTCHA Demo</h1>
         <p className="lede">
-          Generate a reusable mixed-format question set, start a fresh attempt from one you
-          have already built, or reopen an assessment already under way.
+          Generate a question set from a paper, then answer its questions by opening the{" "}
+          <strong>Attempts</strong> tab and selecting the attempt. You can return there at any
+          time to start, resume, or review it.
         </p>
       </section>
 
       <div className="mode-tabs" role="tablist" aria-label="Assessment setup mode">
         <button
           type="button"
-          className={mode === "generate" ? "active" : ""}
-          onClick={() => setMode("generate")}
+          className={mode === "default" ? "active" : ""}
+          onClick={() => setMode("default")}
         >
-          New set
+          New set from default template
+        </button>
+        <button
+          type="button"
+          className={mode === "custom" ? "active" : ""}
+          onClick={() => setMode("custom")}
+        >
+          New set from new template
         </button>
         <button
           type="button"
@@ -1259,7 +1284,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
         </button>
       </div>
 
-      {mode === "generate" && (
+      {mode === "custom" && (
         <section className="card template-card">
           <div className="template-heading">
             <div>
@@ -1705,12 +1730,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
                         {set.paperName} · {set.questionCount}{" "}
                         {set.questionCount === 1 ? "question" : "questions"} ·{" "}
                         {set.attemptCount}{" "}
-                        {set.attemptCount === 1 ? "attempt" : "attempts"}
-                        {set.experimentCount > 0 &&
-                          ` · ${set.experimentCount} ${
-                            set.experimentCount === 1 ? "experiment" : "experiments"
-                          }`}{" "}
-                        · {set.modelId}
+                        {set.attemptCount === 1 ? "attempt" : "attempts"} · {set.modelId}
                       </span>
                     </div>
                     <div className="catalog-actions">
@@ -1725,12 +1745,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
                       <button
                         className="secondary danger"
                         type="button"
-                        disabled={set.experimentCount > 0}
-                        title={
-                          set.experimentCount > 0
-                            ? "Used by an experiment. Delete the experiment first."
-                            : undefined
-                        }
                         onClick={() => void deleteSet(set)}
                       >
                         Delete
@@ -1768,17 +1782,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
                     <div className="catalog-main">
                       <div className="catalog-title-row">
                         <strong>{entry.setLabel}</strong>
-                        {entry.participantId && entry.condition && (
-                          <span className="pill">
-                            Participant {entry.participantId} ·{" "}
-                            {CONDITION_LABELS[entry.condition]}
-                          </span>
-                        )}
-                        <span
-                          className={`link-state ${entry.linkEnabled ? "open" : "closed"}`}
-                        >
-                          {entry.linkEnabled ? "Link enabled" : "Link disabled"}
-                        </span>
                       </div>
                       <span className="catalog-meta">
                         {entry.answeredCount} of {entry.totalQuestions} answered ·{" "}
@@ -1793,12 +1796,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
                       <button
                         className="secondary danger"
                         type="button"
-                        disabled={Boolean(entry.participantId)}
-                        title={
-                          entry.participantId
-                            ? `One block of participant ${entry.participantId}'s experiment. Delete the experiment to remove both blocks.`
-                            : undefined
-                        }
                         onClick={() => void deleteAttemptRow(entry)}
                       >
                         Delete
@@ -1807,22 +1804,10 @@ export function ResearchCaptcha({ username }: { username: string }) {
                         className="secondary"
                         type="button"
                         disabled={resettingId === entry.id}
-                        title="Clear this attempt's answers and run it again from the start. The link and the question order are kept."
+                        title="Clear this attempt's answers and run it again from the start. The question order is kept."
                         onClick={() => void resetAttemptRow(entry)}
                       >
                         {resettingId === entry.id ? "Resetting…" : "Reset"}
-                      </button>
-                      <button
-                        className={`secondary ${entry.linkEnabled ? "danger" : ""}`}
-                        type="button"
-                        disabled={togglingLinkId === entry.id}
-                        onClick={() => void toggleAttemptLink(entry)}
-                      >
-                        {togglingLinkId === entry.id
-                          ? "Saving…"
-                          : entry.linkEnabled
-                            ? "Disable link"
-                            : "Enable link"}
                       </button>
                       <button
                         className="primary"
@@ -1844,14 +1829,20 @@ export function ResearchCaptcha({ username }: { username: string }) {
           )}
         </section>
       ) : (
-        <form className="card form-card" onSubmit={generateSet}>
+        <form
+          className="card form-card"
+          onSubmit={(event) =>
+            generateSet(event, mode === "default" ? defaultConfig : currentConfig)
+          }
+        >
           <div className="form-section">
             <div className="section-heading">
               <div>
                 <span className="field-label">This paper</span>
                 <p className="hint">
-                  Specific to one manuscript and one claimed author. Everything below is
-                  reusable, so the same question configuration can be run against any paper.
+                  {mode === "default"
+                    ? "Upload a manuscript and describe the claimed author’s work. The standard eight-question template is applied automatically."
+                    : "Specific to one manuscript and one claimed author. Everything below is reusable, so the same question configuration can be run against any paper."}
                 </p>
               </div>
             </div>
@@ -1911,6 +1902,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
             </div>
           </div>
 
+          {mode === "custom" && (
           <div className="form-section">
             <div className="section-heading">
               <div>
@@ -2211,6 +2203,18 @@ export function ResearchCaptcha({ username }: { username: string }) {
             </div>
             </div>
           </div>
+          )}
+
+          {mode === "default" && (
+            <div className="default-template-summary">
+              <strong>Standard eight-question assessment</strong>
+              <span>
+                Two questions each on planted errors, unstated rationale, background concepts,
+                and failure modes.
+              </span>
+              {defaultModel && <small>Generated with {defaultModel.name}.</small>}
+            </div>
+          )}
 
           {error && <p className="error" role="alert">{error}</p>}
           <div className="submit-row">
@@ -2220,7 +2224,12 @@ export function ResearchCaptcha({ username }: { username: string }) {
             <button
               className="primary"
               type="submit"
-              disabled={working || !selectedModel || blocks.length === 0}
+              disabled={
+                working ||
+                (mode === "default"
+                  ? !defaultModel
+                  : !selectedModel || blocks.length === 0)
+              }
             >
               {working ? generationStatus || "Preparing upload…" : "Generate question set"}
             </button>

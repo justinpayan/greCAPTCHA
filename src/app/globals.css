@@ -385,6 +385,21 @@ textarea.control {
   padding: clamp(18px, 3vw, 26px);
 }
 
+.default-template-summary {
+  display: grid;
+  gap: 5px;
+  margin-top: 26px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.default-template-summary span,
+.default-template-summary small {
+  color: var(--muted);
+}
+
 .template-heading {
   margin-bottom: 16px;
 }
@@ -491,10 +506,9 @@ textarea.control {
 }
 
 .mode-tabs {
-  display: inline-flex;
-  /* Four tabs are wider than a phone. Without this the row pushes the whole document wider than
-     the viewport, so the page scrolls sideways rather than the control adapting. */
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: 100%;
   gap: 5px;
   margin-bottom: 14px;
   border: 1px solid var(--line);
@@ -510,6 +524,7 @@ textarea.control {
   color: var(--muted);
   background: transparent;
   font-weight: 720;
+  line-height: 1.25;
 }
 
 .mode-tabs button.active {
@@ -608,6 +623,23 @@ textarea.control {
 .participant-link {
   margin-bottom: 18px;
   padding: 18px 20px;
+}
+
+.attempt-start-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 24px;
+  padding: 20px;
+}
+
+.attempt-start-card p {
+  margin: 5px 0 0;
+}
+
+.attempt-start-card .primary {
+  flex-shrink: 0;
 }
 
 .participant-link-row {
@@ -1853,6 +1885,11 @@ button.option.selected {
   }
 
   .submit-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .attempt-start-card {
     align-items: stretch;
     flex-direction: column;
   }

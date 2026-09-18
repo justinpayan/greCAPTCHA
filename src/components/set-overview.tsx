@@ -236,8 +236,8 @@ export function SetOverview({
       </header>
 
       <p className="lede summary-notice">
-        This page is for the researcher. It names each card and what each item probes, so do not
-        leave it on screen once an assessment is handed over.
+        Review the generated questions below. To answer them, return to the dashboard and open
+        the <strong>Attempts</strong> tab.
       </p>
 
       <section className="card participant-link">
@@ -308,9 +308,6 @@ export function SetOverview({
         </span>
         <span>
           Attempts: <strong>{overview.attemptCount}</strong>
-        </span>
-        <span>
-          Experiments: <strong>{overview.experimentCount}</strong>
         </span>
         <span>
           Generated: <strong>{new Date(overview.createdAt).toLocaleString()}</strong>
