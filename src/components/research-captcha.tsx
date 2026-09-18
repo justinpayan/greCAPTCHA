@@ -2141,6 +2141,17 @@ export function ResearchCaptcha({ username }: { username: string }) {
             generateSet(event, mode === "default" ? defaultConfig : currentConfig)
           }
         >
+          <OpenRouterKeyPanel
+            apiKey={openrouterApiKey}
+            source={keySource}
+            onChange={(nextKey, nextSource) => {
+              setOpenrouterApiKey(nextKey);
+              setKeySource(nextSource);
+            }}
+            onReady={(nextKey, nextSource) =>
+              void loadModelCatalog(nextKey, nextSource)
+            }
+          />
           <div className="form-section">
             {mode !== "default" && (
               <div className="section-heading">
@@ -2575,17 +2586,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
             </div>
           )}
 
-          <OpenRouterKeyPanel
-            apiKey={openrouterApiKey}
-            source={keySource}
-            onChange={(nextKey, nextSource) => {
-              setOpenrouterApiKey(nextKey);
-              setKeySource(nextSource);
-            }}
-            onReady={(nextKey, nextSource) =>
-              void loadModelCatalog(nextKey, nextSource)
-            }
-          />
           {error && <p className="error" role="alert">{error}</p>}
           <div className="submit-row">
             {failedGenerationJobId && (
