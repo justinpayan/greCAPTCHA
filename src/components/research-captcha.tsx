@@ -1902,7 +1902,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
                   id="setName"
                   value={setName}
                   maxLength={120}
-                  placeholder="e.g. Pilot form A — Gyevnar CHI submission"
+                  placeholder="e.g. My test set"
                   onChange={(event) => setSetName(event.target.value)}
                 />
               </div>
