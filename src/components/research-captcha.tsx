@@ -1438,8 +1438,8 @@ export function ResearchCaptcha({ username }: { username: string }) {
         <p className="lede">
           You can generate a question set from a paper in the &lsquo;New question set&rsquo; tab.
           Once you have generated a question set, copy the link on the right to share the exam
-          with someone. To see attempts completed on your exams, open the &lsquo;Attempts&rsquo;
-          tab. You can also trigger grading of attempts from the Attempts tab.
+          with someone. To see attempts completed on your exams, open the &lsquo;My tests&rsquo;
+          tab. You can also trigger grading of attempts from the My tests tab.
         </p>
         <p className="lede">
           The &lsquo;My assessments&rsquo; tab shows assessments you have taken. Return there to
@@ -1470,7 +1470,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
               setAdvancedOpen(false);
             }}
           >
-            Attempts
+            My tests
           </button>
           <button
             type="button"
@@ -1799,6 +1799,20 @@ export function ResearchCaptcha({ username }: { username: string }) {
                       </span>
                     </div>
                     <div className="catalog-actions">
+                      <button
+                        className="secondary"
+                        type="button"
+                        disabled={sharingSetId === set.id}
+                        onClick={() => void copyRecentAssessmentLink(set)}
+                      >
+                        {sharingSetId === set.id
+                          ? "Creating link…"
+                          : copiedSetId === set.id
+                            ? "Link copied"
+                            : shareLinks[set.id]
+                              ? "Copy share link"
+                              : "Create and copy share link"}
+                      </button>
                       <button
                         className="secondary"
                         type="button"
