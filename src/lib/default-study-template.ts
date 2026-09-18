@@ -1,4 +1,8 @@
-import type { QuestionBlockConfig, StudyTemplateConfig } from "@/lib/quiz";
+import {
+  DEFAULT_FILL_PROMPT,
+  type QuestionBlockConfig,
+  type StudyTemplateConfig,
+} from "@/lib/quiz";
 
 const PLANTED_ERROR_PROMPT = `Generate planted-error detection items. Each item states a specific claim about this manuscript, and the participant must identify which version of the claim is what the paper actually reports.
 
@@ -101,4 +105,28 @@ export function createDefaultStudyTemplate(modelId: string): StudyTemplateConfig
     countdownHidden: false,
     overallTimeLimitSeconds: null,
   };
+}
+
+/** Recognizes the untouched one-card starter that predates the public default template. */
+export function isLegacyStarterTemplate(config: StudyTemplateConfig) {
+  if (
+    config.blocks.length !== 1 ||
+    config.randomize ||
+    config.countdownHidden ||
+    config.overallTimeLimitSeconds !== null
+  ) {
+    return false;
+  }
+
+  const block = config.blocks[0];
+  return (
+    block.id === "initial-fill-block" &&
+    block.type === "fill_blank" &&
+    block.name === "" &&
+    block.count === 5 &&
+    block.distractorsPerBlank === 3 &&
+    block.timeLimitSeconds === null &&
+    block.warmup === false &&
+    block.prompt === DEFAULT_FILL_PROMPT
+  );
 }

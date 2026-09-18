@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import {
   createDefaultStudyBlocks,
   createDefaultStudyTemplate,
+  isLegacyStarterTemplate,
 } from "@/lib/default-study-template";
 import { MAX_PDF_BYTES, MAX_PDF_LABEL, pdfTooLargeMessage } from "@/lib/uploads";
 
@@ -330,18 +331,24 @@ export function ResearchCaptcha({ username }: { username: string }) {
           templateResult.status === "fulfilled" ? templateResult.value : null;
         setTemplates(stored?.templates ?? []);
 
-        // Restoring the draft must win over the default model pick, so both fetches are
-        // resolved together rather than racing to set the selection.
-        const restoredModel = stored?.draft ? applyConfig(stored.draft, catalog) : false;
+        // Preserve real edits, but replace the untouched starter used before the public
+        // eight-question template existed.
+        const legacyDraft = stored?.draft && isLegacyStarterTemplate(stored.draft);
+        const draft = legacyDraft
+          ? createDefaultStudyTemplate(stored.draft?.modelId ?? "")
+          : stored?.draft;
+        const restoredModel = draft ? applyConfig(draft, catalog) : false;
         if (!restoredModel && catalog.length) {
           const preferred = preferredModel(catalog);
           setSelectedModel(preferred);
           setModelSearch(preferred?.name ?? "");
         }
         setTemplateStatus(
-          stored?.draft
-            ? "Restored your last configuration."
-            : "Starting from the standard default template. Edit any setting below.",
+          legacyDraft
+            ? "Updated the old starter configuration to the standard eight-question template."
+            : stored?.draft
+              ? "Restored your last configuration."
+              : "Starting from the standard default template. Edit any setting below.",
         );
       })
       .finally(() => {
@@ -1009,6 +1016,16 @@ export function ResearchCaptcha({ username }: { username: string }) {
     }
   }
 
+  function resetCustomTemplate() {
+    const model = selectedModel ?? preferredModel(models);
+    applyConfig(createDefaultStudyTemplate(model?.id ?? ""), models);
+    setTemplateId("");
+    setError("");
+    setTemplateStatus(
+      "Reset to the standard eight-question template. Your selected model was retained.",
+    );
+  }
+
   function clearBlocks() {
     if (blocks.length === 0) return;
     const plural = blocks.length === 1 ? "card" : "cards";
@@ -1199,11 +1216,16 @@ export function ResearchCaptcha({ username }: { username: string }) {
       <div className="brand">
         <span className="brand-mark">R</span>
         ResearchCAPTCHA
-        <button className="sign-out" type="button" onClick={() => setAccountOpen((open) => !open)}>
-          {username}
+        <span className="account-name">Signed in as {username}</span>
+        <button
+          className="sign-out account-action"
+          type="button"
+          onClick={() => setAccountOpen((open) => !open)}
+        >
+          Change OpenRouter API key
         </button>
         <button
-          className="sign-out"
+          className="sign-out account-action"
           type="button"
           onClick={async () => {
             await fetch("/api/session", { method: "DELETE" });
@@ -1344,6 +1366,13 @@ export function ResearchCaptcha({ username }: { username: string }) {
               />
             </div>
             <div className="template-buttons">
+              <button
+                className="secondary"
+                type="button"
+                onClick={resetCustomTemplate}
+              >
+                Reset to default template
+              </button>
               <button
                 className="secondary"
                 type="button"
@@ -1930,8 +1959,8 @@ export function ResearchCaptcha({ username }: { username: string }) {
             <div className="form-grid">
             <div className="field full">
               <span className="field-label field-label-row">
-                Evaluator model
-                <FieldHint text="Type to filter the live OpenRouter catalogue, then pick a model from the list. Recommended models are marked." />
+                Generator and Evaluator model
+                <FieldHint text="This model generates the questions and grades free-response answers. Type to filter the live OpenRouter catalogue; recommended models are marked." />
               </span>
               <div className="model-picker">
                 <input
@@ -2231,7 +2260,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
               </div>
               <div className="field">
                 <span className="field-label field-label-row">
-                  Evaluator model
+                  Generator and Evaluator model
                   <FieldHint text="This model generates the questions and grades free-response answers using your OpenRouter account." />
                 </span>
                 <div className="model-picker">

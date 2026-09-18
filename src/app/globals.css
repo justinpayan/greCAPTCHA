@@ -67,6 +67,7 @@ button {
 
 .brand {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   margin-bottom: 40px;
@@ -418,6 +419,7 @@ textarea.control {
 
 .template-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   padding-top: 26px;
 }
@@ -609,6 +611,18 @@ textarea.control {
   background: white;
   font-size: 0.78rem;
   font-weight: 720;
+}
+
+.account-name {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 620;
+  letter-spacing: 0;
+}
+
+.account-action {
+  margin-left: 0;
 }
 
 .sign-out:hover {
