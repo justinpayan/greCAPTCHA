@@ -2,7 +2,10 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { createDefaultStudyTemplate } from "@/lib/default-study-template";
+import {
+  createDefaultStudyBlocks,
+  createDefaultStudyTemplate,
+} from "@/lib/default-study-template";
 import { MAX_PDF_BYTES, MAX_PDF_LABEL, pdfTooLargeMessage } from "@/lib/uploads";
 
 import { ParticipantId } from "@/components/participant-id";
@@ -174,22 +177,13 @@ export function ResearchCaptcha({ username }: { username: string }) {
   >("default");
   const [models, setModels] = useState<CatalogModel[]>([]);
   const [defaultModel, setDefaultModel] = useState<CatalogModel | null>(null);
+  const [defaultModelSearch, setDefaultModelSearch] = useState("");
+  const [defaultModelPickerOpen, setDefaultModelPickerOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<CatalogModel | null>(null);
   const [modelSearch, setModelSearch] = useState("");
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [pdfEngine, setPdfEngine] = useState<PdfEngine>("native");
-  const [blocks, setBlocks] = useState<QuestionBlockConfig[]>([
-    {
-      id: "initial-fill-block",
-      type: "fill_blank",
-      name: "",
-      count: 5,
-      distractorsPerBlank: 3,
-      timeLimitSeconds: null,
-      warmup: false,
-      prompt: DEFAULT_FILL_PROMPT,
-    },
-  ]);
+  const [blocks, setBlocks] = useState<QuestionBlockConfig[]>(createDefaultStudyBlocks);
   const [randomize, setRandomize] = useState(false);
   const [countdownHidden, setCountdownHidden] = useState(false);
   /** Whole minutes in the form, seconds in the data. Empty means no overall limit. */
@@ -319,7 +313,11 @@ export function ResearchCaptcha({ username }: { username: string }) {
         if (!active) return;
         const catalog = modelResult.status === "fulfilled" ? modelResult.value : [];
         setModels(catalog);
-        setDefaultModel(preferredModel(catalog));
+        const defaultPreferred = preferredModel(
+          catalog.filter((model) => model.inputModalities.includes("file")),
+        );
+        setDefaultModel(defaultPreferred);
+        setDefaultModelSearch(defaultPreferred?.name ?? "");
         if (modelResult.status === "rejected") {
           setError(
             modelResult.reason instanceof Error
@@ -340,7 +338,11 @@ export function ResearchCaptcha({ username }: { username: string }) {
           setSelectedModel(preferred);
           setModelSearch(preferred?.name ?? "");
         }
-        if (stored?.draft) setTemplateStatus("Restored your last configuration.");
+        setTemplateStatus(
+          stored?.draft
+            ? "Restored your last configuration."
+            : "Starting from the standard default template. Edit any setting below.",
+        );
       })
       .finally(() => {
         if (!active) return;
@@ -382,12 +384,25 @@ export function ResearchCaptcha({ username }: { username: string }) {
     return models
       .filter(
         (model) =>
+          model.inputModalities.includes("file") &&
+          (!query ||
+            model.name.toLowerCase().includes(query) ||
+            model.id.toLowerCase().includes(query)),
+      )
+      .slice(0, 60);
+  }, [modelSearch, models]);
+
+  const filteredDefaultModels = useMemo(() => {
+    const query = defaultModelSearch.trim().toLowerCase();
+    return models
+      .filter(
+        (model) =>
           !query ||
           model.name.toLowerCase().includes(query) ||
           model.id.toLowerCase().includes(query),
       )
       .slice(0, 60);
-  }, [modelSearch, models]);
+  }, [defaultModelSearch, models]);
 
   const refreshCatalog = useCallback(async () => {
     const [setsResult, attemptsResult] = await Promise.allSettled([
@@ -2207,12 +2222,60 @@ export function ResearchCaptcha({ username }: { username: string }) {
 
           {mode === "default" && (
             <div className="default-template-summary">
-              <strong>Standard eight-question assessment</strong>
-              <span>
-                Two questions each on planted errors, unstated rationale, background concepts,
-                and failure modes.
-              </span>
-              {defaultModel && <small>Generated with {defaultModel.name}.</small>}
+              <div>
+                <strong>Standard eight-question assessment</strong>
+                <p>
+                  Two questions each on planted errors, unstated rationale, background concepts,
+                  and failure modes.
+                </p>
+              </div>
+              <div className="field">
+                <span className="field-label field-label-row">
+                  Evaluator model
+                  <FieldHint text="This model generates the questions and grades free-response answers using your OpenRouter account." />
+                </span>
+                <div className="model-picker">
+                  <input
+                    className="search-control"
+                    value={defaultModelSearch}
+                    onChange={(event) => {
+                      setDefaultModelSearch(event.target.value);
+                      setDefaultModelPickerOpen(true);
+                      if (event.target.value !== defaultModel?.name) setDefaultModel(null);
+                    }}
+                    onFocus={() => setDefaultModelPickerOpen(true)}
+                    onBlur={() =>
+                      window.setTimeout(() => setDefaultModelPickerOpen(false), 150)
+                    }
+                    placeholder={loadingModels ? "Loading models..." : "Search models"}
+                    disabled={loadingModels}
+                  />
+                  {defaultModelPickerOpen && !loadingModels && (
+                    <ul className="model-results">
+                      {filteredDefaultModels.map((model) => (
+                        <li key={model.id}>
+                          <button
+                            className="model-option"
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => {
+                              setDefaultModel(model);
+                              setDefaultModelSearch(model.name);
+                              setDefaultModelPickerOpen(false);
+                            }}
+                          >
+                            <strong>
+                              {model.name}{" "}
+                              {model.recommended && <span className="pill">Recommended</span>}
+                            </strong>
+                            <span>{model.id}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
