@@ -4,9 +4,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { attemptAnswers, attempts } from "@/db/schema";
 import { AttemptClosedError, requireOpenAttempt } from "@/lib/attempt-access";
+import { backupInBackground } from "@/lib/backup";
 import { closeForTimeout, overallBudget } from "@/lib/attempt-close";
 import { getAttemptState, getCurrentAnswer, loadAttemptContext } from "@/lib/attempts";
-import { enqueueGradingJob } from "@/lib/jobs";
 import { noCreditFeedbackJson } from "@/lib/no-credit";
 import { answerSubmissionSchema, type FillReview } from "@/lib/quiz";
 
@@ -42,8 +42,7 @@ export async function POST(
 
     if (answerRow.submittedAt) {
       if (isFinalQuestion) {
-        const grading = await enqueueGradingJob(id);
-        return NextResponse.json(grading, { status: "result" in grading ? 200 : 202 });
+        return NextResponse.json({ pendingEvaluation: true });
       }
       return NextResponse.json({ error: "This answer is already locked." }, { status: 409 });
     }
@@ -142,15 +141,20 @@ export async function POST(
     }
 
     if (isFinalQuestion) {
-      const grading = await enqueueGradingJob(id);
-      return NextResponse.json(grading, { status: "result" in grading ? 200 : 202 });
+      await db
+        .update(attempts)
+        .set({ status: "submitted", completedAt: submittedAt.toISOString() })
+        .where(eq(attempts.id, id))
+        .run();
+      backupInBackground("assessment-submitted");
+      return NextResponse.json({ pendingEvaluation: true });
     }
 
     // The answer above counted; the bell does not snatch back work already entered. But if it
     // spent the budget, the attempt closes here instead of serving another question.
     if ((await overallBudget(id)).exhausted) {
-      const grading = await closeForTimeout(id);
-      return NextResponse.json(grading, { status: "result" in grading ? 200 : 202 });
+      await closeForTimeout(id);
+      return NextResponse.json({ pendingEvaluation: true });
     }
 
     await db

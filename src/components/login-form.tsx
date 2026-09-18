@@ -9,7 +9,6 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
-  const [openrouterApiKey, setOpenrouterApiKey] = useState("");
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
 
@@ -21,7 +20,7 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
       const response = await fetch(signup ? "/api/signup" : "/api/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, passwordConfirmation, openrouterApiKey }),
+        body: JSON.stringify({ username, password, passwordConfirmation }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to sign in.");
@@ -41,7 +40,7 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
         <h1>{signup ? "Create your account." : "Welcome back."}</h1>
         <p className="lede">
           {signup
-            ? "Create an account to take shared assessments. Add an OpenRouter key only if you also want to generate your own question sets."
+            ? "Create an account to take shared assessments or generate your own question sets."
             : "Sign in to return to your saved sets and attempts."}
         </p>
       </section>
@@ -83,21 +82,6 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
                 onChange={(event) => setPasswordConfirmation(event.target.value)}
                 required
               />
-            </div>
-            <div className="field">
-              <label htmlFor="openrouterApiKey">OpenRouter API key (optional)</label>
-              <input
-                className="control"
-                id="openrouterApiKey"
-                type="password"
-                value={openrouterApiKey}
-                autoComplete="off"
-                onChange={(event) => setOpenrouterApiKey(event.target.value)}
-              />
-              <span className="hint">
-                Required only for generating question sets. If provided, it is validated and
-                encrypted at rest.
-              </span>
             </div>
           </>
         )}

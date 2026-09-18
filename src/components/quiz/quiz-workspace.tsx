@@ -511,6 +511,26 @@ export function ResultView({
   );
 }
 
+export function PendingEvaluationView({ onBack }: { onBack?: () => void }) {
+  return (
+    <main className="app-shell">
+      <section className="card result neutral-result">
+        <p className="eyebrow">Assessment submitted</p>
+        <h1>Your assessment has not been graded yet.</h1>
+        <p className="lede">
+          Please check back here later. The evaluator must run the evaluation before your score
+          and feedback appear.
+        </p>
+        {onBack && (
+          <button className="primary" type="button" onClick={onBack}>
+            Back to dashboard
+          </button>
+        )}
+      </section>
+    </main>
+  );
+}
+
 export function QuizWorkspace({
   initialAttempt,
   onFinish,
@@ -535,6 +555,7 @@ export function QuizWorkspace({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<AssessmentResult | null>(null);
+  const [pendingEvaluation, setPendingEvaluation] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(initialAttempt.elapsedMs);
   const [overallElapsedMs, setOverallElapsedMs] = useState(initialAttempt.overallElapsedMs);
   const interactionReported = useRef(initialAttempt.firstInteractionRecorded);
@@ -585,19 +606,6 @@ export function QuizWorkspace({
     });
   }
 
-  async function waitForGrading() {
-    while (true) {
-      await new Promise((resolve) => window.setTimeout(resolve, 1_000));
-      const response = await fetch(`/api/attempts/${attempt.attemptId}/grading`, {
-        cache: "no-store",
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "Unable to check grading.");
-      if (payload.status === "failed") throw new Error(payload.error ?? "Grading failed.");
-      if (payload.result) return payload.result as AssessmentResult;
-    }
-  }
-
   /**
    * Fires once when the budget runs out. An answer already entered is submitted first, so the bell
    * does not discard work; otherwise the server is asked to close the attempt. Guarded by a ref so
@@ -625,14 +633,8 @@ export function QuizWorkspace({
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to close the assessment.");
-      if (payload.result) {
-        const graded = payload.result as AssessmentResult;
-        if (onFinish) onFinish(graded);
-        else setResult(graded);
-      } else if (payload.jobId) {
-        const graded = await waitForGrading();
-        if (onFinish) onFinish(graded);
-        else setResult(graded);
+      if (payload.pendingEvaluation) {
+        setPendingEvaluation(true);
       } else if (payload.attempt) {
         // The server disagreed that time was up; carry on from what it served.
         setAttempt(payload.attempt as AttemptView);
@@ -677,14 +679,8 @@ export function QuizWorkspace({
       if (!response.ok) {
         throw new Error(payload.error ?? (skip ? "Unable to skip." : "Unable to submit answer."));
       }
-      if (payload.result) {
-        const graded = payload.result as AssessmentResult;
-        if (onFinish) onFinish(graded);
-        else setResult(graded);
-      } else if (payload.jobId) {
-        const graded = await waitForGrading();
-        if (onFinish) onFinish(graded);
-        else setResult(graded);
+      if (payload.pendingEvaluation) {
+        setPendingEvaluation(true);
       } else {
         setAttempt(payload.attempt as AttemptView);
         setFillSelections({});
@@ -700,6 +696,7 @@ export function QuizWorkspace({
   }
 
   if (result) return <ResultView result={result} onBack={onBack} />;
+  if (pendingEvaluation) return <PendingEvaluationView onBack={onBack} />;
 
   return (
     <main className="app-shell">
@@ -808,10 +805,10 @@ export function QuizWorkspace({
         >
           {submitting
             ? attempt.currentIndex === attempt.totalQuestions - 1
-              ? "Grading assessment…"
+              ? "Submitting assessment…"
               : "Saving answer…"
             : attempt.currentIndex === attempt.totalQuestions - 1
-              ? "Submit final answer and score"
+              ? "Submit assessment"
               : "Submit answer and continue"}
         </button>
       </div>

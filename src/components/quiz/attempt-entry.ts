@@ -6,6 +6,7 @@ import type { AssessmentResult, AttemptIntro, AttemptView } from "@/lib/quiz";
  */
 export type AttemptEntry =
   | { kind: "result"; result: AssessmentResult }
+  | { kind: "pending" }
   | { kind: "question"; attempt: AttemptView }
   | { kind: "intro"; intro: AttemptIntro }
   | {
@@ -66,5 +67,6 @@ export async function serveAttempt(attemptId: string): Promise<AttemptEntry> {
   if (!response.ok) throw new Error(String(payload.error ?? "Unable to open this assessment."));
 
   if (payload.result) return { kind: "result", result: payload.result as AssessmentResult };
+  if (payload.pendingEvaluation) return { kind: "pending" };
   return { kind: "question", attempt: payload.attempt as AttemptView };
 }

@@ -3,7 +3,7 @@ import "server-only";
 import { and, count, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
 
 import { db } from "@/db";
-import { attemptAnswers, attempts, experiments, questionSets } from "@/db/schema";
+import { attemptAnswers, attempts, experiments, jobs, questionSets } from "@/db/schema";
 import {
   isWarmup,
   questionBlockName,
@@ -260,8 +260,7 @@ export async function deleteAttempt(id: string, ownerUserId: string) {
  * is a clean re-run of the identical instrument rather than a new draw. That matters most inside
  * an experiment, where the other block has often already run against its own fixed order.
  *
- * The link is closed, as it is on a new attempt: a reset means something went wrong, and the
- * participant should not be able to walk back in before the researcher says so.
+ * A taker-assigned response remains available through the reusable set link after reset.
  *
  * The overall budget is re-read from the question set rather than kept, on the same reasoning
  * `createAttempt` uses — the snapshot exists to protect an attempt that is *under way* from an
@@ -277,7 +276,10 @@ export async function resetAttempt(id: string, ownerUserId: string): Promise<{
 }> {
   await requireOwnedAttempt(id, ownerUserId);
   const attempt = await db
-    .select({ questionSetId: attempts.questionSetId })
+    .select({
+      questionSetId: attempts.questionSetId,
+      takerUserId: attempts.takerUserId,
+    })
     .from(attempts)
     .where(eq(attempts.id, id))
     .get();
@@ -305,7 +307,7 @@ export async function resetAttempt(id: string, ownerUserId: string): Promise<{
       score: null,
       gradingJson: null,
       completedAt: null,
-      linkEnabled: false,
+      linkEnabled: Boolean(attempt.takerUserId),
       overallTimeLimitSeconds: set.overallTimeLimitSeconds,
     })
     .where(eq(attempts.id, id))
@@ -328,9 +330,11 @@ export async function listAttempts(ownerUserId: string): Promise<AttemptListEntr
       linkEnabled: attempts.linkEnabled,
       questionOrderJson: attempts.questionOrderJson,
       createdAt: attempts.createdAt,
+      completedAt: attempts.completedAt,
       setName: questionSets.name,
       paperName: questionSets.paperName,
       condition: attempts.condition,
+      experimentId: attempts.experimentId,
       takerUsername: attempts.takerUsername,
       participantId: experiments.participantId,
     })
@@ -364,5 +368,68 @@ export async function listAttempts(ownerUserId: string): Promise<AttemptListEntr
     answeredCount: answeredByAttempt.get(row.id) ?? 0,
     totalQuestions: (JSON.parse(row.questionOrderJson) as string[]).length,
     createdAt: row.createdAt,
+    completedAt: row.completedAt,
+  }));
+}
+
+export async function listTakerAttempts(takerUserId: string): Promise<AttemptListEntry[]> {
+  const rows = await db
+    .select({
+      id: attempts.id,
+      questionSetId: attempts.questionSetId,
+      status: attempts.status,
+      score: attempts.score,
+      randomize: attempts.randomize,
+      linkEnabled: attempts.linkEnabled,
+      questionOrderJson: attempts.questionOrderJson,
+      createdAt: attempts.createdAt,
+      completedAt: attempts.completedAt,
+      setName: questionSets.name,
+      paperName: questionSets.paperName,
+      condition: attempts.condition,
+      experimentId: attempts.experimentId,
+      takerUsername: attempts.takerUsername,
+      participantId: experiments.participantId,
+    })
+    .from(attempts)
+    .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
+    .leftJoin(experiments, eq(experiments.id, attempts.experimentId))
+    .where(eq(attempts.takerUserId, takerUserId))
+    .orderBy(desc(attempts.createdAt))
+    .limit(LIST_LIMIT);
+  const answered = await db
+    .select({ attemptId: attemptAnswers.attemptId, total: count() })
+    .from(attemptAnswers)
+    .where(isNotNull(attemptAnswers.submittedAt))
+    .groupBy(attemptAnswers.attemptId);
+  const answeredByAttempt = new Map(answered.map((row) => [row.attemptId, row.total]));
+  const evaluating = rows.length
+    ? await db
+        .select({ attemptId: jobs.attemptId })
+        .from(jobs)
+        .where(
+          and(
+            inArray(jobs.attemptId, rows.map((row) => row.id)),
+            inArray(jobs.status, ["queued", "running"]),
+          ),
+        )
+    : [];
+  const evaluatingIds = new Set(evaluating.map((row) => row.attemptId));
+  return rows.map((row) => ({
+    id: row.id,
+    questionSetId: row.questionSetId,
+    setLabel: questionSetLabel(row.setName, row.paperName),
+    paperName: row.experimentId ? "Assessment paper" : row.paperName,
+    participantId: row.participantId ?? null,
+    takerUsername: row.takerUsername ?? null,
+    condition: (row.condition as AttemptCondition | null) ?? null,
+    status: evaluatingIds.has(row.id) ? "evaluating" : row.status,
+    score: row.score,
+    randomize: row.randomize,
+    linkEnabled: row.linkEnabled,
+    answeredCount: answeredByAttempt.get(row.id) ?? 0,
+    totalQuestions: (JSON.parse(row.questionOrderJson) as string[]).length,
+    createdAt: row.createdAt,
+    completedAt: row.completedAt,
   }));
 }

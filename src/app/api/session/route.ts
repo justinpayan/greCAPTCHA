@@ -52,7 +52,7 @@ export async function POST(request: Request) {
 export async function GET() {
   const user = await currentUser();
   if (!user) return NextResponse.json({ error: "Not authorised." }, { status: 401 });
-  return NextResponse.json({ username: user.username, apiKeyConfigured: true });
+  return NextResponse.json({ username: user.username });
 }
 
 export async function DELETE(request: Request) {

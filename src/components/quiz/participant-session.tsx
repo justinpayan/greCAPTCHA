@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
 
 import { loadAttemptEntry, serveAttempt } from "@/components/quiz/attempt-entry";
 import { AttemptIntroPage } from "@/components/quiz/attempt-intro";
-import { QuizWorkspace, ResultView } from "@/components/quiz/quiz-workspace";
+import {
+  PendingEvaluationView,
+  QuizWorkspace,
+  ResultView,
+} from "@/components/quiz/quiz-workspace";
 import type { AssessmentResult, AttemptIntro, AttemptView } from "@/lib/quiz";
 
 /**
@@ -19,6 +23,7 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
   const [intro, setIntro] = useState<AttemptIntro | null>(null);
   const [attempt, setAttempt] = useState<AttemptView | null>(null);
   const [result, setResult] = useState<AssessmentResult | null>(null);
+  const [pendingEvaluation, setPendingEvaluation] = useState(false);
   const [error, setError] = useState("");
   const [closed, setClosed] = useState<{
     message: string;
@@ -51,6 +56,7 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
       });
     }
     else if (entry.kind === "result") setResult(entry.result);
+    else if (entry.kind === "pending") setPendingEvaluation(true);
     else if (entry.kind === "question") setAttempt(entry.attempt);
     else setIntro(entry.intro);
   }
@@ -72,7 +78,7 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
             {closed.expired
               ? "This assessment link has expired."
               : closed.claimed
-                ? "This one-time assessment link has already been used."
+                ? "This assessment attempt belongs to another account."
               : closed.paused
                 ? "This assessment is paused."
                 : "This assessment has not started."}
@@ -100,6 +106,9 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
   }
 
   if (result) return <ResultView result={result} />;
+  if (pendingEvaluation) {
+    return <PendingEvaluationView onBack={() => { window.location.href = "/"; }} />;
+  }
   if (attempt) return <QuizWorkspace initialAttempt={attempt} />;
   if (intro) {
     return (

@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { listQuestionSets } from "@/lib/catalog";
 import { enqueueGenerationJob } from "@/lib/jobs";
+import { validateOpenRouterKey } from "@/lib/openrouter";
 import {
   MAX_PDF_BYTES,
   MAX_UPLOAD_BYTES,
@@ -92,6 +93,9 @@ export async function POST(request: Request) {
     if (file.size > MAX_PDF_BYTES) throw new UploadTooLargeError(pdfTooLargeMessage(file.size));
 
     const contributions = String(form.get("contributions") ?? "").trim();
+    const apiKey = String(form.get("openrouterApiKey") ?? "").trim();
+    const keySource = form.get("keySource") === "oauth" ? "oauth" : "paste";
+    await validateOpenRouterKey(apiKey, { requireSafeguards: keySource === "oauth" });
     const setName = String(form.get("name") ?? "").trim().slice(0, 120);
     const modelId = String(form.get("modelId") ?? "").trim();
     const pdfEngine = pdfEngineSchema.parse(form.get("pdfEngine"));
@@ -125,7 +129,7 @@ export async function POST(request: Request) {
       countdownHidden,
       overallTimeLimitSeconds,
       blocks,
-    });
+    }, apiKey);
     return NextResponse.json(created, { status: 202 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Question generation failed.";

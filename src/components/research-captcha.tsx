@@ -8,7 +8,14 @@ import {
   isLegacyStarterTemplate,
 } from "@/lib/default-study-template";
 import { MAX_PDF_BYTES, MAX_PDF_LABEL, pdfTooLargeMessage } from "@/lib/uploads";
+import {
+  completeOpenRouterOAuth,
+  readBrowserOpenRouterKey,
+  validateBrowserOpenRouterKey,
+  type KeySource,
+} from "@/lib/openrouter-browser-key";
 
+import { OpenRouterKeyPanel } from "@/components/openrouter-key-panel";
 import { ParticipantId } from "@/components/participant-id";
 import { SetOverview } from "@/components/set-overview";
 import {
@@ -54,6 +61,20 @@ const FEATURED_MODEL_IDS = [
   "anthropic/claude-fable-5.1",
   DEFAULT_MODEL_ID,
 ] as const;
+const FEATURED_MODELS: CatalogModel[] = [
+  {
+    id: DEFAULT_MODEL_ID,
+    name: "GPT-5.6 Sol",
+    inputModalities: ["text", "file"],
+    recommended: true,
+  },
+  {
+    id: "anthropic/claude-fable-5.1",
+    name: "Claude Fable 5.1",
+    inputModalities: ["text", "file"],
+    recommended: true,
+  },
+];
 
 function preferredModel(catalog: CatalogModel[]) {
   return (
@@ -180,10 +201,10 @@ function CountdownToggle({
 
 export function ResearchCaptcha({ username }: { username: string }) {
   const [mode, setMode] = useState<
-    "default" | "custom" | "load" | "resume" | "experiments"
+    "default" | "custom" | "load" | "resume" | "mine" | "experiments"
   >("default");
-  const [models, setModels] = useState<CatalogModel[]>([]);
-  const [defaultModel, setDefaultModel] = useState<CatalogModel | null>(null);
+  const [models, setModels] = useState<CatalogModel[]>(FEATURED_MODELS);
+  const [defaultModel, setDefaultModel] = useState<CatalogModel | null>(FEATURED_MODELS[0]);
   const [defaultModelSearch, setDefaultModelSearch] = useState("");
   const [defaultModelPickerOpen, setDefaultModelPickerOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<CatalogModel | null>(null);
@@ -195,21 +216,21 @@ export function ResearchCaptcha({ username }: { username: string }) {
   const [countdownHidden, setCountdownHidden] = useState(false);
   /** Whole minutes in the form, seconds in the data. Empty means no overall limit. */
   const [overallLimitMinutes, setOverallLimitMinutes] = useState("");
-  const [loadingModels, setLoadingModels] = useState(true);
+  const [loadingModels, setLoadingModels] = useState(false);
   const [working, setWorking] = useState(false);
   const [generationStatus, setGenerationStatus] = useState("");
   const [generationNotice, setGenerationNotice] = useState("");
   const [error, setError] = useState("");
-  const [accountOpen, setAccountOpen] = useState(false);
+  const [openrouterApiKey, setOpenrouterApiKey] = useState("");
+  const [keySource, setKeySource] = useState<KeySource>("paste");
+  const [failedGenerationJobId, setFailedGenerationJobId] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [sharingSetId, setSharingSetId] = useState("");
   const [copiedSetId, setCopiedSetId] = useState("");
   const [shareError, setShareError] = useState("");
   const [shareLinks, setShareLinks] = useState<
-    Record<string, { url: string; expiresAt: string }>
+    Record<string, { url: string }>
   >({});
-  const [replacementApiKey, setReplacementApiKey] = useState("");
-  const [savingApiKey, setSavingApiKey] = useState(false);
   const [attempt, setAttempt] = useState<AttemptView | null>(null);
   /** Landing page for a question set that has not been served yet. */
   const [intro, setIntro] = useState<AttemptIntro | null>(null);
@@ -218,6 +239,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
   const [setName, setSetName] = useState("");
   const [savedSets, setSavedSets] = useState<QuestionSetListEntry[]>([]);
   const [attemptList, setAttemptList] = useState<AttemptListEntry[]>([]);
+  const [myAssessments, setMyAssessments] = useState<AttemptListEntry[]>([]);
   const [catalogSearch, setCatalogSearch] = useState("");
   /** Attempt whose link is mid-update, so only that row's button shows a pending state. */
   const [togglingLinkId, setTogglingLinkId] = useState("");
@@ -315,12 +337,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
 
   useEffect(() => {
     let active = true;
-    Promise.allSettled([
-      fetch("/api/openrouter/models").then(async (response) => {
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error ?? "Unable to load models.");
-        return payload.models as CatalogModel[];
-      }),
+    Promise.all([
       fetch("/api/templates").then(async (response) => {
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error ?? "Unable to load templates.");
@@ -329,32 +346,39 @@ export function ResearchCaptcha({ username }: { username: string }) {
           draft: StudyTemplateConfig | null;
         };
       }),
+      completeOpenRouterOAuth().catch((caught) => {
+        if (active) {
+          setError(
+            caught instanceof Error ? caught.message : "Unable to connect the OpenRouter key.",
+          );
+        }
+        return null;
+      }),
     ])
-      .then(([modelResult, templateResult]) => {
+      .then(([stored, connected]) => {
         if (!active) return;
-        const catalog = modelResult.status === "fulfilled" ? modelResult.value : [];
-        setModels(catalog);
+        const catalog = FEATURED_MODELS;
+        if (connected) {
+          setOpenrouterApiKey(connected.key);
+          setKeySource("oauth");
+        } else {
+          const browserKey = readBrowserOpenRouterKey(username);
+          if (browserKey) {
+            setOpenrouterApiKey(browserKey.key);
+            setKeySource("oauth");
+          }
+        }
         const defaultPreferred = preferredModel(catalog);
         setDefaultModel(defaultPreferred);
         setDefaultModelSearch(defaultPreferred?.name ?? "");
-        if (modelResult.status === "rejected") {
-          setError(
-            modelResult.reason instanceof Error
-              ? modelResult.reason.message
-              : "Unable to load models.",
-          );
-        }
-
-        const stored =
-          templateResult.status === "fulfilled" ? templateResult.value : null;
-        setTemplates(stored?.templates ?? []);
+        setTemplates(stored.templates ?? []);
 
         // Preserve real edits, but replace the untouched starter used before the public
         // eight-question template existed.
-        const legacyDraft = stored?.draft && isLegacyStarterTemplate(stored.draft);
+        const legacyDraft = stored.draft && isLegacyStarterTemplate(stored.draft);
         const draft = legacyDraft
           ? createDefaultStudyTemplate(stored.draft?.modelId ?? "")
-          : stored?.draft;
+          : stored.draft;
         const restoredModel = draft ? applyConfig(draft, catalog) : false;
         if (!restoredModel && catalog.length) {
           const preferred = preferredModel(catalog);
@@ -364,10 +388,13 @@ export function ResearchCaptcha({ username }: { username: string }) {
         setTemplateStatus(
           legacyDraft
             ? "Updated the old starter configuration to the standard eight-question template."
-            : stored?.draft
+            : stored.draft
               ? "Restored your last configuration."
               : "Starting from the standard default template. Edit any setting below.",
         );
+      })
+      .catch((caught) => {
+        if (active) setError(caught instanceof Error ? caught.message : "Unable to initialize.");
       })
       .finally(() => {
         if (!active) return;
@@ -442,16 +469,51 @@ export function ResearchCaptcha({ username }: { username: string }) {
       .slice(0, 60);
   }, [defaultModel, defaultModelSearch, models]);
 
+  async function loadModelCatalog() {
+    if (!openrouterApiKey) {
+      setError("Paste or connect an OpenRouter API key before loading models.");
+      return;
+    }
+    setLoadingModels(true);
+    setError("");
+    try {
+      const keyForRequest =
+        keySource === "oauth" ? (await validateBrowserOpenRouterKey()).key : openrouterApiKey;
+      const response = await fetch("/api/openrouter/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ openrouterApiKey: keyForRequest, keySource }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to load models.");
+      const catalog = payload.models as CatalogModel[];
+      setModels(catalog);
+      if (!defaultModel) {
+        const preferred = preferredModel(catalog);
+        setDefaultModel(preferred);
+        setDefaultModelSearch(preferred?.name ?? "");
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to load models.");
+    } finally {
+      setLoadingModels(false);
+    }
+  }
+
   const refreshCatalog = useCallback(async () => {
-    const [setsResult, attemptsResult] = await Promise.allSettled([
+    const [setsResult, attemptsResult, mineResult] = await Promise.allSettled([
       fetch("/api/question-sets").then((response) => response.json()),
       fetch("/api/attempts").then((response) => response.json()),
+      fetch("/api/attempts/mine").then((response) => response.json()),
     ]);
     if (setsResult.status === "fulfilled" && setsResult.value.sets) {
       setSavedSets(setsResult.value.sets as QuestionSetListEntry[]);
     }
     if (attemptsResult.status === "fulfilled" && attemptsResult.value.attempts) {
       setAttemptList(attemptsResult.value.attempts as AttemptListEntry[]);
+    }
+    if (mineResult.status === "fulfilled" && mineResult.value.attempts) {
+      setMyAssessments(mineResult.value.attempts as AttemptListEntry[]);
     }
   }, []);
 
@@ -505,13 +567,22 @@ export function ResearchCaptcha({ username }: { username: string }) {
       ),
     );
   }, [catalogSearch, attemptList]);
+  const visibleMyAssessments = useMemo(() => {
+    const query = catalogSearch.trim().toLowerCase();
+    if (!query) return myAssessments;
+    return myAssessments.filter((entry) =>
+      [entry.setLabel, entry.paperName, entry.status, entry.id].some((field) =>
+        field.toLowerCase().includes(query),
+      ),
+    );
+  }, [catalogSearch, myAssessments]);
 
   async function copyRecentAssessmentLink(set: QuestionSetListEntry) {
     setSharingSetId(set.id);
     setShareError("");
     try {
       let shared = shareLinks[set.id];
-      if (!shared || new Date(shared.expiresAt).getTime() <= Date.now()) {
+      if (!shared) {
         const response = await fetch(
           `/api/question-sets/${encodeURIComponent(set.id)}/share`,
           { method: "POST" },
@@ -522,7 +593,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
         }
         shared = {
           url: new URL(String(payload.participantPath), window.location.origin).toString(),
-          expiresAt: String(payload.expiresAt),
         };
         setShareLinks((current) => ({ ...current, [set.id]: shared! }));
         await refreshCatalog();
@@ -816,6 +886,11 @@ export function ResearchCaptcha({ username }: { username: string }) {
       setIntro(null);
       setAttempt(null);
       setResult(entry.result);
+    } else if (entry.kind === "pending") {
+      setIntro(null);
+      setAttempt(null);
+      setOutline(null);
+      setError("This assessment is awaiting evaluation.");
     } else {
       setError(entry.message);
     }
@@ -1142,12 +1217,18 @@ export function ResearchCaptcha({ username }: { username: string }) {
         : String(config.overallTimeLimitSeconds),
     );
     form.set("name", setName);
+    let jobId = "";
     try {
+      const keyForJob =
+        keySource === "oauth" ? (await validateBrowserOpenRouterKey()).key : openrouterApiKey;
+      form.set("openrouterApiKey", keyForJob);
+      form.set("keySource", keySource);
       const response = await fetch("/api/question-sets", { method: "POST", body: form });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to generate questions.");
-      const jobId = String(payload.jobId ?? "");
+      jobId = String(payload.jobId ?? "");
       if (!jobId) throw new Error("The generation job was not created.");
+      if (keySource === "paste") setOpenrouterApiKey("");
       let attemptId = "";
       while (!attemptId) {
         await new Promise((resolve) => window.setTimeout(resolve, 1_000));
@@ -1173,14 +1254,62 @@ export function ResearchCaptcha({ username }: { username: string }) {
         }
       }
       await refreshCatalog();
+      setFailedGenerationJobId("");
       setGenerationNotice(
-        "Question set generated. Create and copy its 48-hour assessment link from Recent question sets.",
+        "Question set generated. Create and copy its reusable assessment link from Recent question sets.",
       );
     } catch (caught) {
+      if (jobId) setFailedGenerationJobId(jobId);
       setError(caught instanceof Error ? caught.message : "Question generation failed.");
     } finally {
       setWorking(false);
       setGenerationStatus("");
+    }
+  }
+
+  async function retryGeneration() {
+    if (!failedGenerationJobId || !openrouterApiKey) return;
+    setWorking(true);
+    setError("");
+    try {
+      const keyForJob =
+        keySource === "oauth" ? (await validateBrowserOpenRouterKey()).key : openrouterApiKey;
+      const response = await fetch(
+        `/api/jobs/${encodeURIComponent(failedGenerationJobId)}/retry`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ openrouterApiKey: keyForJob, keySource }),
+        },
+      );
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to retry generation.");
+      let attemptId = "";
+      while (!attemptId) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+        const jobResponse = await fetch(
+          `/api/jobs/${encodeURIComponent(failedGenerationJobId)}`,
+        );
+        const jobPayload = await jobResponse.json();
+        if (!jobResponse.ok) throw new Error(jobPayload.error ?? "Unable to check generation.");
+        const job = jobPayload.job as {
+          status: string;
+          error?: string;
+          result?: { attemptId?: string };
+        };
+        if (job.status === "failed") throw new Error(job.error ?? "Question generation failed.");
+        if (job.status === "completed") {
+          attemptId = String(job.result?.attemptId ?? "");
+          if (!attemptId) throw new Error("Generation completed without an attempt.");
+        }
+      }
+      await refreshCatalog();
+      setGenerationNotice("Question set generated. Its sharing link is available on the right.");
+      setFailedGenerationJobId("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to retry generation.");
+    } finally {
+      setWorking(false);
     }
   }
 
@@ -1288,13 +1417,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
         <button
           className="sign-out account-action"
           type="button"
-          onClick={() => setAccountOpen((open) => !open)}
-        >
-          Change OpenRouter API key
-        </button>
-        <button
-          className="sign-out account-action"
-          type="button"
           onClick={async () => {
             await fetch("/api/session", { method: "DELETE" });
             window.location.href = "/login";
@@ -1303,60 +1425,19 @@ export function ResearchCaptcha({ username }: { username: string }) {
           Sign out
         </button>
       </div>
-      {accountOpen && (
-        <form
-          className="card form-card login-card"
-          onSubmit={async (event) => {
-            event.preventDefault();
-            setSavingApiKey(true);
-            setError("");
-            try {
-              const response = await fetch("/api/account", {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ openrouterApiKey: replacementApiKey }),
-              });
-              const payload = await response.json();
-              if (!response.ok) throw new Error(payload.error ?? "Unable to update the API key.");
-              setReplacementApiKey("");
-              setAccountOpen(false);
-            } catch (caught) {
-              setError(caught instanceof Error ? caught.message : "Unable to update the API key.");
-            } finally {
-              setSavingApiKey(false);
-            }
-          }}
-        >
-          <div className="field">
-            <label htmlFor="replacementApiKey">Replace OpenRouter API key</label>
-            <input
-              className="control"
-              id="replacementApiKey"
-              type="password"
-              autoComplete="off"
-              value={replacementApiKey}
-              onChange={(event) => setReplacementApiKey(event.target.value)}
-              required
-            />
-          </div>
-          {error && <p className="error" role="alert">{error}</p>}
-          <div className="submit-row">
-            <span className="hint">The replacement is validated and encrypted before storage.</span>
-            <button className="primary" type="submit" disabled={savingApiKey}>
-              {savingApiKey ? "Saving…" : "Update key"}
-            </button>
-          </div>
-        </form>
-      )}
       <section>
         <p className="eyebrow">Authorship understanding assessment</p>
         <h1>greCAPTCHA Demo</h1>
         <p className="lede">
           You can generate a question set from a paper in the &lsquo;New question set&rsquo; tab.
-          Once you have generated a question set, copy the one-time, 48-hour link on the right to
-          share the exam with someone (note that the autograder will trigger calls to your
-          OpenRouter API key when the person completes the exam). To see attempts completed on
-          your exams, open the &lsquo;Attempts&rsquo; tab.
+          Once you have generated a question set, copy the link on the right to share the exam
+          with someone. To see attempts completed on your exams, open the &lsquo;Attempts&rsquo;
+          tab. You can also trigger grading of attempts from the Attempts tab.
+        </p>
+        <p className="lede">
+          The &lsquo;My assessments&rsquo; tab shows assessments you have taken. Return there to
+          continue an assessment, check whether it has been graded, or review your grades and
+          feedback once they are available.
         </p>
       </section>
 
@@ -1383,6 +1464,16 @@ export function ResearchCaptcha({ username }: { username: string }) {
             }}
           >
             Attempts
+          </button>
+          <button
+            type="button"
+            className={mode === "mine" ? "active" : ""}
+            onClick={() => {
+              setMode("mine");
+              setAdvancedOpen(false);
+            }}
+          >
+            My assessments
           </button>
         </div>
         <div className="advanced-navigation">
@@ -1810,11 +1901,15 @@ export function ResearchCaptcha({ username }: { username: string }) {
             ))}
           </div>
         </section>
-      ) : mode === "resume" || mode === "load" ? (
+      ) : mode === "resume" || mode === "load" || mode === "mine" ? (
         <section className="card form-card">
           <div className="field">
             <label htmlFor="catalogSearch">
-              {mode === "load" ? "Search saved sets" : "Search attempts"}
+              {mode === "load"
+                ? "Search saved sets"
+                : mode === "mine"
+                  ? "Search my assessments"
+                  : "Search attempts"}
             </label>
             <input
               className="control"
@@ -1833,20 +1928,22 @@ export function ResearchCaptcha({ username }: { username: string }) {
             <span className="hint">
               {mode === "load"
                 ? `${savedSets.length} saved ${savedSets.length === 1 ? "set" : "sets"}`
-                : `${attemptList.length} ${attemptList.length === 1 ? "attempt" : "attempts"} recorded`}
+                : mode === "mine"
+                  ? `${myAssessments.length} ${myAssessments.length === 1 ? "assessment" : "assessments"}`
+                  : `${attemptList.length} ${attemptList.length === 1 ? "attempt" : "attempts"} recorded`}
             </span>
-            <button
-              className="secondary"
-              type="button"
-              disabled={attemptList.length === 0}
-              onClick={() => {
-                // Navigating triggers the download via Content-Disposition, so the CSV is
-                // never held in memory by the browser.
-                window.location.href = "/api/export/answers";
-              }}
-            >
-              Export all attempts as CSV
-            </button>
+            {mode === "resume" && (
+              <button
+                className="secondary"
+                type="button"
+                disabled={attemptList.length === 0}
+                onClick={() => {
+                  window.location.href = "/api/export/answers";
+                }}
+              >
+                Export all attempts as CSV
+              </button>
+            )}
           </div>
 
           {mode === "load" ? (
@@ -1915,6 +2012,48 @@ export function ResearchCaptcha({ username }: { username: string }) {
                 ))}
               </div>
             </>
+          ) : mode === "mine" ? (
+            <div className="catalog-list">
+              {visibleMyAssessments.length === 0 && (
+                <p className="hint catalog-empty">
+                  {myAssessments.length
+                    ? "No assessment matches that search."
+                    : "You have not claimed any shared assessments yet."}
+                </p>
+              )}
+              {visibleMyAssessments.map((entry) => (
+                <article className="catalog-row" key={entry.id}>
+                  <div className="catalog-main">
+                    <strong>{entry.setLabel}</strong>
+                    <span className="catalog-meta">
+                      {entry.status === "graded"
+                        ? `Graded${entry.score === null ? "" : ` at ${entry.score}%`}`
+                        : entry.status === "evaluating"
+                          ? "Evaluation running"
+                        : entry.status === "submitted"
+                          ? "Awaiting evaluation"
+                          : "In progress"}{" "}
+                      · {new Date(entry.completedAt ?? entry.createdAt).toLocaleString()}
+                    </span>
+                  </div>
+                  <button
+                    className="primary"
+                    type="button"
+                    onClick={() => {
+                      window.location.href = `/attempt/${encodeURIComponent(entry.id)}`;
+                    }}
+                  >
+                    {entry.status === "graded"
+                      ? "View grade"
+                      : entry.status === "evaluating"
+                        ? "Check evaluation"
+                      : entry.status === "submitted"
+                        ? "Check status"
+                        : "Continue"}
+                  </button>
+                </article>
+              ))}
+            </div>
           ) : (
             <>
               {error && (
@@ -1943,7 +2082,9 @@ export function ResearchCaptcha({ username }: { username: string }) {
                         {entry.answeredCount} of {entry.totalQuestions} answered ·{" "}
                         {entry.status === "graded"
                           ? `graded${entry.score === null ? "" : ` at ${entry.score}%`}`
-                          : "in progress"}
+                          : entry.status === "submitted"
+                            ? "awaiting evaluation"
+                            : "in progress"}
                         {entry.randomize && " · randomized"} ·{" "}
                         {new Date(entry.createdAt).toLocaleString()}
                       </span>
@@ -1973,6 +2114,8 @@ export function ResearchCaptcha({ username }: { username: string }) {
                       >
                         {entry.status === "graded"
                           ? "Open"
+                          : entry.status === "submitted"
+                            ? "Evaluate"
                           : entry.answeredCount
                             ? "Resume"
                             : "Open"}
@@ -2432,13 +2575,45 @@ export function ResearchCaptcha({ username }: { username: string }) {
             </div>
           )}
 
+          <OpenRouterKeyPanel
+            apiKey={openrouterApiKey}
+            source={keySource}
+            onChange={(nextKey, nextSource) => {
+              setOpenrouterApiKey(nextKey);
+              setKeySource(nextSource);
+            }}
+          />
+          <div className="key-catalog-actions">
+            <button
+              className="secondary"
+              type="button"
+              disabled={loadingModels || !openrouterApiKey}
+              onClick={() => void loadModelCatalog()}
+            >
+              {loadingModels ? "Loading models…" : "Load full model catalog"}
+            </button>
+            <span className="hint">
+              Featured models are available immediately. Load the catalog to search every model.
+            </span>
+          </div>
           {error && <p className="error" role="alert">{error}</p>}
           <div className="submit-row">
+            {failedGenerationJobId && (
+              <button
+                className="secondary"
+                type="button"
+                disabled={working || !openrouterApiKey}
+                onClick={() => void retryGeneration()}
+              >
+                Run interrupted generation again
+              </button>
+            )}
             <button
               className="primary"
               type="submit"
               disabled={
                 working ||
+                !openrouterApiKey ||
                 (mode === "default"
                   ? !defaultModel
                   : !selectedModel || blocks.length === 0)
@@ -2478,9 +2653,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
                       readOnly
                       onFocus={(event) => event.currentTarget.select()}
                     />
-                    <small>
-                      Expires {new Date(shareLinks[set.id].expiresAt).toLocaleString()}
-                    </small>
+                    <small>Reusable link · one attempt per signed-in account</small>
                   </div>
                 )}
                 <button
@@ -2495,7 +2668,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
                       ? "Link copied"
                       : shareLinks[set.id]
                         ? "Copy link again"
-                        : "Create and copy 48-hour link"}
+                        : "Create and copy reusable link"}
                 </button>
               </article>
             ))}

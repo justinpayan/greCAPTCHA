@@ -27,15 +27,54 @@ export function setOpenRouterTransportForTests(transport: OpenRouterTransport) {
   openRouterTransport = transport;
 }
 
-export async function validateOpenRouterKey(apiKey: string): Promise<void> {
-  const response = await logOutgoing("openrouter", "GET /auth/key", () =>
-    openRouterTransport(`${OPENROUTER_URL}/auth/key`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+export type OpenRouterKeyMetadata = {
+  limit: number | null;
+  limitRemaining: number | null;
+  expiresAt: string | null;
+  label: string | null;
+};
+
+export async function validateOpenRouterKey(
+  apiKey: string,
+  options: { requireSafeguards?: boolean } = {},
+): Promise<OpenRouterKeyMetadata> {
+  const trimmed = apiKey.trim();
+  if (!trimmed || trimmed.length > 512) throw new Error("Enter a valid OpenRouter API key.");
+  const response = await logOutgoing("openrouter", "GET /key", () =>
+    openRouterTransport(`${OPENROUTER_URL}/key`, {
+      headers: { Authorization: `Bearer ${trimmed}` },
       cache: "no-store",
       signal: AbortSignal.timeout(15_000),
     }),
   );
   if (!response.ok) throw new Error("OpenRouter rejected that API key.");
+  const payload = (await response.json()) as {
+    data?: {
+      limit?: number | null;
+      limit_remaining?: number | null;
+      expires_at?: string | null;
+      label?: string | null;
+    };
+  };
+  const metadata: OpenRouterKeyMetadata = {
+    limit: payload.data?.limit ?? null,
+    limitRemaining: payload.data?.limit_remaining ?? null,
+    expiresAt: payload.data?.expires_at ?? null,
+    label: payload.data?.label ?? null,
+  };
+  if (options.requireSafeguards) {
+    if (metadata.limit === null || !Number.isFinite(metadata.limit) || metadata.limit <= 0) {
+      throw new Error("Browser-managed keys must have a positive OpenRouter spending limit.");
+    }
+    const expiration = metadata.expiresAt ? new Date(metadata.expiresAt).getTime() : Number.NaN;
+    if (!Number.isFinite(expiration) || expiration <= Date.now()) {
+      throw new Error("Browser-managed keys must have a future expiration date.");
+    }
+    if (metadata.limitRemaining !== null && metadata.limitRemaining <= 0) {
+      throw new Error("This browser-managed key has exhausted its spending limit.");
+    }
+  }
+  return metadata;
 }
 
 export type OpenRouterModel = {

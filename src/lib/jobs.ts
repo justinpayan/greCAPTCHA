@@ -8,6 +8,12 @@ import { and, asc, count, desc, eq, inArray, lt } from "drizzle-orm";
 import { db, databaseFile } from "@/db";
 import { attempts, jobs, questionSets } from "@/db/schema";
 import { executeGeneration, type GenerationJobPayload } from "@/lib/generation";
+import {
+  deleteJobKey,
+  JobKeyUnavailableError,
+  registerJobKey,
+  requireJobKey,
+} from "@/lib/openrouter-key-store";
 import type { AssessmentResult } from "@/lib/quiz";
 
 const ACTIVE_STATUSES = ["queued", "running"];
@@ -30,6 +36,7 @@ export async function enqueueGenerationJob(
   ownerUserId: string,
   file: { name: string; arrayBuffer(): Promise<ArrayBuffer> },
   input: Omit<GenerationJobPayload, "questionSetId" | "filePath" | "fileName">,
+  apiKey: string,
 ) {
   const setLimit = Math.max(1, Number(process.env.MAX_SETS_PER_ACCOUNT ?? "100"));
   const existingSets = await db
@@ -81,11 +88,12 @@ export async function enqueueGenerationJob(
     }
     throw error;
   }
+  registerJobKey(id, apiKey);
   void tick();
   return { jobId: id };
 }
 
-export async function enqueueGradingJob(attemptId: string) {
+export async function enqueueGradingJob(attemptId: string, apiKey: string) {
   const row = await db
     .select({
       ownerUserId: questionSets.ownerUserId,
@@ -118,7 +126,10 @@ export async function enqueueGradingJob(attemptId: string) {
       ),
     )
     .get();
-  if (existing) return { jobId: existing.id, status: existing.status };
+  if (existing) {
+    registerJobKey(existing.id, apiKey);
+    return { jobId: existing.id, status: existing.status };
+  }
 
   const id = randomUUID();
   try {
@@ -149,6 +160,7 @@ export async function enqueueGradingJob(attemptId: string) {
     if (raced) return { jobId: raced.id, status: raced.status };
     throw error;
   }
+  registerJobKey(id, apiKey);
   void tick();
   return { jobId: id, status: "queued" };
 }
@@ -161,6 +173,35 @@ export async function getOwnedJob(id: string, ownerUserId: string) {
     .get();
   if (!job) throw new Error("Job not found.");
   return publicJob(job);
+}
+
+export async function retryOwnedJob(id: string, ownerUserId: string, apiKey: string) {
+  const job = await db
+    .select()
+    .from(jobs)
+    .where(and(eq(jobs.id, id), eq(jobs.ownerUserId, ownerUserId), eq(jobs.status, "failed")))
+    .get();
+  if (!job) throw new Error("Retryable job not found.");
+  if (job.type === "generation") {
+    const payload = JSON.parse(job.payloadJson) as GenerationJobPayload;
+    if (!fs.existsSync(payload.filePath)) {
+      throw new Error("The uploaded PDF is no longer available. Start generation again.");
+    }
+  }
+  registerJobKey(id, apiKey);
+  await db
+    .update(jobs)
+    .set({
+      status: "queued",
+      error: null,
+      runCount: 0,
+      leaseUntil: null,
+      completedAt: null,
+    })
+    .where(eq(jobs.id, id))
+    .run();
+  void tick();
+  return { jobId: id, status: "queued" };
 }
 
 export async function getAttemptGradingJob(attemptId: string) {
@@ -238,10 +279,11 @@ async function executeJob(job: typeof jobs.$inferSelect & { runCount: number }) 
   }, 60_000);
   heartbeat.unref();
   try {
+    const apiKey = requireJobKey(job.id);
     let result: unknown;
     if (job.type === "generation") {
       const payload = JSON.parse(job.payloadJson) as GenerationJobPayload;
-      result = await executeGeneration(job.ownerUserId, payload, async (current, total) => {
+      result = await executeGeneration(job.ownerUserId, payload, apiKey, async (current, total) => {
         await db
           .update(jobs)
           .set({ progressCurrent: current, progressTotal: total })
@@ -252,7 +294,7 @@ async function executeJob(job: typeof jobs.$inferSelect & { runCount: number }) 
     } else if (job.type === "grading") {
       const { attemptId } = JSON.parse(job.payloadJson) as { attemptId: string };
       const { ensureGraded } = await import("@/lib/grading");
-      result = await ensureGraded(attemptId);
+      result = await ensureGraded(attemptId, apiKey);
     } else {
       throw new Error("Unknown job type.");
     }
@@ -267,10 +309,12 @@ async function executeJob(job: typeof jobs.$inferSelect & { runCount: number }) 
       })
       .where(eq(jobs.id, job.id))
       .run();
+    deleteJobKey(job.id);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Background job failed.";
-    const retry = job.runCount < MAX_RUNS;
-    if (!retry && job.type === "generation") {
+    const interrupted = error instanceof JobKeyUnavailableError;
+    const retry = !interrupted && job.runCount < MAX_RUNS;
+    if (!retry && !interrupted && job.type === "generation") {
       const payload = JSON.parse(job.payloadJson) as GenerationJobPayload;
       fs.rmSync(payload.filePath, { force: true });
     }
@@ -284,6 +328,7 @@ async function executeJob(job: typeof jobs.$inferSelect & { runCount: number }) 
       })
       .where(eq(jobs.id, job.id))
       .run();
+    if (!retry) deleteJobKey(job.id);
   } finally {
     clearInterval(heartbeat);
     running -= 1;
@@ -314,10 +359,18 @@ async function tick() {
 export async function startJobWorker() {
   if (workerStarted) return;
   workerStarted = true;
+  // Any job already active when this process starts belonged to a previous process. Its API key
+  // intentionally did not survive, so make the required user action explicit instead of leaving
+  // it queued for a worker that can never execute it.
   await db
     .update(jobs)
-    .set({ status: "queued", leaseUntil: null })
-    .where(and(eq(jobs.status, "running"), lt(jobs.leaseUntil, new Date().toISOString())))
+    .set({
+      status: "failed",
+      error: "This job was interrupted by a server restart. Paste a key and run it again.",
+      leaseUntil: null,
+      completedAt: new Date().toISOString(),
+    })
+    .where(inArray(jobs.status, ACTIVE_STATUSES))
     .run();
   void tick();
   const timer = setInterval(() => void tick(), 1_000);

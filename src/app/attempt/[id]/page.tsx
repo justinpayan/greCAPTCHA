@@ -4,8 +4,7 @@ import { ParticipantSession } from "@/components/quiz/participant-session";
 import { currentUser } from "@/lib/session";
 
 /**
- * The participant's entry point. Authentication happens before this page loads, and the
- * one-time attempt is claimed by the account that starts it.
+ * The participant's attempt page. Reusable links assign the attempt before redirecting here.
  */
 export default async function AttemptPage({
   params,

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { createSharedAttempt } from "@/lib/attempts";
+import { createQuestionSetShareLink } from "@/lib/attempts";
 import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
 
@@ -14,7 +14,7 @@ export async function POST(
     assertSameOrigin(request);
     const user = await requireUser();
     const { id } = await context.params;
-    const shared = await createSharedAttempt(id, user.id);
+    const shared = await createQuestionSetShareLink(id, user.id);
     return NextResponse.json(shared, { status: 201 });
   } catch (error) {
     const message =

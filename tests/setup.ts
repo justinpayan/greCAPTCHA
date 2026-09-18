@@ -1,11 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { randomBytes } from "node:crypto";
 import { vi } from "vitest";
 
 const databasePath = path.resolve(process.cwd(), "data", "vitest.db");
 process.env.DATABASE_URL = databasePath;
-process.env.ACCOUNT_ENCRYPTION_KEY = randomBytes(32).toString("base64");
 process.env.JOB_CONCURRENCY = "2";
 
 for (const suffix of ["", "-wal", "-shm", ".migrate.lock"]) {

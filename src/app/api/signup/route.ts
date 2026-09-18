@@ -19,7 +19,6 @@ export async function POST(request: Request) {
       username?: unknown;
       password?: unknown;
       passwordConfirmation?: unknown;
-      openrouterApiKey?: unknown;
     };
     const password = String(body.password ?? "");
     if (password !== String(body.passwordConfirmation ?? "")) {
@@ -28,7 +27,6 @@ export async function POST(request: Request) {
     const user = await registerAccount({
       username: String(body.username ?? ""),
       password,
-      openrouterApiKey: String(body.openrouterApiKey ?? ""),
     });
     const response = NextResponse.json({ ok: true }, { status: 201 });
     response.cookies.set(SESSION_COOKIE, await createAccountSession(user.id), {

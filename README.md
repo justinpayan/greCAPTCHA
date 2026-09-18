@@ -22,8 +22,8 @@ If you use our work please cite it. A bibtex blurb is available [below](#please-
 
 ## Local setup
 
-Requirements: Node.js 20.9+. Each user supplies an
-[OpenRouter](https://openrouter.ai/) API key when creating an account.
+Requirements: Node.js 20.9+. OpenRouter keys are supplied only when a user starts
+generation or evaluation; they are not part of account creation.
 
 ```bash
 npm install
@@ -38,29 +38,30 @@ Minimum `.env.local` configuration:
 
 ```dotenv
 DATABASE_URL=./data/public-grecaptcha.db
-ACCOUNT_ENCRYPTION_KEY=base64_encoded_32_byte_secret
+RATE_LIMIT_SALT=a_stable_random_value
 PUBLIC_BASE_URL=https://your-public-hostname.example
 ```
 
-Generate the encryption key with
-`node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`.
-Keep it secret, stable, and outside source control. Changing it makes stored
-OpenRouter keys unreadable. Use a fresh `DATABASE_URL` for the public demo.
+Keep `RATE_LIMIT_SALT` secret and stable. Use a fresh `DATABASE_URL` for the
+public demo.
 
 ## Researcher workflow
 
-1. Create an account at `/signup` with a username, password, and OpenRouter API
-   key, or return through `/login`.
+1. Create an account at `/signup` with a username and password, or return
+   through `/login`.
 2. Upload a PDF and enter the contribution statement.
 3. Choose a model and PDF extractor, then configure question cards. Cards can
    be fill-in-the-blank, multiple-choice, or free response, with optional
    prompts, card names, warm-up status, and soft time limits.
-4. Generate and review the question set. Saved sets can be renamed, inspected,
-   reused, or deleted.
+4. Paste an OpenRouter key for this generation or connect a browser-managed
+   OAuth PKCE key, then generate and review the question set.
 5. Create an attempt from a saved set.
-6. Use the assessment plan to start an in-person session or copy a participant
-   link. New participant links are disabled until they are ready to use.
-7. Export responses with **Export all attempts as CSV**.
+6. Copy a reusable participant link. Each signed-in account receives one
+   independent attempt for that question set.
+7. After a participant submits, open the attempt, provide an OpenRouter key,
+   and select **Run evaluation**. The participant can revisit it under
+   **My assessments** once the grade appears.
+8. Export responses with **Export all attempts as CSV**.
 
 The plan page is researcher-only and includes item descriptions and progress.
 The participant sees only the current question. Submitted answers are locked;
@@ -81,10 +82,14 @@ ordinary wrong answers in the review and export.
 ## Access and data
 
 Accounts use scrypt password hashes and revocable, opaque server-side sessions.
-OpenRouter keys are validated before storage and encrypted at rest with
-AES-256-GCM under `ACCOUNT_ENCRYPTION_KEY`; raw keys are never returned to the
-browser. Each account can access only its own sets, templates, attempts, and
-exports.
+OpenRouter keys are never stored by the server. A pasted or browser-managed key
+is sent over HTTPS only when generation or evaluation is requested, held in
+process memory for that job, and then discarded. OAuth PKCE keys are created
+and retained in browser storage; greCAPTCHA requires those keys to have a
+positive spending limit and future expiration date before use. Browser storage
+is accessible to scripts running on this origin, so use a trusted device and
+disconnect the key on shared computers. Each account can access only its own
+sets, templates, attempts, and exports.
 Participant links are capability URLs, so treat them as sensitive. The server
 keeps API keys and answer keys private, and timing is recorded authoritatively
 on the server.
@@ -120,19 +125,19 @@ the replica count: SQLite and a Railway volume belong to one service instance.
    detects `railway.toml` and builds the included `Dockerfile`.
 2. Add a 1–5 GB volume mounted at `/app/data`.
 3. Set `DATABASE_URL=./data/public-grecaptcha.db`,
-   `BACKUP_DIR=./data/backups`, `ACCOUNT_ENCRYPTION_KEY`,
-   `RATE_LIMIT_SALT`, `PUBLIC_BASE_URL`, and the optional limits shown in
-   `.env.example`. Keep both secrets stable across deployments.
+   `BACKUP_DIR=./data/backups`, `RATE_LIMIT_SALT`, `PUBLIC_BASE_URL`, and the
+   optional limits shown in `.env.example`. Keep the salt stable across deployments.
 4. Generate a Railway HTTPS domain or attach a custom domain, then set
    `PUBLIC_BASE_URL` to that exact `https://` origin.
 5. In the volume Backups tab, schedule daily, weekly, and monthly snapshots.
    Before a schema deployment, create and lock a manual snapshot.
 
 The `/api/health` readiness probe checks the database and volume directory.
-Question generation and free-response grading run as durable SQLite-backed
-jobs, so browser requests do not remain open during model calls. Two jobs run
-at once by default; adjust `JOB_CONCURRENCY` between 1 and 4 only after checking
-memory and OpenRouter limits. Failed jobs retry up to three times.
+Question generation and free-response grading use SQLite-backed job metadata,
+but API keys exist only in the receiving Node process. Run one Railway instance.
+A restart interrupts active jobs and requires the owner to paste or reconnect a
+key and run them again. Two jobs run at once by default; adjust
+`JOB_CONCURRENCY` between 1 and 4 only after checking memory and OpenRouter limits.
 
 Railway volume snapshots can be restored from the Backups tab. To take an
 off-platform copy, use Railway's volume file browser/CLI to download the newest
@@ -155,8 +160,8 @@ npm test
 npm run test:watch
 ```
 
-Tests cover account/session security, encrypted API-key rotation, generation,
-all assessment stages, mocked grading, tenant isolation, duplicate job
+Tests cover account/session security, non-persistence of API keys, generation,
+manual evaluation, assessment stages, tenant isolation, duplicate job
 prevention, and bounded concurrent provider work.
 
 There is also an explicitly opt-in live grading smoke test. It is excluded from
@@ -172,6 +177,19 @@ npm run test:live-openrouter
 
 Use a restricted low-balance key and a low-cost model. Never put test keys in
 source control or CI logs.
+
+After deployment, run the unauthenticated health/authentication smoke test:
+
+```bash
+RUN_DEPLOYED_SMOKE_TEST=1
+DEPLOYED_BASE_URL=https://your-domain.example
+npm run test:deployed
+```
+
+This checks health, login redirection, protected API access, and key security
+headers without creating data. Then follow the
+[manual deployment test plan](docs/manual-deployment-test-plan.md) with separate
+evaluator and taker browser profiles.
 
 ## Development commands
 

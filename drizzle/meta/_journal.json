@@ -113,6 +113,27 @@
       "when": 1789696973744,
       "tag": "0015_overjoyed_scarlet_spider",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1789757735655,
+      "tag": "0016_daily_chronomancer",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1789758535015,
+      "tag": "0017_rich_vengeance",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1789758619507,
+      "tag": "0018_true_toro",
+      "breakpoints": true
     }
   ]
 }

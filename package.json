@@ -10,6 +10,7 @@
     "test": "vitest run --exclude tests/live-openrouter.test.ts",
     "test:watch": "vitest",
     "test:live-openrouter": "vitest run tests/live-openrouter.test.ts",
+    "test:deployed": "vitest run tests/deployed-smoke.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",

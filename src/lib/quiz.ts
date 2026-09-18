@@ -212,7 +212,7 @@ export type AttemptListEntry = {
   paperName: string;
   /** Set when the attempt is half of an experiment; both null for a standalone attempt. */
   participantId: string | null;
-  /** Account that claimed a one-time public assessment link. */
+  /** Account taking this independently stored response. */
   takerUsername: string | null;
   condition: AttemptCondition | null;
   status: string;
@@ -223,6 +223,7 @@ export type AttemptListEntry = {
   answeredCount: number;
   totalQuestions: number;
   createdAt: string;
+  completedAt: string | null;
 };
 
 export type StudyTemplateSummary = {
@@ -456,8 +457,7 @@ export type AttemptOutline = {
   modelId: string;
   status: string;
   /**
-   * Whether the participant link currently opens. A researcher session bypasses it, so this
-   * governs the mailed link rather than the Start button on this page.
+   * Whether this individual response may currently be opened by its assigned taker.
    */
   linkEnabled: boolean;
   /** Present when this attempt is one block of an experiment, so the plan page can say which. */

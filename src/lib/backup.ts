@@ -15,7 +15,7 @@ import { databaseFile, snapshotDatabase } from "@/db";
  */
 
 /** What set this backup off. Recorded in the folder name so the history reads as a story. */
-export type BackupTrigger = "interval" | "grading" | "startup";
+export type BackupTrigger = "interval" | "grading" | "assessment-submitted" | "startup";
 
 export type BackupOutcome =
   | { status: "disabled" }

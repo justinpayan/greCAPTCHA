@@ -17,10 +17,6 @@ export const users = sqliteTable(
     usernameNormalized: text("username_normalized").notNull(),
     passwordHash: text("password_hash").notNull(),
     passwordSalt: text("password_salt").notNull(),
-    // Optional for participant-only accounts. A key is required only when generating or grading.
-    openrouterKeyCiphertext: text("openrouter_key_ciphertext"),
-    openrouterKeyIv: text("openrouter_key_iv"),
-    openrouterKeyTag: text("openrouter_key_tag"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -146,9 +142,14 @@ export const questionSets = sqliteTable(
     overallTimeLimitSeconds: integer("overall_time_limit_seconds"),
     configJson: text("config_json").notNull(),
     questionsJson: text("questions_json").notNull(),
+    /** Unguessable capability used by the reusable, login-required assessment URL. */
+    shareToken: text("share_token"),
     createdAt: text("created_at").notNull(),
   },
-  (table) => [index("question_sets_owner_idx").on(table.ownerUserId)],
+  (table) => [
+    index("question_sets_owner_idx").on(table.ownerUserId),
+    uniqueIndex("question_sets_share_token_unique").on(table.shareToken),
+  ],
 );
 
 /**
@@ -225,8 +226,7 @@ export const attempts = sqliteTable(
     // the flag stay reachable — the closed default belongs to `createAttempt`, not here.
     linkEnabled: integer("link_enabled", { mode: "boolean" }).notNull().default(true),
     // Set only for public share links. Null keeps owner-created and legacy attempts unchanged.
-    linkExpiresAt: text("link_expires_at"),
-    // The first signed-in account to start a shared attempt owns that one-time response.
+    // The signed-in account taking this response.
     takerUserId: text("taker_user_id").references(() => users.id),
     takerUsername: text("taker_username"),
     // Display-only: the participant sees no timer, but every timing is still recorded.
@@ -251,6 +251,7 @@ export const attempts = sqliteTable(
   (table) => [
     index("attempts_question_set_idx").on(table.questionSetId),
     index("attempts_experiment_idx").on(table.experimentId),
+    index("attempts_taker_idx").on(table.takerUserId),
   ],
 );
 

@@ -64,7 +64,13 @@ export function ExperimentSession({ experimentId }: { experimentId: string }) {
 
       current.current = next;
       if (entry.kind === "intro") setIntro(entry.intro);
-      else setAttempt(entry.attempt);
+      else if (entry.kind === "question") setAttempt(entry.attempt);
+      else {
+        setClosed({
+          message: "This assessment block is awaiting evaluation.",
+          paused: false,
+        });
+      }
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }

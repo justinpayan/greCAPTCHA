@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { attemptAnswers, attempts } from "@/db/schema";
 import { attemptElapsedMs, loadAttemptContext } from "@/lib/attempts";
-import { enqueueGradingJob } from "@/lib/jobs";
+import { backupInBackground } from "@/lib/backup";
 import { noCreditFeedbackJson } from "@/lib/no-credit";
 import { questionTimeLimit } from "@/lib/quiz";
 
@@ -128,9 +128,14 @@ export async function closeForTimeout(attemptId: string) {
   // Point at the last question so nothing tries to serve a further one.
   await db
     .update(attempts)
-    .set({ currentIndex: Math.max(0, quiz.order.length - 1) })
+    .set({
+      currentIndex: Math.max(0, quiz.order.length - 1),
+      status: "submitted",
+      completedAt: closedAt.toISOString(),
+    })
     .where(eq(attempts.id, attemptId))
     .run();
 
-  return enqueueGradingJob(attemptId);
+  backupInBackground("assessment-submitted");
+  return { pendingEvaluation: true };
 }

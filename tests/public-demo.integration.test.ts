@@ -19,33 +19,46 @@ import {
   authenticateAccount,
   createAccountSession,
   deleteAccountSession,
-  getUserOpenRouterKey,
   registerAccount,
-  updateUserOpenRouterKey,
 } from "@/lib/accounts";
 import {
-  createSharedAttempt,
+  createQuestionSetShareLink,
   getAttemptState,
+  getOrCreateTakerAttempt,
   loadAttemptContext,
 } from "@/lib/attempts";
 import { requireOpenAttempt } from "@/lib/attempt-access";
-import { getQuestionSetOverview } from "@/lib/catalog";
+import { getQuestionSetOverview, listTakerAttempts } from "@/lib/catalog";
 import {
   enqueueGenerationJob,
   enqueueGradingJob,
   getAttemptGradingJob,
   getOwnedJob,
 } from "@/lib/jobs";
-import { setOpenRouterTransportForTests } from "@/lib/openrouter";
+import { clearJobKeys, registerJobKey, requireJobKey } from "@/lib/openrouter-key-store";
+import { setOpenRouterTransportForTests, validateOpenRouterKey } from "@/lib/openrouter";
 import type { QuestionBlockConfig } from "@/lib/quiz";
 import { POST as submitAnswer } from "@/app/api/attempts/[id]/answers/route";
+import { POST as runEvaluation } from "@/app/api/attempts/[id]/outline/route";
 
 let activeProviderCalls = 0;
 let maxProviderCalls = 0;
 
 setOpenRouterTransportForTests(async (input, init) => {
   const url = String(input);
-  if (url.endsWith("/auth/key")) return Response.json({ data: { label: "test" } });
+  if (url.endsWith("/key")) {
+    if (String((init?.headers as Record<string, string> | undefined)?.Authorization).includes("unsafe")) {
+      return Response.json({ data: { label: "unsafe", limit: null, expires_at: null } });
+    }
+    return Response.json({
+      data: {
+        label: "test",
+        limit: 10,
+        limit_remaining: 10,
+        expires_at: "2099-01-01T00:00:00Z",
+      },
+    });
+  }
   if (url.endsWith("/models")) {
     return Response.json({
       data: [
@@ -167,20 +180,19 @@ async function enqueueSet(userId: string, suffix: string) {
       overallTimeLimitSeconds: null,
       blocks,
     },
+    `sk-or-${suffix}-secret`,
   );
 }
 
 describe("public demo account-to-grade flow", () => {
-  it("encrypts credentials and keeps sessions separate", async () => {
+  it("hashes credentials and keeps sessions separate", async () => {
     const alice = await registerAccount({
       username: "Alice.Test",
       password: "long-password-alice",
-      openrouterApiKey: "sk-or-alice-secret",
     });
     const bob = await registerAccount({
       username: "Bob.Test",
       password: "long-password-bob",
-      openrouterApiKey: "sk-or-bob-secret",
     });
     const [aliceToken, bobToken] = await Promise.all([
       createAccountSession(alice.id),
@@ -199,9 +211,12 @@ describe("public demo account-to-grade flow", () => {
     expect(JSON.stringify(storedSessions)).not.toContain(aliceToken);
     await deleteAccountSession(bobToken);
     expect(await accountForSession(bobToken)).toBeNull();
-
-    await updateUserOpenRouterKey(alice.id, "sk-or-rotated-secret");
-    expect(await getUserOpenRouterKey(alice.id)).toBe("sk-or-rotated-secret");
+    await expect(
+      validateOpenRouterKey("sk-or-unsafe", { requireSafeguards: true }),
+    ).rejects.toThrow("spending limit");
+    registerJobKey("restart-example", "sk-or-memory-only");
+    clearJobKeys();
+    expect(() => requireJobKey("restart-example")).toThrow("interrupted");
   });
 
   it("generates, takes, and grades a mixed assessment without network access", async () => {
@@ -214,14 +229,25 @@ describe("public demo account-to-grade flow", () => {
     );
     expect(generatedAttemptId).toBeTruthy();
     const generated = await loadAttemptContext(generatedAttemptId);
-    const shared = await createSharedAttempt(generated.set.id, alice.id);
-    const attemptId = shared.attemptId;
+    const shared = await createQuestionSetShareLink(generated.set.id, alice.id);
     const bob = await db
       .select()
       .from(users)
       .where(eq(users.usernameNormalized, "bob.test"))
       .get();
     if (!bob) throw new Error("Bob fixture missing.");
+    const token = shared.participantPath.split("/").pop();
+    if (!token) throw new Error("Share token missing.");
+    const first = await getOrCreateTakerAttempt(token, bob);
+    const repeated = await getOrCreateTakerAttempt(token, bob);
+    expect(repeated.attemptId).toBe(first.attemptId);
+    const carol = await registerAccount({
+      username: "Carol.Test",
+      password: "long-password-carol",
+    });
+    const carolAttempt = await getOrCreateTakerAttempt(token, carol);
+    expect(carolAttempt.attemptId).not.toBe(first.attemptId);
+    const attemptId = first.attemptId;
     sessionState.token = await createAccountSession(bob.id);
     await requireOpenAttempt(attemptId, { claim: true });
 
@@ -251,8 +277,35 @@ describe("public demo account-to-grade flow", () => {
       }),
       { params: Promise.resolve({ id: attemptId }) },
     );
-    expect(response.status).toBe(202);
-    const gradingRequest = await response.json() as { jobId: string };
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ pendingEvaluation: true });
+    const pending = await db.select().from(attempts).where(eq(attempts.id, attemptId)).get();
+    expect(pending?.status).toBe("submitted");
+    expect((await listTakerAttempts(bob.id)).map((entry) => entry.id)).toContain(attemptId);
+    expect((await listTakerAttempts(carol.id)).map((entry) => entry.id)).not.toContain(attemptId);
+
+    const denied = await runEvaluation(
+      new Request("http://localhost/api/attempts/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ openrouterApiKey: "sk-or-evaluation-secret", keySource: "paste" }),
+      }),
+      { params: Promise.resolve({ id: attemptId }) },
+    );
+    // Owner-only resources deliberately look nonexistent to other accounts.
+    expect(denied.status).toBe(404);
+
+    sessionState.token = await createAccountSession(alice.id);
+    const evaluation = await runEvaluation(
+      new Request("http://localhost/api/attempts/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ openrouterApiKey: "sk-or-evaluation-secret", keySource: "paste" }),
+      }),
+      { params: Promise.resolve({ id: attemptId }) },
+    );
+    expect(evaluation.status).toBe(202);
+    const gradingRequest = (await evaluation.json()) as { jobId: string };
     await waitForJob(gradingRequest.jobId, alice.id);
     const grading = await getAttemptGradingJob(attemptId);
     expect(grading.status).toBe("completed");
@@ -260,6 +313,9 @@ describe("public demo account-to-grade flow", () => {
     const claimed = await db.select().from(attempts).where(eq(attempts.id, attemptId)).get();
     expect(claimed?.takerUserId).toBe(bob.id);
     expect(claimed?.takerUsername).toBe(bob.username);
+    expect(JSON.stringify(await db.select().from(jobs))).not.toContain("sk-or-");
+    sessionState.token = await createAccountSession(bob.id);
+    expect((await getAttemptState(attemptId)).result?.overallScore).toBe(100);
     sessionState.token = "";
   });
 
@@ -297,8 +353,8 @@ describe("public demo account-to-grade flow", () => {
     if (accepted?.status === "fulfilled") await waitForJob(accepted.value.jobId, alice.id);
 
     const duplicate = await Promise.all([
-      enqueueGradingJob(aliceAttemptId),
-      enqueueGradingJob(aliceAttemptId),
+      enqueueGradingJob(aliceAttemptId, "sk-or-race-secret"),
+      enqueueGradingJob(aliceAttemptId, "sk-or-race-secret"),
     ]);
     expect(duplicate[0].jobId).toBe(duplicate[1].jobId);
     expect((await db.select().from(jobs).where(and(

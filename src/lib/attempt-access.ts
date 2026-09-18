@@ -27,7 +27,7 @@ export const ATTEMPT_PAUSED_MESSAGE =
 export const ATTEMPT_EXPIRED_MESSAGE =
   "This assessment link has expired. Ask the person who created it for a new link.";
 export const ATTEMPT_CLAIMED_MESSAGE =
-  "This one-time assessment link has already been claimed by another account.";
+  "This assessment attempt belongs to another account.";
 
 export class AttemptClosedError extends Error {
   /** True when the attempt had progressed past its first question before being closed. */
@@ -69,7 +69,6 @@ export async function requireOpenAttempt(
     .select({
       ownerUserId: questionSets.ownerUserId,
       linkEnabled: attempts.linkEnabled,
-      linkExpiresAt: attempts.linkExpiresAt,
       takerUserId: attempts.takerUserId,
       currentIndex: attempts.currentIndex,
     })
@@ -88,13 +87,11 @@ export async function requireOpenAttempt(
     }
     return;
   }
-  const expired =
-    attempt.linkExpiresAt !== null &&
-    new Date(attempt.linkExpiresAt).getTime() <= Date.now();
-  if (!attempt.linkEnabled || expired) {
-    throw new AttemptClosedError(attempt.currentIndex > 0, expired);
-  }
+  // A taker keeps access so they can finish and return later from My assessments for results.
   if (attempt.takerUserId === user.id) return;
+  if (!attempt.linkEnabled) {
+    throw new AttemptClosedError(attempt.currentIndex > 0);
+  }
   if (attempt.takerUserId) {
     throw new AttemptClosedError(attempt.currentIndex > 0, false, true);
   }

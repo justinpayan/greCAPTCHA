@@ -603,13 +603,65 @@ textarea.control {
 
 .mode-tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   flex: 1;
   gap: 5px;
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 4px;
   background: white;
+}
+
+.key-source-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(260px, 0.75fr);
+  gap: 16px;
+  margin-top: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--paper);
+}
+
+.key-source-main,
+.key-source-oauth {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.key-source-oauth {
+  border-left: 1px solid var(--line);
+  padding-left: 16px;
+}
+
+.key-source-oauth p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.key-source-oauth .key-warning {
+  color: var(--ink);
+  font-weight: 680;
+}
+
+.key-source-actions,
+.key-catalog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.key-catalog-actions {
+  margin-top: 12px;
 }
 
 .mode-tabs button {
@@ -2084,8 +2136,19 @@ button.option.selected {
 
   .mode-tabs {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     width: 100%;
+  }
+
+  .key-source-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .key-source-oauth {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+    padding-top: 16px;
+    padding-left: 0;
   }
 
   .mode-tabs button {

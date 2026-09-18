@@ -4,7 +4,6 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { attemptAnswers, attempts } from "@/db/schema";
-import { getUserOpenRouterKey } from "@/lib/accounts";
 import { attemptPaperLabel, buildResult, loadAttemptContext } from "@/lib/attempts";
 import { backupInBackground } from "@/lib/backup";
 import { gradeFreeResponseBlock } from "@/lib/openrouter";
@@ -15,7 +14,10 @@ import type { AssessmentResult, StoredFreeResponseQuestion } from "@/lib/quiz";
  * graded. Reachable from the final answer submission and from the summary page, so an
  * attempt whose grading call failed can be finalized without re-answering anything.
  */
-export async function finalizeAttempt(input: Awaited<ReturnType<typeof loadAttemptContext>>) {
+export async function finalizeAttempt(
+  input: Awaited<ReturnType<typeof loadAttemptContext>>,
+  apiKey: string,
+) {
   const allAnswers = await db
     .select()
     .from(attemptAnswers)
@@ -47,7 +49,7 @@ export async function finalizeAttempt(input: Awaited<ReturnType<typeof loadAttem
         : "";
     }
     const grades = await gradeFreeResponseBlock({
-      apiKey: await getUserOpenRouterKey(input.set.ownerUserId),
+      apiKey,
       modelId: input.set.modelId,
       questions,
       answers: responses,
@@ -94,7 +96,7 @@ export async function finalizeAttempt(input: Awaited<ReturnType<typeof loadAttem
       status: "graded",
       score: result.overallScore,
       gradingJson: JSON.stringify(result),
-      completedAt: new Date().toISOString(),
+      completedAt: input.attempt.completedAt ?? new Date().toISOString(),
     })
     .where(eq(attempts.id, input.attempt.id))
     .run();
@@ -109,7 +111,7 @@ export async function finalizeAttempt(input: Awaited<ReturnType<typeof loadAttem
 
 
 /** Runs grading if needed, or returns the stored result when the attempt is already graded. */
-export async function ensureGraded(attemptId: string): Promise<AssessmentResult> {
+export async function ensureGraded(attemptId: string, apiKey: string): Promise<AssessmentResult> {
   const quiz = await loadAttemptContext(attemptId);
   if (quiz.attempt.status === "graded" && quiz.attempt.gradingJson) {
     const result = JSON.parse(quiz.attempt.gradingJson) as AssessmentResult;
@@ -128,5 +130,5 @@ export async function ensureGraded(attemptId: string): Promise<AssessmentResult>
   if (quiz.order.some((questionId) => !submitted.has(questionId))) {
     throw new Error("The attempt still has unanswered questions.");
   }
-  return finalizeAttempt(quiz);
+  return finalizeAttempt(quiz, apiKey);
 }

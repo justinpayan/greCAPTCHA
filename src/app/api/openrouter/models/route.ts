@@ -1,15 +1,22 @@
 import { NextResponse } from "next/server";
 
-import { getUserOpenRouterKey } from "@/lib/accounts";
-import { getOpenRouterModels } from "@/lib/openrouter";
+import { getOpenRouterModels, validateOpenRouterKey } from "@/lib/openrouter";
+import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function POST(request: Request) {
   try {
-    const user = await requireUser();
-    const models = await getOpenRouterModels(await getUserOpenRouterKey(user.id));
+    assertSameOrigin(request);
+    await requireUser();
+    const body = (await request.json()) as {
+      openrouterApiKey?: unknown;
+      keySource?: unknown;
+    };
+    const apiKey = String(body.openrouterApiKey ?? "").trim();
+    await validateOpenRouterKey(apiKey, { requireSafeguards: body.keySource === "oauth" });
+    const models = await getOpenRouterModels(apiKey);
     return NextResponse.json({ models });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load models.";

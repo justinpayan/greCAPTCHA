@@ -23,7 +23,6 @@ function clientAddress(request: Request) {
 function opaqueKey(parts: string[]) {
   const salt =
     process.env.RATE_LIMIT_SALT?.trim() ||
-    process.env.ACCOUNT_ENCRYPTION_KEY?.trim() ||
     "development-only";
   return createHash("sha256").update([salt, ...parts].join("\0")).digest("hex");
 }

@@ -5,7 +5,6 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { attempts, questionSets } from "@/db/schema";
-import { getUserOpenRouterKey } from "@/lib/accounts";
 import { createAttempt } from "@/lib/attempts";
 import {
   generateQuestionBlock,
@@ -37,6 +36,7 @@ export type GenerationJobPayload = {
 export async function executeGeneration(
   ownerUserId: string,
   payload: GenerationJobPayload,
+  apiKey: string,
   onProgress: (current: number, total: number) => Promise<void>,
 ) {
   const existingSet = await db
@@ -59,7 +59,6 @@ export async function executeGeneration(
     });
   }
 
-  const apiKey = await getUserOpenRouterKey(ownerUserId);
   const selectedModel = (await getOpenRouterModels(apiKey)).find(
     (model) => model.id === payload.modelId,
   );

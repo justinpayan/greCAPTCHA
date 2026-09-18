@@ -1,8 +1,6 @@
 import "server-only";
 
 import {
-  createCipheriv,
-  createDecipheriv,
   createHash,
   randomBytes,
   randomUUID,
@@ -12,8 +10,7 @@ import {
 import { and, eq, gt, lt } from "drizzle-orm";
 
 import { db } from "@/db";
-import { sessions, users, type UserRecord } from "@/db/schema";
-import { validateOpenRouterKey } from "@/lib/openrouter";
+import { sessions, users } from "@/db/schema";
 
 const SCRYPT_KEY_LENGTH = 64;
 
@@ -43,57 +40,15 @@ function scrypt(password: string, salt: Buffer): Promise<Buffer> {
   });
 }
 
-function encryptionKey() {
-  const raw = process.env.ACCOUNT_ENCRYPTION_KEY?.trim();
-  if (!raw) throw new Error("ACCOUNT_ENCRYPTION_KEY is not configured.");
-  const key = Buffer.from(raw, "base64");
-  if (key.length !== 32) {
-    throw new Error("ACCOUNT_ENCRYPTION_KEY must be a base64-encoded 32-byte key.");
-  }
-  return key;
-}
-
-function encryptApiKey(apiKey: string) {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
-  const ciphertext = Buffer.concat([cipher.update(apiKey, "utf8"), cipher.final()]);
-  return {
-    ciphertext: ciphertext.toString("base64"),
-    iv: iv.toString("base64"),
-    tag: cipher.getAuthTag().toString("base64"),
-  };
-}
-
-function decryptApiKey(user: Pick<UserRecord, "openrouterKeyCiphertext" | "openrouterKeyIv" | "openrouterKeyTag">) {
-  if (!user.openrouterKeyCiphertext || !user.openrouterKeyIv || !user.openrouterKeyTag) {
-    throw new Error("Add an OpenRouter API key to generate or grade question sets.");
-  }
-  const decipher = createDecipheriv(
-    "aes-256-gcm",
-    encryptionKey(),
-    Buffer.from(user.openrouterKeyIv, "base64"),
-  );
-  decipher.setAuthTag(Buffer.from(user.openrouterKeyTag, "base64"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(user.openrouterKeyCiphertext, "base64")),
-    decipher.final(),
-  ]).toString("utf8");
-}
-
 export async function registerAccount(input: {
   username: string;
   password: string;
-  openrouterApiKey?: string;
 }) {
   const username = validateUsername(input.username);
   validatePassword(input.password);
-  const apiKey = input.openrouterApiKey?.trim() ?? "";
-  if (apiKey.length > 512) throw new Error("Enter a valid OpenRouter API key.");
-  if (apiKey) await validateOpenRouterKey(apiKey);
 
   const salt = randomBytes(16);
   const passwordHash = await scrypt(input.password, salt);
-  const encrypted = apiKey ? encryptApiKey(apiKey) : null;
   const now = new Date().toISOString();
   const user = {
     id: randomUUID(),
@@ -101,9 +56,6 @@ export async function registerAccount(input: {
     usernameNormalized: normalizeUsername(username),
     passwordHash: passwordHash.toString("base64"),
     passwordSalt: salt.toString("base64"),
-    openrouterKeyCiphertext: encrypted?.ciphertext ?? null,
-    openrouterKeyIv: encrypted?.iv ?? null,
-    openrouterKeyTag: encrypted?.tag ?? null,
     createdAt: now,
     updatedAt: now,
   };
@@ -163,27 +115,4 @@ export async function accountForSession(token: string) {
 
 export async function deleteAccountSession(token: string) {
   if (token) await db.delete(sessions).where(eq(sessions.tokenHash, tokenHash(token))).run();
-}
-
-export async function getUserOpenRouterKey(userId: string) {
-  const user = await db.select().from(users).where(eq(users.id, userId)).get();
-  if (!user) throw new Error("Account not found.");
-  return decryptApiKey(user);
-}
-
-export async function updateUserOpenRouterKey(userId: string, apiKey: string) {
-  const trimmed = apiKey.trim();
-  if (!trimmed || trimmed.length > 512) throw new Error("Enter a valid OpenRouter API key.");
-  await validateOpenRouterKey(trimmed);
-  const encrypted = encryptApiKey(trimmed);
-  await db
-    .update(users)
-    .set({
-      openrouterKeyCiphertext: encrypted.ciphertext,
-      openrouterKeyIv: encrypted.iv,
-      openrouterKeyTag: encrypted.tag,
-      updatedAt: new Date().toISOString(),
-    })
-    .where(eq(users.id, userId))
-    .run();
 }

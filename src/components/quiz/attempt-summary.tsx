@@ -3,7 +3,12 @@
 import { useState } from "react";
 
 import { Brand } from "@/components/brand";
+import { OpenRouterKeyPanel } from "@/components/openrouter-key-panel";
 import { MathText } from "@/components/quiz/math-text";
+import {
+  validateBrowserOpenRouterKey,
+  type KeySource,
+} from "@/lib/openrouter-browser-key";
 import type { AssessmentResult, AttemptOutline } from "@/lib/quiz";
 
 const TYPE_LABELS = {
@@ -34,6 +39,8 @@ export function AttemptSummary({
 }) {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [keySource, setKeySource] = useState<KeySource>("paste");
 
   const started = outline.answeredCount > 0;
   const complete = outline.graded || outline.gradable;
@@ -44,7 +51,7 @@ export function AttemptSummary({
     : outline.graded
       ? "Show results"
       : outline.gradable
-        ? "Grade and show results"
+        ? "Run evaluation"
         : started
           ? "Resume attempt"
           : "Start attempt";
@@ -65,11 +72,16 @@ export function AttemptSummary({
     setWorking(true);
     setError("");
     try {
+      const keyForJob =
+        keySource === "oauth" ? (await validateBrowserOpenRouterKey()).key : apiKey;
       const response = await fetch(`/api/attempts/${outline.attemptId}/outline`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ openrouterApiKey: keyForJob, keySource }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to grade the attempt.");
+      if (keySource === "paste") setApiKey("");
       if (payload.result) {
         onResult(payload.result as AssessmentResult);
         return;
@@ -127,27 +139,42 @@ export function AttemptSummary({
       <section className="card attempt-start-card">
         <div>
           <strong>
-            {complete
+            {outline.graded
               ? "Completed attempt"
+              : outline.gradable
+                ? "Awaiting evaluation"
               : started
                 ? "Continue where you left off"
                 : "Attempt not yet started"}
           </strong>
           <p className="hint">
             {complete
-              ? "Open the completed attempt to see its score and question-by-question results."
+              ? outline.graded
+                ? "Open the completed attempt to see its score and question-by-question results."
+                : "Provide an OpenRouter API key below, then run the evaluation."
               : "Open the attempt when you are ready. Timing begins after you confirm on the start screen."}
           </p>
         </div>
         <button
           className="primary"
           type="button"
-          disabled={working}
+          disabled={working || (outline.gradable && !outline.graded && !apiKey)}
           onClick={complete ? showGrading : beginOrResume}
         >
           {actionLabel}
         </button>
       </section>
+
+      {outline.gradable && !outline.graded && (
+        <OpenRouterKeyPanel
+          apiKey={apiKey}
+          source={keySource}
+          onChange={(nextKey, nextSource) => {
+            setApiKey(nextKey);
+            setKeySource(nextSource);
+          }}
+        />
+      )}
 
       <section className="summary-list">
         {outline.items.map((item) => (

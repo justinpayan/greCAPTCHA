@@ -32,14 +32,14 @@ import {
  * for question one. The first question is stamped when it is actually served instead.
  *
  * The link starts closed, so an ID that reaches a participant early cannot be used.
- * A dedicated public share may instead supply an expiry; that attempt starts open until then.
+ * Reusable assessment links create an open attempt already assigned to the signed-in taker.
  */
 export async function createAttempt(input: {
   questionSetId: string;
   ownerUserId?: string;
   randomize: boolean;
   countdownHidden: boolean;
-  publicLinkExpiresAt?: string;
+  taker?: { id: string; username: string };
 }): Promise<{ attemptId: string }> {
   if (input.ownerUserId) {
     const limit = Math.max(1, Number(process.env.MAX_ATTEMPTS_PER_ACCOUNT ?? "500"));
@@ -87,8 +87,9 @@ export async function createAttempt(input: {
     overallTimeLimitSeconds: set.overallTimeLimitSeconds,
     randomize: input.randomize,
     countdownHidden: input.countdownHidden,
-    linkEnabled: Boolean(input.publicLinkExpiresAt),
-    linkExpiresAt: input.publicLinkExpiresAt ?? null,
+    linkEnabled: Boolean(input.taker),
+    takerUserId: input.taker?.id ?? null,
+    takerUsername: input.taker?.username ?? null,
     questionOrderJson: JSON.stringify(order),
     currentIndex: 0,
     status: "active",
@@ -97,8 +98,78 @@ export async function createAttempt(input: {
   return { attemptId: id };
 }
 
-/** Creates one fresh public attempt whose capability link remains valid for 48 hours. */
-export async function createSharedAttempt(questionSetId: string, ownerUserId: string) {
+/** Creates or returns the reusable capability URL for an owned question set. */
+export async function createQuestionSetShareLink(questionSetId: string, ownerUserId: string) {
+  const set = await db
+    .select({ shareToken: questionSets.shareToken })
+    .from(questionSets)
+    .where(
+      and(
+        eq(questionSets.id, questionSetId),
+        eq(questionSets.ownerUserId, ownerUserId),
+      ),
+    )
+    .get();
+  if (!set) throw new Error("Question set not found.");
+  const shareToken = set.shareToken ?? randomUUID();
+  if (!set.shareToken) {
+    await db
+      .update(questionSets)
+      .set({ shareToken })
+      .where(and(eq(questionSets.id, questionSetId), isNull(questionSets.shareToken)))
+      .run();
+    const winner = await db
+      .select({ shareToken: questionSets.shareToken })
+      .from(questionSets)
+      .where(eq(questionSets.id, questionSetId))
+      .get();
+    if (!winner?.shareToken) throw new Error("Unable to create the assessment link.");
+    return { participantPath: `/take/${winner.shareToken}` };
+  }
+  return { participantPath: `/take/${shareToken}` };
+}
+
+const takerAttemptCreations = new Map<string, Promise<{ attemptId: string }>>();
+
+/** Gives each signed-in account one independent attempt reached through a reusable set link. */
+export function getOrCreateTakerAttempt(
+  shareToken: string,
+  taker: { id: string; username: string },
+) {
+  const key = `${shareToken}\0${taker.id}`;
+  const active = takerAttemptCreations.get(key);
+  if (active) return active;
+  const creation = createTakerAttemptIfNeeded(shareToken, taker).finally(() => {
+    takerAttemptCreations.delete(key);
+  });
+  takerAttemptCreations.set(key, creation);
+  return creation;
+}
+
+async function createTakerAttemptIfNeeded(
+  shareToken: string,
+  taker: { id: string; username: string },
+) {
+  const set = await db
+    .select()
+    .from(questionSets)
+    .where(eq(questionSets.shareToken, shareToken))
+    .get();
+  if (!set) throw new Error("Assessment link not found.");
+  const existing = await db
+    .select({ attemptId: attempts.id })
+    .from(attempts)
+    .where(
+      and(
+        eq(attempts.questionSetId, set.id),
+        eq(attempts.takerUserId, taker.id),
+        isNull(attempts.experimentId),
+      ),
+    )
+    .orderBy(desc(attempts.createdAt))
+    .get();
+  if (existing) return existing;
+
   const previous = await db
     .select({
       randomize: attempts.randomize,
@@ -108,27 +179,21 @@ export async function createSharedAttempt(questionSetId: string, ownerUserId: st
     .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
     .where(
       and(
-        eq(attempts.questionSetId, questionSetId),
-        eq(questionSets.ownerUserId, ownerUserId),
+        eq(attempts.questionSetId, set.id),
+        eq(questionSets.ownerUserId, set.ownerUserId),
         isNull(attempts.experimentId),
       ),
     )
     .orderBy(desc(attempts.createdAt))
     .get();
 
-  const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
-  const created = await createAttempt({
-    questionSetId,
-    ownerUserId,
+  return createAttempt({
+    questionSetId: set.id,
+    ownerUserId: set.ownerUserId,
     randomize: previous?.randomize ?? false,
     countdownHidden: previous?.countdownHidden ?? false,
-    publicLinkExpiresAt: expiresAt,
+    taker,
   });
-  return {
-    ...created,
-    participantPath: `/attempt/${created.attemptId}`,
-    expiresAt,
-  };
 }
 
 export async function requireAttemptOwner(attemptId: string, ownerUserId: string) {
@@ -205,7 +270,7 @@ export async function attemptPaperLabel(
 
 export async function getAttemptState(
   attemptId: string,
-): Promise<{ attempt?: AttemptView; result?: AssessmentResult }> {
+): Promise<{ attempt?: AttemptView; result?: AssessmentResult; pendingEvaluation?: boolean }> {
   const attempt = await db.select().from(attempts).where(eq(attempts.id, attemptId)).get();
   if (!attempt) throw new Error("Attempt not found.");
 
@@ -218,6 +283,7 @@ export async function getAttemptState(
       },
     };
   }
+  if (attempt.status === "submitted") return { pendingEvaluation: true };
 
   const set = await db
     .select()
