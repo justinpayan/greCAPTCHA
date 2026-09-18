@@ -1802,20 +1802,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
                       <button
                         className="secondary"
                         type="button"
-                        disabled={sharingSetId === set.id}
-                        onClick={() => void copyRecentAssessmentLink(set)}
-                      >
-                        {sharingSetId === set.id
-                          ? "Creating link…"
-                          : copiedSetId === set.id
-                            ? "Link copied"
-                            : shareLinks[set.id]
-                              ? "Copy share link"
-                              : "Create and copy share link"}
-                      </button>
-                      <button
-                        className="secondary"
-                        type="button"
                         disabled={resettingId === row.attemptId}
                         title="Clear this block's answers and run it again from the start. The link and the question order are kept."
                         onClick={() =>
@@ -2005,6 +1991,20 @@ export function ResearchCaptcha({ username }: { username: string }) {
                       </span>
                     </div>
                     <div className="catalog-actions">
+                      <button
+                        className="secondary"
+                        type="button"
+                        disabled={sharingSetId === set.id}
+                        onClick={() => void copyRecentAssessmentLink(set)}
+                      >
+                        {sharingSetId === set.id
+                          ? "Creating link…"
+                          : copiedSetId === set.id
+                            ? "Link copied"
+                            : shareLinks[set.id]
+                              ? "Copy share link"
+                              : "Create and copy share link"}
+                      </button>
                       <button
                         className="secondary"
                         type="button"
