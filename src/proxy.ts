@@ -64,8 +64,8 @@ export function proxy(request: NextRequest) {
     return NextResponse.json({ error: "Not authorised." }, { status: 401 });
   }
 
-  logIncoming(method, pathname, "redirect to /signup");
-  const target = new URL("/signup", requestOrigin(request));
+  logIncoming(method, pathname, "redirect to /login");
+  const target = new URL("/login", requestOrigin(request));
   if (pathname !== "/") target.searchParams.set("next", pathname);
   return NextResponse.redirect(target);
 }

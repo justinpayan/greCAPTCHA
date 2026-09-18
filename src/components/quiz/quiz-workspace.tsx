@@ -489,9 +489,22 @@ export function ResultSections({
 }
 
 /** Read-only review of one graded attempt, as its own page. */
-export function ResultView({ result }: { result: AssessmentResult }) {
+export function ResultView({
+  result,
+  onBack,
+}: {
+  result: AssessmentResult;
+  onBack?: () => void;
+}) {
   return (
     <main className="app-shell">
+      {onBack && (
+        <div className="result-navigation">
+          <button className="secondary" type="button" onClick={onBack}>
+            Back to dashboard
+          </button>
+        </div>
+      )}
       <ResultSections result={result} />
     </main>
   );
@@ -500,6 +513,7 @@ export function ResultView({ result }: { result: AssessmentResult }) {
 export function QuizWorkspace({
   initialAttempt,
   onFinish,
+  onBack,
 }: {
   initialAttempt: AttemptView;
   /**
@@ -511,6 +525,7 @@ export function QuizWorkspace({
    * attempt ID) — the question, timer and answer state all initialise from props.
    */
   onFinish?: (result: AssessmentResult) => void;
+  onBack?: () => void;
 }) {
   const [attempt, setAttempt] = useState(initialAttempt);
   const [fillSelections, setFillSelections] = useState<FillSelections>({});
@@ -683,7 +698,7 @@ export function QuizWorkspace({
     }
   }
 
-  if (result) return <ResultView result={result} />;
+  if (result) return <ResultView result={result} onBack={onBack} />;
 
   return (
     <main className="app-shell">

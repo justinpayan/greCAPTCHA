@@ -1148,7 +1148,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
       />
     );
   }
-  if (result) return <ResultView result={result} />;
+  if (result) return <ResultView result={result} onBack={exitToDashboard} />;
   if (intro) {
     return (
       <AttemptIntroPage
@@ -1170,6 +1170,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
         key={attempt.attemptId}
         initialAttempt={attempt}
         onFinish={chain.current ? (graded) => void advanceChain(graded) : undefined}
+        onBack={exitToDashboard}
       />
     );
   }

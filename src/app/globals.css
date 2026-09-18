@@ -1712,6 +1712,12 @@ button.option.selected {
   text-align: center;
 }
 
+.result-navigation {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
 .score-ring {
   display: grid;
   width: 164px;
