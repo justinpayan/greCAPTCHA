@@ -102,8 +102,7 @@ export function OpenRouterKeyPanel({
           never persisted.
         </p>
         <p className="key-warning">
-          Required: set a low spending limit and a short expiration date. Keys without both are
-          rejected.
+          Required: set a spending limit and an expiration date. Keys without either are rejected.
         </p>
         {browserKey ? (
           <>
