@@ -152,7 +152,7 @@ function FieldHint({ text }: { text: string }) {
 }
 
 export function ResearchCaptcha({ username }: { username: string }) {
-  const [mode, setMode] = useState<"default" | "custom" | "load" | "resume" | "mine">(
+  const [mode, setMode] = useState<"default" | "custom" | "resume" | "mine">(
     "default",
   );
   const [models, setModels] = useState<CatalogModel[]>(FEATURED_MODELS);
@@ -464,16 +464,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
     void refreshCatalog();
   }, [mode, refreshCatalog]);
 
-  const visibleSets = useMemo(() => {
-    const query = catalogSearch.trim().toLowerCase();
-    if (!query) return savedSets;
-    return savedSets.filter((set) =>
-      [set.label, set.paperName, set.modelId, set.id].some((field) =>
-        field.toLowerCase().includes(query),
-      ),
-    );
-  }, [catalogSearch, savedSets]);
-
   const visibleCreatedTests = useMemo(() => {
     const query = catalogSearch.trim().toLowerCase();
     if (!query) return createdTests;
@@ -643,54 +633,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
       await refreshCatalog();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to delete the test.");
-    }
-  }
-
-  async function startFromSet(questionSetId: string) {
-    setWorking(true);
-    setError("");
-    try {
-      const response = await fetch(
-        `/api/question-sets/${encodeURIComponent(questionSetId)}/attempts`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ randomize }),
-        },
-      );
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "Unable to load question set.");
-      await showSummary(payload.attemptId as string);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load question set.");
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  /**
-   * Deleting a set cascades to its attempts and their answers, so the confirmation names
-   * exactly what goes with it rather than asking a bare "are you sure".
-   */
-  async function deleteSet(set: QuestionSetListEntry) {
-    const consequence = set.attemptCount
-      ? `\n\nThis also deletes its ${set.attemptCount} ${
-          set.attemptCount === 1 ? "attempt" : "attempts"
-        } and every answer and timing recorded in them.`
-      : "\n\nIt has no attempts, so no response data is affected.";
-    if (!window.confirm(`Delete the set “${set.label}”?${consequence}\n\nThis cannot be undone.`)) {
-      return;
-    }
-    setError("");
-    try {
-      const response = await fetch(`/api/question-sets/${encodeURIComponent(set.id)}`, {
-        method: "DELETE",
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "Unable to delete the set.");
-      await refreshCatalog();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to delete the set.");
     }
   }
 
@@ -1448,9 +1390,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
         </div>
         <div className="advanced-navigation">
           <button
-            className={`secondary advanced-button ${
-              mode === "custom" || mode === "load" ? "active" : ""
-            }`}
+            className={`secondary advanced-button ${mode === "custom" ? "active" : ""}`}
             type="button"
             aria-expanded={advancedOpen}
             aria-haspopup="menu"
@@ -1469,16 +1409,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
                 }}
               >
                 New question set from new template
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMode("load");
-                  setAdvancedOpen(false);
-                }}
-              >
-                Saved question sets
               </button>
             </div>
           )}
@@ -1592,34 +1522,24 @@ export function ResearchCaptcha({ username }: { username: string }) {
         </section>
       )}
 
-      {mode === "resume" || mode === "load" || mode === "mine" ? (
+      {mode === "resume" || mode === "mine" ? (
         <section className="card form-card">
           <div className="field">
             <label htmlFor="catalogSearch">
-              {mode === "load"
-                ? "Search saved sets"
-                : mode === "mine"
-                  ? "Search tests I’ve taken"
-                  : "Search tests I’ve created"}
+              {mode === "mine" ? "Search tests I’ve taken" : "Search tests I’ve created"}
             </label>
             <input
               className="control"
               id="catalogSearch"
               value={catalogSearch}
-              placeholder={
-                mode === "load"
-                  ? "Filter by set name, paper, or model"
-                  : "Filter by set name, paper, username, or status"
-              }
+              placeholder="Filter by set name, paper, username, or status"
               onChange={(event) => setCatalogSearch(event.target.value)}
             />
           </div>
 
           <div className="catalog-toolbar">
             <span className="hint">
-              {mode === "load"
-                ? `${savedSets.length} saved ${savedSets.length === 1 ? "set" : "sets"}`
-                : mode === "mine"
+              {mode === "mine"
                   ? `${myAssessments.length} ${myAssessments.length === 1 ? "assessment" : "assessments"}`
                   : `${createdTests.length} ${
                       createdTests.length === 1 ? "test" : "tests"
@@ -1642,86 +1562,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
             )}
           </div>
 
-          {mode === "load" ? (
-            <>
-              <div className="toggle-group">
-                <label className="toggle-row">
-                  <input
-                    type="checkbox"
-                    checked={randomize}
-                    onChange={(event) => setRandomize(event.target.checked)}
-                  />
-                  Randomize question order for this attempt
-                </label>
-              </div>
-              {error && (
-                <p className="error" role="alert">
-                  {error}
-                </p>
-              )}
-              <div className="catalog-list">
-                {visibleSets.length === 0 && (
-                  <p className="hint catalog-empty">
-                    {savedSets.length
-                      ? "No set matches that search."
-                      : "No question sets have been generated yet."}
-                  </p>
-                )}
-                {visibleSets.map((set) => (
-                  <article className="catalog-row" key={set.id}>
-                    <div className="catalog-main">
-                      <strong>{set.label}</strong>
-                      <span className="catalog-meta">
-                        {set.paperName} · {set.questionCount}{" "}
-                        {set.questionCount === 1 ? "question" : "questions"} ·{" "}
-                        {set.attemptCount}{" "}
-                        {set.attemptCount === 1 ? "attempt" : "attempts"} · {set.modelId}
-                      </span>
-                    </div>
-                    <div className="catalog-actions">
-                      <button
-                        className="secondary"
-                        type="button"
-                        disabled={sharingSetId === set.id}
-                        onClick={() => void copyRecentAssessmentLink(set)}
-                      >
-                        {sharingSetId === set.id
-                          ? "Creating link…"
-                          : copiedSetId === set.id
-                            ? "Link copied"
-                            : shareLinks[set.id]
-                              ? "Copy share link"
-                              : "Create and copy share link"}
-                      </button>
-                      <button
-                        className="secondary"
-                        type="button"
-                        disabled={working}
-                        onClick={() => void showSetOverview(set.id)}
-                      >
-                        Overview
-                      </button>
-                      <button
-                        className="secondary danger"
-                        type="button"
-                        onClick={() => void deleteSet(set)}
-                      >
-                        Delete
-                      </button>
-                      <button
-                        className="primary"
-                        type="button"
-                        disabled={working}
-                        onClick={() => void startFromSet(set.id)}
-                      >
-                        Start attempt
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </>
-          ) : mode === "mine" ? (
+          {mode === "mine" ? (
             <div className="catalog-list">
               {visibleMyAssessments.length === 0 && (
                 <p className="hint catalog-empty">
