@@ -39,7 +39,7 @@ import {
   getOwnedJob,
 } from "@/lib/jobs";
 import { clearJobKeys, registerJobKey, requireJobKey } from "@/lib/openrouter-key-store";
-import { saveOpenRouterCredential } from "@/lib/openrouter-credentials";
+import { credentialStatus, saveOpenRouterCredential } from "@/lib/openrouter-credentials";
 import { setOpenRouterTransportForTests, validateOpenRouterKey } from "@/lib/openrouter";
 import type { QuestionBlockConfig } from "@/lib/quiz";
 import { POST as submitAnswer } from "@/app/api/attempts/[id]/answers/route";
@@ -48,6 +48,7 @@ import { POST as runEvaluation } from "@/app/api/attempts/[id]/outline/route";
 import { POST as submitAttempt } from "@/app/api/attempts/[id]/submit/route";
 import { POST as createConferenceAssessment } from "@/app/api/conference/[token]/route";
 import { POST as gradeConferenceAttempt } from "@/app/api/attempts/[id]/grade/route";
+import { GET as getOpenRouterCredentialStatus } from "@/app/api/openrouter/credential/route";
 import {
   GET as getExamineeFeedback,
   POST as submitExamineeFeedback,
@@ -308,6 +309,18 @@ describe("public demo account-to-grade flow", () => {
     expect(response.status).toBe(200);
 
     await saveOpenRouterCredential(alice.id, "sk-or-professor-course-secret");
+    const storedCredentialStatus = await credentialStatus(alice.id);
+    expect(storedCredentialStatus).toMatchObject({ connected: true });
+    expect(storedCredentialStatus).not.toHaveProperty("label");
+    expect(JSON.stringify(storedCredentialStatus)).not.toContain("sk-or-");
+    const takerSession = sessionState.token;
+    sessionState.token = await createAccountSession(alice.id);
+    const credentialStatusResponse = await getOpenRouterCredentialStatus();
+    expect(credentialStatusResponse.status).toBe(200);
+    const publicCredentialStatus = await credentialStatusResponse.json();
+    expect(publicCredentialStatus).not.toHaveProperty("label");
+    expect(JSON.stringify(publicCredentialStatus)).not.toContain("sk-or-");
+    sessionState.token = takerSession;
     response = await submitAttempt(
       new Request("http://localhost/api/submit", { method: "POST" }),
       { params: Promise.resolve({ id: attemptId }) },
@@ -384,6 +397,23 @@ describe("public demo account-to-grade flow", () => {
       db.select().from(users).where(eq(users.usernameNormalized, "carol.test")).get(),
     ]);
     if (!alice || !bob || !carol) throw new Error("Account fixtures missing.");
+
+    const incompleteTemplate = await saveTemplate(
+      alice.id,
+      "Incomplete conference template",
+      {
+        modelId: "",
+        pdfEngine: "native",
+        blocks: [],
+        randomize: false,
+        countdownHidden: false,
+        overallTimeLimitSeconds: null,
+      },
+      "conference",
+    );
+    await expect(
+      setConferenceTemplateSharing(incompleteTemplate.id, alice.id, true),
+    ).rejects.toThrow("Choose a model");
 
     const template = await saveTemplate(
       alice.id,

@@ -8,7 +8,6 @@ type CredentialStatus =
   | { connected: false }
   | {
       connected: true;
-      label: string | null;
       spendingLimit: number;
       limitRemaining: number | null;
       expiresAt: string;
@@ -65,7 +64,7 @@ export function ProfessorOpenRouterPanel() {
       <aside className="key-source-oauth">
         {status.connected ? (
           <>
-            <strong>{status.label ?? "OpenRouter connected"}</strong>
+            <strong>OpenRouter connected</strong>
             <small>
               Limit ${status.spendingLimit}
               {status.limitRemaining !== null

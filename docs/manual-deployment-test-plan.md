@@ -55,7 +55,8 @@ Remove the live-test variables afterward. Before deploying:
 3. Try a key without a spending limit, without an expiration, and with exhausted credit.
    Confirm each is rejected with an actionable message.
 4. Reload and sign out/in. Confirm the server still reports the professor credential as
-   connected and never displays the plaintext key.
+   connected and displays only generic connection, spending-limit, and expiration status. It
+   must never display the plaintext key, a shortened `sk-or-...` value, or a credential label.
 5. Inspect SQLite, logs, exports, and backups. `openrouter_credentials` should contain
    ciphertext, IV, and authentication tag, but no `sk-or-...` value. Job payloads/results and
    request logs must also contain no plaintext key.
@@ -85,17 +86,23 @@ Remove the live-test variables afterward. Before deploying:
 ### Reusable template link and examinee-funded generation
 
 1. As the assessor, select **Conference** in the workflow control above the dashboard tabs and
-   confirm both question-set creation tabs show conference key controls. Create and save a
-   template, then select **Publish and copy conference link**. Confirm the URL begins
+   confirm both the default and Advanced creation pages omit the manuscript upload,
+   contribution statement, and OpenRouter key/PKCE controls.
+2. On the default page, enter a test-set name, choose the required model, and select **Create
+   and copy conference link**. Confirm the template is saved and the copied URL begins
    `/conference/`.
-2. Open the link as examinee A. Upload a PDF and contribution statement.
-3. Generate once with a pasted OpenRouter key. Confirm the pasted field clears and the key is
+3. Repeat from Advanced with a custom question configuration. Load the saved template and
+   confirm its test-set name, model, and configuration are restored. Confirm no assessor PDF,
+   contribution statement, or API key is requested.
+4. Open the link as examinee A. Confirm the fixed model is shown, then upload a PDF and
+   contribution statement.
+5. Generate once with a pasted OpenRouter key. Confirm the pasted field clears and the key is
    absent from SQLite, job JSON, logs, exports, and backups.
-4. Repeat with examinee B using browser OAuth/PKCE. Confirm browser storage is scoped to
+6. Repeat with examinee B using browser OAuth/PKCE. Confirm browser storage is scoped to
    examinee B's greCAPTCHA account and cannot be used by another account in that profile.
-5. Confirm each upload creates a distinct question set/attempt owned by the assessor but bound
+7. Confirm each upload creates a distinct question set/attempt owned by the assessor but bound
    to the uploading examinee. One examinee must not be able to poll or open the other's job.
-6. Revoke the conference link and confirm new visits fail while already-created attempts remain.
+8. Revoke the conference link and confirm new visits fail while already-created attempts remain.
 
 ### Examinee-funded grading
 
@@ -139,10 +146,10 @@ Test each case with a single Railway instance:
 ## Export, responsive UI, and final checks
 
 1. Test desktop and narrow mobile layouts for the global workflow control above the dashboard
-   tabs, both creation forms and key panels, `/take/` and `/conference/` pages, grading progress,
-   results, feedback, and assessor reports. Switch workflows with an incompatible saved template
-   selected and confirm the template selection clears; load a saved template and confirm the
-   global control changes to its workflow.
+   tabs, both creation forms, the Course credential panel, `/take/` and `/conference/` pages,
+   grading progress, results, feedback, and assessor reports. Switch workflows with an
+   incompatible saved template selected and confirm the template selection clears; load a saved
+   template and confirm the global control changes to its workflow.
 2. Export assessor attempts. Confirm expected usernames, answers, `workflow_type`,
    `examinee_feedback`, and `examinee_feedback_submitted_at` are present.
 3. Confirm a second feedback POST returns 409 and no update endpoint exists.

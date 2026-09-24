@@ -51,22 +51,24 @@ public demo.
    through `/login`.
 2. Choose **Course** or **Conference** with the workflow control above the
    dashboard tabs. The selection applies to both the default and custom-template
-   question-set forms.
-3. Upload a PDF and enter the contribution statement.
-4. Choose a model and PDF extractor, then configure question cards. Cards can
-   be fill-in-the-blank, multiple-choice, or free response, with optional
-   prompts, card names, warm-up status, and soft time limits.
-5. Course professors connect an app-specific OAuth PKCE key once; conference
-   examinees supply a pasted or browser-managed PKCE key from the reusable
-   conference link.
-6. Create an attempt from a saved set.
-7. Copy a reusable participant link. Each signed-in account receives one
-   independent attempt for that question set.
-8. Submission starts grading immediately. Course grading uses the professor's
+   creation forms.
+3. For a course, connect the professor's app-specific OAuth PKCE key, upload
+   the course PDF, describe the material to cover, choose a model, and generate
+   the question set.
+4. For a conference, enter the test-set name and choose the required model and
+   question configuration. **Create and copy conference link** saves the
+   template and copies its reusable examinee invitation; the assessor does not
+   upload a manuscript or provide an OpenRouter key.
+5. Each conference examinee opens that invitation, uploads their manuscript and
+   contribution statement, and supplies a pasted or browser-managed PKCE key to
+   generate their assessment.
+6. Course question sets use `/take/...` links. Each signed-in account receives
+   one independent attempt for a shared course question set.
+7. Submission starts grading immediately. Course grading uses the professor's
    encrypted registered key. Conference grading asks the examinee to supply
    their key again. After the result appears, the examinee may submit one
    optional, immutable feedback comment for the assessor.
-9. Export responses with **Export all attempts as CSV**.
+8. Export responses with **Export all attempts as CSV**.
 
 The plan page is researcher-only and includes item descriptions and progress.
 The participant sees one question at a time plus a clickable overview of the
@@ -99,6 +101,8 @@ process memory for that job, and discarded. Professor OAuth PKCE keys are
 encrypted at rest with `OPENROUTER_CREDENTIAL_ENCRYPTION_KEY` so course
 submissions can be graded immediately even when the professor is offline.
 Every OAuth key must have a positive spending limit and future expiration date.
+Connected-key screens show only generic status and safeguard metadata, never a
+plaintext or shortened key value.
 Each account can access only its own sets, templates, attempts, and exports.
 Participant links are capability URLs, so treat them as sensitive. The server
 keeps API keys and answer keys private, and timing is recorded authoritatively

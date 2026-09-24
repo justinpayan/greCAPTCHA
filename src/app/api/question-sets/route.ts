@@ -97,6 +97,9 @@ export async function POST(request: Request) {
 
     const contributions = String(form.get("contributions") ?? "").trim();
     const workflowType = workflowTypeSchema.parse(form.get("workflowType") ?? "course");
+    if (workflowType !== "course") {
+      throw new Error("Conference question sets must be created from an examinee invitation.");
+    }
     const sourceTemplateId = String(form.get("sourceTemplateId") ?? "").trim() || null;
     if (sourceTemplateId) {
       const template = await getTemplate(sourceTemplateId, user.id);
@@ -104,14 +107,8 @@ export async function POST(request: Request) {
         throw new Error("The selected template does not match this workflow.");
       }
     }
-    const keySource = form.get("keySource") === "oauth" ? "oauth" : "paste";
-    const apiKey =
-      workflowType === "course"
-        ? await requireOpenRouterCredential(user.id)
-        : String(form.get("openrouterApiKey") ?? "").trim();
-    await validateOpenRouterKey(apiKey, {
-      requireSafeguards: workflowType === "course" || keySource === "oauth",
-    });
+    const apiKey = await requireOpenRouterCredential(user.id);
+    await validateOpenRouterKey(apiKey, { requireSafeguards: true });
     const setName = String(form.get("name") ?? "").trim().slice(0, 120);
     const modelId = String(form.get("modelId") ?? "").trim();
     const pdfEngine = pdfEngineSchema.parse(form.get("pdfEngine"));

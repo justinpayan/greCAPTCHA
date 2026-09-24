@@ -81,7 +81,6 @@ export async function saveOpenRouterCredential(userId: string, apiKey: string) {
 export async function credentialStatus(userId: string) {
   const row = await db
     .select({
-      label: openRouterCredentials.label,
       spendingLimit: openRouterCredentials.spendingLimit,
       limitRemaining: openRouterCredentials.limitRemaining,
       expiresAt: openRouterCredentials.expiresAt,

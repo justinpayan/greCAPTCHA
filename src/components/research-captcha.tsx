@@ -15,7 +15,6 @@ import {
   type KeySource,
 } from "@/lib/openrouter-browser-key";
 
-import { OpenRouterKeyPanel } from "@/components/openrouter-key-panel";
 import { ProfessorOpenRouterPanel } from "@/components/professor-openrouter-panel";
 import { SetOverview } from "@/components/set-overview";
 import {
@@ -193,8 +192,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
   const [generationStatus, setGenerationStatus] = useState("");
   const [generationNotice, setGenerationNotice] = useState("");
   const [error, setError] = useState("");
-  const [openrouterApiKey, setOpenrouterApiKey] = useState("");
-  const [keySource, setKeySource] = useState<KeySource>("paste");
   const [failedGenerationJobId, setFailedGenerationJobId] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [sharingSetId, setSharingSetId] = useState("");
@@ -304,14 +301,10 @@ export function ResearchCaptcha({ username }: { username: string }) {
         if (!active) return;
         const catalog = FEATURED_MODELS;
         if (connected && "key" in connected) {
-          setOpenrouterApiKey(connected.key);
-          setKeySource("oauth");
           void loadModelCatalog(connected.key, "oauth");
         } else {
           const browserKey = readBrowserOpenRouterKey(username);
           if (browserKey) {
-            setOpenrouterApiKey(browserKey.key);
-            setKeySource("oauth");
             void loadModelCatalog(browserKey.key, "oauth");
           }
         }
@@ -417,8 +410,8 @@ export function ResearchCaptcha({ username }: { username: string }) {
   }, [defaultModel, defaultModelSearch, models]);
 
   async function loadModelCatalog(
-    requestedKey = openrouterApiKey,
-    requestedSource: KeySource = keySource,
+    requestedKey: string,
+    requestedSource: KeySource,
   ) {
     if (!requestedKey) {
       setError("Paste or connect an OpenRouter API key before loading models.");
@@ -851,6 +844,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
         config: StudyTemplateConfig;
       };
       setWorkflowType(template.workflowType);
+      if (template.workflowType === "conference") setSetName(template.name);
       const matchedModel = applyConfig(template.config, models);
       setTemplateStatus(
         matchedModel
@@ -874,42 +868,87 @@ export function ResearchCaptcha({ username }: { username: string }) {
     }
   }
 
+  async function updateConferenceSharing(id: string, enabled: boolean) {
+    const response = await fetch(
+      `/api/templates/${encodeURIComponent(id)}/conference-share`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      },
+    );
+    const payload = (await response.json()) as {
+      error?: string;
+      conferenceShareToken?: string | null;
+      participantPath?: string | null;
+    };
+    if (!response.ok) throw new Error(payload.error ?? "Unable to update sharing.");
+    setTemplates((current) =>
+      current.map((template) =>
+        template.id === id
+          ? { ...template, conferenceShareToken: payload.conferenceShareToken ?? null }
+          : template,
+      ),
+    );
+    if (payload.participantPath) {
+      const link = `${window.location.origin}${payload.participantPath}`;
+      await navigator.clipboard.writeText(link);
+      setTemplateStatus("Conference template saved. Examinee link published and copied.");
+    } else {
+      setTemplateStatus("Conference link revoked.");
+    }
+  }
+
   async function setConferenceSharing(enabled: boolean) {
     if (!templateId) return;
     setError("");
     setTemplateStatus("");
     try {
-      const response = await fetch(
-        `/api/templates/${encodeURIComponent(templateId)}/conference-share`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ enabled }),
-        },
-      );
-      const payload = (await response.json()) as {
-        error?: string;
-        conferenceShareToken?: string | null;
-        participantPath?: string | null;
-      };
-      if (!response.ok) throw new Error(payload.error ?? "Unable to update sharing.");
-      setTemplates((current) =>
-        current.map((template) =>
-          template.id === templateId
-            ? { ...template, conferenceShareToken: payload.conferenceShareToken ?? null }
-            : template,
-        ),
-      );
-      if (payload.participantPath) {
-        const origin = window.location.origin;
-        const link = `${origin}${payload.participantPath}`;
-        await navigator.clipboard.writeText(link);
-        setTemplateStatus("Conference link published and copied.");
-      } else {
-        setTemplateStatus("Conference link revoked.");
-      }
+      await updateConferenceSharing(templateId, enabled);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to update sharing.");
+    }
+  }
+
+  async function createConferenceTemplate(
+    event: FormEvent<HTMLFormElement>,
+    config: StudyTemplateConfig,
+  ) {
+    event.preventDefault();
+    if (!setName.trim()) return setError("Give the test set a name.");
+    if (!config.modelId) return setError("Choose an OpenRouter model.");
+    if (config.blocks.length === 0) return setError("Add at least one question type.");
+    setWorking(true);
+    setError("");
+    setTemplateStatus("");
+    try {
+      const response = await fetch("/api/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: setName,
+          config,
+          workflowType: "conference",
+        }),
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        template?: StudyTemplateSummary;
+      };
+      if (!response.ok || !payload.template) {
+        throw new Error(payload.error ?? "Unable to save the conference template.");
+      }
+      const saved = payload.template;
+      setTemplates((current) => [saved, ...current.filter((one) => one.id !== saved.id)]);
+      setTemplateId(saved.id);
+      setSetName(saved.name);
+      await updateConferenceSharing(saved.id, true);
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Unable to publish the conference template.",
+      );
+    } finally {
+      setWorking(false);
     }
   }
 
@@ -997,22 +1036,15 @@ export function ResearchCaptcha({ username }: { username: string }) {
         : String(config.overallTimeLimitSeconds),
     );
     form.set("name", setName);
-    form.set("workflowType", workflowType);
+    form.set("workflowType", "course");
     if (mode === "custom" && templateId) form.set("sourceTemplateId", templateId);
     let jobId = "";
     try {
-      if (workflowType === "conference") {
-        const keyForJob =
-          keySource === "oauth" ? (await validateBrowserOpenRouterKey()).key : openrouterApiKey;
-        form.set("openrouterApiKey", keyForJob);
-        form.set("keySource", keySource);
-      }
       const response = await fetch("/api/question-sets", { method: "POST", body: form });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to generate questions.");
       jobId = String(payload.jobId ?? "");
       if (!jobId) throw new Error("The generation job was not created.");
-      if (keySource === "paste") setOpenrouterApiKey("");
       let attemptId = "";
       while (!attemptId) {
         await new Promise((resolve) => window.setTimeout(resolve, 1_000));
@@ -1052,25 +1084,16 @@ export function ResearchCaptcha({ username }: { username: string }) {
   }
 
   async function retryGeneration() {
-    if (
-      !failedGenerationJobId ||
-      (workflowType === "conference" && !openrouterApiKey)
-    ) return;
+    if (!failedGenerationJobId) return;
     setWorking(true);
     setError("");
     try {
-      const keyForJob =
-        workflowType === "conference"
-          ? keySource === "oauth"
-            ? (await validateBrowserOpenRouterKey()).key
-            : openrouterApiKey
-          : "";
       const response = await fetch(
         `/api/jobs/${encodeURIComponent(failedGenerationJobId)}/retry`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ openrouterApiKey: keyForJob, keySource }),
+          body: JSON.stringify({}),
         },
       );
       const payload = await response.json();
@@ -1322,6 +1345,11 @@ export function ResearchCaptcha({ username }: { username: string }) {
           {generationNotice}
         </p>
       )}
+      {mode !== "custom" && templateStatus && (
+        <p className="template-status dashboard-notice" role="status">
+          {templateStatus}
+        </p>
+      )}
 
       {mode === "custom" && (
         <section className="card template-card">
@@ -1329,8 +1357,9 @@ export function ResearchCaptcha({ username }: { username: string }) {
             <div>
               <span className="field-label">Study set template</span>
               <p className="hint">
-                Everything below except the PDF and the contribution statement. Your current
-                setup is saved automatically and restored on the next visit.
+                {workflowType === "conference"
+                  ? "Load an existing conference template or configure a new one below."
+                  : "Everything below except the PDF and the contribution statement. Your current setup is saved automatically and restored on the next visit."}
               </p>
             </div>
           </div>
@@ -1353,20 +1382,22 @@ export function ResearchCaptcha({ username }: { username: string }) {
                 ))}
               </select>
             </div>
-            <div className="field">
-              <label htmlFor="templateName">
-                Save current setup as
-                <FieldHint text="Saving under a name that already exists replaces that template." />
-              </label>
-              <input
-                className="control"
-                id="templateName"
-                value={templateName}
-                placeholder="Template name"
-                maxLength={120}
-                onChange={(event) => setTemplateName(event.target.value)}
-              />
-            </div>
+            {workflowType === "course" && (
+              <div className="field">
+                <label htmlFor="templateName">
+                  Save current setup as
+                  <FieldHint text="Saving under a name that already exists replaces that template." />
+                </label>
+                <input
+                  className="control"
+                  id="templateName"
+                  value={templateName}
+                  placeholder="Template name"
+                  maxLength={120}
+                  onChange={(event) => setTemplateName(event.target.value)}
+                />
+              </div>
+            )}
             <div className="template-buttons">
               <button
                 className="secondary"
@@ -1375,14 +1406,16 @@ export function ResearchCaptcha({ username }: { username: string }) {
               >
                 Reset to default template
               </button>
-              <button
-                className="secondary"
-                type="button"
-                disabled={!templateName.trim()}
-                onClick={saveTemplate}
-              >
-                Save template
-              </button>
+              {workflowType === "course" && (
+                <button
+                  className="secondary"
+                  type="button"
+                  disabled={!templateName.trim()}
+                  onClick={saveTemplate}
+                >
+                  Save template
+                </button>
+              )}
               <button
                 className="secondary"
                 type="button"
@@ -1657,27 +1690,16 @@ export function ResearchCaptcha({ username }: { username: string }) {
       ) : (
         <form
           className="card form-card"
-          onSubmit={(event) =>
-            generateSet(event, mode === "default" ? defaultConfig : currentConfig)
-          }
+          onSubmit={(event) => {
+            const config = mode === "default" ? defaultConfig : currentConfig;
+            return workflowType === "conference"
+              ? createConferenceTemplate(event, config)
+              : generateSet(event, config);
+          }}
         >
-          {workflowType === "course" ? (
-            <ProfessorOpenRouterPanel />
-          ) : (
-            <OpenRouterKeyPanel
-              apiKey={openrouterApiKey}
-              source={keySource}
-              onChange={(nextKey, nextSource) => {
-                setOpenrouterApiKey(nextKey);
-                setKeySource(nextSource);
-              }}
-              onReady={(nextKey, nextSource) =>
-                void loadModelCatalog(nextKey, nextSource)
-              }
-            />
-          )}
+          {workflowType === "course" && <ProfessorOpenRouterPanel />}
           <div className="form-section">
-            {mode !== "default" && (
+            {mode !== "default" && workflowType === "course" && (
               <div className="section-heading">
                 <div>
                   <span className="field-label">This paper</span>
@@ -1692,7 +1714,13 @@ export function ResearchCaptcha({ username }: { username: string }) {
               <div className="field full">
                 <label htmlFor="setName">
                   Test set name
-                  <FieldHint text="Identifies this set in the saved-set list. Leave blank to use the PDF filename. You can rename it later." />
+                  <FieldHint
+                    text={
+                      workflowType === "conference"
+                        ? "Names the reusable template shown to examinees who open its invitation link."
+                        : "Identifies this set in the saved-set list. Leave blank to use the PDF filename. You can rename it later."
+                    }
+                  />
                 </label>
                 <input
                   className="control"
@@ -1703,44 +1731,50 @@ export function ResearchCaptcha({ username }: { username: string }) {
                   onChange={(event) => setSetName(event.target.value)}
                 />
               </div>
-              <div className="field full">
-                <label htmlFor="paper">Manuscript PDF</label>
-                <input
-                  className="control file-control"
-                  id="paper"
-                  name="paper"
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  required
-                  // Judged the moment a file is picked, so the size is known before the
-                  // configuration below is filled in rather than after pressing Generate.
-                  onChange={(event) => {
-                    const picked = event.target.files?.[0];
-                    setPaperError(
-                      picked && picked.size > MAX_PDF_BYTES
-                        ? pdfTooLargeMessage(picked.size)
-                        : "",
-                    );
-                  }}
-                />
-                <small>PDF only, up to {MAX_PDF_LABEL}.</small>
-                {paperError && (
-                  <p className="error" role="alert">
-                    {paperError}
-                  </p>
-                )}
-              </div>
-              <div className="field full">
-                <label htmlFor="contributions">Claimed author&apos;s stated contributions</label>
-                {/* No length constraint, blank included: with no statement the generator is told
-                    there is no declared scope and covers the whole manuscript. */}
-                <textarea
-                  className="control"
-                  id="contributions"
-                  name="contributions"
-                  placeholder="Describe the research, theory, analysis, writing, or other work the claimed author has contributed..."
-                />
-              </div>
+              {workflowType === "course" && (
+                <>
+                  <div className="field full">
+                    <label htmlFor="paper">Manuscript PDF</label>
+                    <input
+                      className="control file-control"
+                      id="paper"
+                      name="paper"
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      required
+                      // Judged the moment a file is picked, so the size is known before the
+                      // configuration below is filled in rather than after pressing Generate.
+                      onChange={(event) => {
+                        const picked = event.target.files?.[0];
+                        setPaperError(
+                          picked && picked.size > MAX_PDF_BYTES
+                            ? pdfTooLargeMessage(picked.size)
+                            : "",
+                        );
+                      }}
+                    />
+                    <small>PDF only, up to {MAX_PDF_LABEL}.</small>
+                    {paperError && (
+                      <p className="error" role="alert">
+                        {paperError}
+                      </p>
+                    )}
+                  </div>
+                  <div className="field full">
+                    <label htmlFor="contributions">
+                      What material are we testing the student on?
+                    </label>
+                    {/* No length constraint, blank included: with no statement the generator is told
+                        there is no declared scope and covers the whole manuscript. */}
+                    <textarea
+                      className="control"
+                      id="contributions"
+                      name="contributions"
+                      placeholder="Enter the sections of the lecture-notes PDF to cover, or describe which aspects of the course-project PDF the assessment should address."
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -2112,13 +2146,11 @@ export function ResearchCaptcha({ username }: { username: string }) {
 
           {error && <p className="error" role="alert">{error}</p>}
           <div className="submit-row">
-            {failedGenerationJobId && (
+            {workflowType === "course" && failedGenerationJobId && (
               <button
                 className="secondary"
                 type="button"
-                disabled={
-                  working || (workflowType === "conference" && !openrouterApiKey)
-                }
+                disabled={working}
                 onClick={() => void retryGeneration()}
               >
                 Run interrupted generation again
@@ -2129,13 +2161,19 @@ export function ResearchCaptcha({ username }: { username: string }) {
               type="submit"
               disabled={
                 working ||
-                (workflowType === "conference" && !openrouterApiKey) ||
                 (mode === "default"
                   ? !defaultModel
-                  : !selectedModel || blocks.length === 0)
+                  : !selectedModel || blocks.length === 0) ||
+                (workflowType === "conference" && !setName.trim())
               }
             >
-              {working ? generationStatus || "Preparing upload…" : "Generate question set"}
+              {working
+                ? workflowType === "conference"
+                  ? "Publishing conference link…"
+                  : generationStatus || "Preparing upload…"
+                : workflowType === "conference"
+                  ? "Create and copy conference link"
+                  : "Generate question set"}
             </button>
           </div>
         </form>

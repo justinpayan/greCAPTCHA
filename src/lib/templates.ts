@@ -6,6 +6,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { appState, studyTemplates } from "@/db/schema";
 import {
+  generationConfigSchema,
   studyTemplateConfigSchema,
   type StudyTemplateConfig,
   type StudyTemplateSummary,
@@ -110,6 +111,15 @@ export async function setConferenceTemplateSharing(
   const template = await getTemplate(id, ownerUserId);
   if (template.workflowType !== "conference") {
     throw new Error("Only conference templates can publish an examinee link.");
+  }
+  if (enabled) {
+    if (!template.config.modelId.trim()) {
+      throw new Error("Choose a model before publishing the conference link.");
+    }
+    const blocks = generationConfigSchema.parse(template.config.blocks);
+    if (blocks.reduce((total, block) => total + block.count, 0) > 50) {
+      throw new Error("A conference template may contain at most 50 questions.");
+    }
   }
   const conferenceShareToken = enabled ? randomBytes(24).toString("base64url") : null;
   await db
