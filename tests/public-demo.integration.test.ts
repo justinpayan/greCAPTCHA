@@ -266,7 +266,7 @@ describe("public demo account-to-grade flow", () => {
     await getAttemptState(attemptId);
     let context = await loadAttemptContext(attemptId);
     if (context.currentQuestion.type !== "multiple_choice") throw new Error("Expected MC first.");
-    let response = await submitAnswer(
+    let response: Response = await submitAnswer(
       new Request("http://localhost/api/answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -393,9 +393,8 @@ describe("public demo account-to-grade flow", () => {
     const form = new FormData();
     form.set(
       "paper",
-      new File([Buffer.from("%PDF-1.7 conference")], "conference.pdf", {
-        type: "application/pdf",
-      }),
+      new Blob(["%PDF-1.7 conference"], { type: "application/pdf" }),
+      "conference.pdf",
     );
     form.set("contributions", "Designed and evaluated the method.");
     form.set("openrouterApiKey", "sk-or-conference-generation-secret");
@@ -421,7 +420,7 @@ describe("public demo account-to-grade flow", () => {
     await getAttemptState(attemptId);
     let context = await loadAttemptContext(attemptId);
     if (context.currentQuestion.type !== "multiple_choice") throw new Error("Expected MC first.");
-    let response = await submitAnswer(
+    let response: Response = await submitAnswer(
       new Request("http://localhost/api/answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

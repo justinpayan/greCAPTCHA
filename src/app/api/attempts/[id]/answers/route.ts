@@ -29,11 +29,12 @@ export async function POST(
     if (submission.answer.type !== question.type) {
       throw new Error("The draft answer type does not match the question.");
     }
+    const answer = submission.answer;
     if (
       question.type === "multiple_choice" &&
-      submission.answer.type === "multiple_choice" &&
-      submission.answer.optionId !== null &&
-      !question.options.some((option) => option.id === submission.answer.optionId)
+      answer.type === "multiple_choice" &&
+      answer.optionId !== null &&
+      !question.options.some((option) => option.id === answer.optionId)
     ) {
       throw new Error("The selected option does not belong to this question.");
     }
