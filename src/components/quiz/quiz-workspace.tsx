@@ -24,6 +24,7 @@ import {
   type AssessmentResult,
   type AttemptView,
   type DraftAnswer,
+  type ExamineeFeedback,
   type PublicFillQuestion,
   type PublicMultipleChoiceQuestion,
   type QuestionTiming,
@@ -285,7 +286,20 @@ function ReviewTiming({
 }
 
 /** Score card plus the full answer review for one attempt, without a page around it. */
-function ResultSections({ result }: { result: AssessmentResult }) {
+function ResultSections({
+  result,
+  examineeFeedback,
+}: {
+  result: AssessmentResult;
+  examineeFeedback?: {
+    commentsByQuestionId: Record<string, string>;
+    submitted: boolean;
+    loading: boolean;
+    label?: string;
+    showEmpty?: boolean;
+    onChange: (questionId: string, comment: string) => void;
+  };
+}) {
   return (
     <>
       <section className="card result neutral-result">
@@ -451,6 +465,36 @@ function ResultSections({ result }: { result: AssessmentResult }) {
                 </div>
               </div>
             )}
+            {examineeFeedback &&
+              (examineeFeedback.showEmpty ||
+                Boolean(examineeFeedback.commentsByQuestionId[review.questionId])) && (
+              <div className="question-examinee-feedback">
+                <label
+                  className="review-label"
+                  htmlFor={`examinee-feedback-${review.questionId}`}
+                >
+                  {examineeFeedback.label ?? "Your feedback on this question"}
+                </label>
+                <textarea
+                  className="control"
+                  id={`examinee-feedback-${review.questionId}`}
+                  value={examineeFeedback.commentsByQuestionId[review.questionId] ?? ""}
+                  maxLength={10_000}
+                  readOnly={examineeFeedback.submitted}
+                  disabled={examineeFeedback.loading}
+                  placeholder={
+                    examineeFeedback.loading
+                      ? "Loading feedback…"
+                      : examineeFeedback.submitted
+                        ? "No comment was submitted for this question."
+                        : "Optional feedback about this question or its grading"
+                  }
+                  onChange={(event) =>
+                    examineeFeedback.onChange(review.questionId, event.target.value)
+                  }
+                />
+              </div>
+            )}
           </article>
         ))}
       </section>
@@ -458,9 +502,8 @@ function ResultSections({ result }: { result: AssessmentResult }) {
   );
 }
 
-/** Read-only review of one graded attempt, as its own page. */
-function ExamineeFeedbackForm({ attemptId }: { attemptId: string }) {
-  const [comment, setComment] = useState("");
+function ExamineeFeedbackReview({ result }: { result: AssessmentResult }) {
+  const [commentsByQuestionId, setCommentsByQuestionId] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -468,19 +511,19 @@ function ExamineeFeedbackForm({ attemptId }: { attemptId: string }) {
 
   useEffect(() => {
     let active = true;
-    void fetch(`/api/attempts/${encodeURIComponent(attemptId)}/feedback`, {
+    void fetch(`/api/attempts/${encodeURIComponent(result.attemptId)}/feedback`, {
       cache: "no-store",
     })
       .then(async (response) => {
         const payload = (await response.json()) as {
           submitted?: boolean;
-          feedback?: { comment?: string } | null;
+          feedback?: { commentsByQuestionId?: Record<string, string> } | null;
           error?: string;
         };
         if (!response.ok) throw new Error(payload.error ?? "Unable to load feedback.");
         if (active) {
           setSubmitted(payload.submitted === true);
-          setComment(payload.feedback?.comment ?? "");
+          setCommentsByQuestionId(payload.feedback?.commentsByQuestionId ?? {});
         }
       })
       .catch((caught) => {
@@ -494,22 +537,26 @@ function ExamineeFeedbackForm({ attemptId }: { attemptId: string }) {
     return () => {
       active = false;
     };
-  }, [attemptId]);
+  }, [result.attemptId]);
 
   async function submit() {
     setSaving(true);
     setError("");
     try {
       const response = await fetch(
-        `/api/attempts/${encodeURIComponent(attemptId)}/feedback`,
+        `/api/attempts/${encodeURIComponent(result.attemptId)}/feedback`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ comment }),
+          body: JSON.stringify({ commentsByQuestionId }),
         },
       );
-      const payload = (await response.json()) as { error?: string };
+      const payload = (await response.json()) as {
+        error?: string;
+        feedback?: { commentsByQuestionId?: Record<string, string> };
+      };
       if (!response.ok) throw new Error(payload.error ?? "Unable to submit feedback.");
+      setCommentsByQuestionId(payload.feedback?.commentsByQuestionId ?? {});
       setSubmitted(true);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to submit feedback.");
@@ -518,46 +565,62 @@ function ExamineeFeedbackForm({ attemptId }: { attemptId: string }) {
     }
   }
 
-  if (loading) return <p className="hint">Loading feedback form…</p>;
-  if (submitted) {
-    return (
-      <section className="card">
-        <p className="eyebrow">Feedback submitted</p>
-        <h2>Thank you for your feedback.</h2>
-        <p className="hint">Your response is locked and cannot be changed.</p>
-        {comment && <p>{comment}</p>}
-      </section>
-    );
-  }
+  const hasComment = Object.values(commentsByQuestionId).some((comment) => comment.trim());
+
   return (
-    <section className="card form-card">
-      <p className="eyebrow">Examinee feedback</p>
-      <h2>Share feedback with the assessor</h2>
-      <p className="hint">
-        This optional comment can be submitted once. After submission it cannot be edited.
-      </p>
-      <textarea
-        className="control"
-        value={comment}
-        maxLength={10_000}
-        placeholder="Optional feedback about the assessment or grading"
-        onChange={(event) => setComment(event.target.value)}
+    <>
+      <ResultSections
+        result={result}
+        examineeFeedback={{
+          commentsByQuestionId,
+          submitted,
+          loading,
+          showEmpty: true,
+          onChange: (questionId, comment) =>
+            setCommentsByQuestionId((current) => ({ ...current, [questionId]: comment })),
+        }}
       />
-      {error && <p className="error" role="alert">{error}</p>}
-      <button className="primary" type="button" disabled={saving} onClick={() => void submit()}>
-        {saving ? "Submitting…" : comment.trim() ? "Submit feedback" : "Submit without comment"}
-      </button>
-    </section>
+      <section className="card form-card feedback-submit-card">
+        <p className="eyebrow">
+          {submitted ? "Feedback submitted" : "Examinee feedback"}
+        </p>
+        <h2>
+          {submitted ? "Thank you for your feedback." : "Share feedback with the assessor"}
+        </h2>
+        <p className="hint">
+          {submitted
+            ? "Your question comments are locked and cannot be changed."
+            : "Each question comment is optional. Submit them together once when you are finished; they cannot be edited afterward."}
+        </p>
+        {error && <p className="error" role="alert">{error}</p>}
+        {!submitted && (
+          <button
+            className="primary"
+            type="button"
+            disabled={loading || saving}
+            onClick={() => void submit()}
+          >
+            {saving
+              ? "Submitting…"
+              : hasComment
+                ? "Submit feedback"
+                : "Submit without comments"}
+          </button>
+        )}
+      </section>
+    </>
   );
 }
 
 export function ResultView({
   result,
   collectFeedback = false,
+  submittedFeedback = null,
   onBack,
 }: {
   result: AssessmentResult;
   collectFeedback?: boolean;
+  submittedFeedback?: ExamineeFeedback | null;
   onBack?: () => void;
 }) {
   return (
@@ -570,8 +633,24 @@ export function ResultView({
             </button>
           </div>
         )}
-        <ResultSections result={result} />
-        {collectFeedback && <ExamineeFeedbackForm attemptId={result.attemptId} />}
+        {collectFeedback ? (
+          <ExamineeFeedbackReview result={result} />
+        ) : (
+          <ResultSections
+            result={result}
+            examineeFeedback={
+              submittedFeedback
+                ? {
+                    commentsByQuestionId: submittedFeedback.commentsByQuestionId,
+                    submitted: true,
+                    loading: false,
+                    label: "Examinee feedback on this question",
+                    onChange: () => undefined,
+                  }
+                : undefined
+            }
+          />
+        )}
       </main>
     </PdfAssessmentSplit>
   );
@@ -890,14 +969,13 @@ export function QuizWorkspace({
 
   async function submitAssessment() {
     const unanswered = attempt.totalQuestions - answeredCount;
-    if (
-      unanswered > 0 &&
-      !window.confirm(
-        `${unanswered} ${unanswered === 1 ? "question is" : "questions are"} unanswered. Submit anyway?`,
-      )
-    ) {
-      return;
-    }
+    const confirmation =
+      unanswered > 0
+        ? `${unanswered} ${
+            unanswered === 1 ? "question is" : "questions are"
+          } unanswered. Are you sure you want to submit? You cannot change your answers afterward.`
+        : "Are you sure you want to submit this assessment? You cannot change your answers afterward.";
+    if (!window.confirm(confirmation)) return;
     setSubmitting(true);
     setError("");
     try {

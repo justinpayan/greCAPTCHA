@@ -1,10 +1,18 @@
 import "server-only";
 
 import { randomBytes, randomUUID } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 
 import { db } from "@/db";
-import { appState, studyTemplates } from "@/db/schema";
+import {
+  appState,
+  attempts,
+  conferenceSubmissions,
+  jobs,
+  questionSets,
+  studyTemplates,
+} from "@/db/schema";
+import { deleteManuscript } from "@/lib/manuscripts";
 import {
   generationConfigSchema,
   studyTemplateConfigSchema,
@@ -47,12 +55,12 @@ export async function getTemplate(id: string, ownerUserId: string) {
   };
 }
 
-/** Saving under an existing name replaces that template rather than creating a duplicate. */
 export async function saveTemplate(
   ownerUserId: string,
   name: string,
   config: StudyTemplateConfig,
   workflowType: WorkflowType,
+  templateId?: string | null,
 ) {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Give the template a name.");
@@ -60,16 +68,48 @@ export async function saveTemplate(
 
   const now = new Date().toISOString();
   const configJson = JSON.stringify(config);
-  const existing = await db
+  const duplicateTemplate = await db
     .select()
     .from(studyTemplates)
-    .where(and(eq(studyTemplates.ownerUserId, ownerUserId), eq(studyTemplates.name, trimmed)))
+    .where(
+      and(
+        eq(studyTemplates.ownerUserId, ownerUserId),
+        sql`lower(${studyTemplates.name}) = lower(${trimmed})`,
+        templateId ? ne(studyTemplates.id, templateId) : undefined,
+      ),
+    )
     .get();
+  const duplicateCourseSet = await db
+    .select({ id: questionSets.id })
+    .from(questionSets)
+    .where(
+      and(
+        eq(questionSets.ownerUserId, ownerUserId),
+        eq(questionSets.workflowType, "course"),
+        sql`lower(${questionSets.name}) = lower(${trimmed})`,
+      ),
+    )
+    .get();
+  if (duplicateTemplate || duplicateCourseSet) {
+    throw new Error(`You already have a test named “${trimmed}”. Choose a different name.`);
+  }
 
-  if (existing) {
+  if (templateId) {
+    const existing = await db
+      .select()
+      .from(studyTemplates)
+      .where(
+        and(
+          eq(studyTemplates.id, templateId),
+          eq(studyTemplates.ownerUserId, ownerUserId),
+        ),
+      )
+      .get();
+    if (!existing) throw new Error("Template not found.");
     await db
       .update(studyTemplates)
       .set({
+        name: trimmed,
         configJson,
         workflowType,
         conferenceShareToken:
@@ -151,8 +191,85 @@ export async function getConferenceTemplateByToken(token: string) {
 }
 
 export async function deleteTemplate(id: string, ownerUserId: string) {
-  const result = await db.delete(studyTemplates).where(and(eq(studyTemplates.id, id), eq(studyTemplates.ownerUserId, ownerUserId))).run();
-  if (result.changes !== 1) throw new Error("Template not found.");
+  const template = await db
+    .select({ id: studyTemplates.id, workflowType: studyTemplates.workflowType })
+    .from(studyTemplates)
+    .where(and(eq(studyTemplates.id, id), eq(studyTemplates.ownerUserId, ownerUserId)))
+    .get();
+  if (!template) throw new Error("Template not found.");
+
+  if (template.workflowType !== "conference") {
+    await db
+      .delete(studyTemplates)
+      .where(and(eq(studyTemplates.id, id), eq(studyTemplates.ownerUserId, ownerUserId)))
+      .run();
+    return { deletedQuestionSets: 0, deletedAttempts: 0 };
+  }
+
+  const deleted = db.transaction((tx) => {
+    const linkedSets = tx
+      .select({ id: questionSets.id })
+      .from(questionSets)
+      .where(
+        and(
+          eq(questionSets.ownerUserId, ownerUserId),
+          eq(questionSets.sourceTemplateId, id),
+        ),
+      )
+      .all();
+    const setIds = linkedSets.map((set) => set.id);
+    const linkedAttempts = setIds.length
+      ? tx
+          .select({ id: attempts.id })
+          .from(attempts)
+          .where(inArray(attempts.questionSetId, setIds))
+          .all()
+      : [];
+    const attemptIds = linkedAttempts.map((attempt) => attempt.id);
+    const submissions = tx
+      .select({ generationJobId: conferenceSubmissions.generationJobId })
+      .from(conferenceSubmissions)
+      .where(
+        and(
+          eq(conferenceSubmissions.templateId, id),
+          eq(conferenceSubmissions.assessorUserId, ownerUserId),
+        ),
+      )
+      .all();
+    const generationJobIds = submissions.flatMap((submission) =>
+      submission.generationJobId ? [submission.generationJobId] : [],
+    );
+
+    tx.delete(conferenceSubmissions)
+      .where(
+        and(
+          eq(conferenceSubmissions.templateId, id),
+          eq(conferenceSubmissions.assessorUserId, ownerUserId),
+        ),
+      )
+      .run();
+    if (attemptIds.length) {
+      tx.delete(jobs).where(inArray(jobs.attemptId, attemptIds)).run();
+    }
+    if (generationJobIds.length) {
+      tx.delete(jobs).where(inArray(jobs.id, generationJobIds)).run();
+    }
+    if (setIds.length) {
+      tx.delete(questionSets).where(inArray(questionSets.id, setIds)).run();
+    }
+    const deletedTemplate = tx
+      .delete(studyTemplates)
+      .where(and(eq(studyTemplates.id, id), eq(studyTemplates.ownerUserId, ownerUserId)))
+      .run();
+    if (deletedTemplate.changes !== 1) throw new Error("Template not found.");
+    return { setIds, attemptIds };
+  });
+
+  for (const setId of deleted.setIds) deleteManuscript(setId);
+  return {
+    deletedQuestionSets: deleted.setIds.length,
+    deletedAttempts: deleted.attemptIds.length,
+  };
 }
 
 export async function getDraft(ownerUserId: string): Promise<StudyTemplateConfig | null> {

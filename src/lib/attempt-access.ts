@@ -87,7 +87,7 @@ export async function requireOpenAttempt(
     }
     return;
   }
-  // A taker keeps access so they can finish and return later from My assessments for results.
+  // A taker keeps access so they can finish and return later from Tests I've Taken for results.
   if (attempt.takerUserId === user.id) return;
   if (!attempt.linkEnabled) {
     throw new AttemptClosedError(attempt.currentIndex > 0);

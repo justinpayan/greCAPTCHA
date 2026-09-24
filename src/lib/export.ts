@@ -1,11 +1,12 @@
 import "server-only";
 
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
   attemptAnswers,
   attemptFeedback,
+  attemptQuestionFeedback,
   attempts,
   questionSets,
 } from "@/db/schema";
@@ -123,12 +124,20 @@ export async function buildAnswerCsv(ownerUserId: string): Promise<string> {
       answer: attemptAnswers,
       attempt: attempts,
       set: questionSets,
-      examineeFeedback: attemptFeedback,
+      examineeFeedbackSubmission: attemptFeedback,
+      examineeQuestionFeedback: attemptQuestionFeedback,
     })
     .from(attemptAnswers)
     .innerJoin(attempts, eq(attempts.id, attemptAnswers.attemptId))
     .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
     .leftJoin(attemptFeedback, eq(attemptFeedback.attemptId, attempts.id))
+    .leftJoin(
+      attemptQuestionFeedback,
+      and(
+        eq(attemptQuestionFeedback.attemptId, attempts.id),
+        eq(attemptQuestionFeedback.questionId, attemptAnswers.questionId),
+      ),
+    )
     .where(eq(questionSets.ownerUserId, ownerUserId))
     .orderBy(asc(attempts.createdAt), asc(attemptAnswers.startedAt));
 
@@ -138,7 +147,13 @@ export async function buildAnswerCsv(ownerUserId: string): Promise<string> {
 
   const lines: string[] = [COLUMNS.join(",")];
 
-  for (const { answer, attempt, set, examineeFeedback } of rows) {
+  for (const {
+    answer,
+    attempt,
+    set,
+    examineeFeedbackSubmission,
+    examineeQuestionFeedback,
+  } of rows) {
     if (!questionCache.has(set.id)) {
       const parsed = parseJson<StoredQuestion[]>(set.questionsJson, []);
       questionCache.set(set.id, new Map(parsed.map((q) => [q.id, q])));
@@ -184,8 +199,8 @@ export async function buildAnswerCsv(ownerUserId: string): Promise<string> {
         described.correctAnswer,
         described.correct,
         feedback,
-        examineeFeedback?.comment ?? "",
-        examineeFeedback?.submittedAt ?? "",
+        examineeQuestionFeedback?.comment ?? "",
+        examineeFeedbackSubmission?.submittedAt ?? "",
       ]
         .map(csvField)
         .join(","),

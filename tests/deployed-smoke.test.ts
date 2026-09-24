@@ -30,6 +30,7 @@ deployed("serves course and conference workflows with authentication boundaries"
 
   for (const path of [
     "/api/question-sets",
+    "/api/created-tests",
     "/api/templates",
     "/api/export/answers",
     "/api/openrouter/credential",

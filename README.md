@@ -66,14 +66,26 @@ public demo.
    one independent attempt for a shared course question set.
 7. Submission starts grading immediately. Course grading uses the professor's
    encrypted registered key. Conference grading asks the examinee to supply
-   their key again. After the result appears, the examinee may submit one
-   optional, immutable feedback comment for the assessor.
-8. Export responses with **Export all attempts as CSV**.
+   their key again. After the result appears, the examinee may leave optional
+   feedback beneath each question and submit all comments once; the submission
+   is then immutable.
+8. **Tests I've Created** lists Course tests and Conference invitations first.
+   Expand a test to manage its individual attempts and grading reports. Invitation
+   links and whole-test deletion live on the parent; reset, report, and
+   single-attempt deletion actions live on each child attempt. Deleting a
+   Conference test also deletes every generated manuscript, attempt, grade, and
+   feedback record created from that invitation.
+9. Export responses with **Export all attempts as CSV**.
+
+Test names are unique per creator, case-insensitively, across generated Course
+sets and saved Conference templates.
 
 The plan page is researcher-only and includes item descriptions and progress.
 The participant sees one question at a time plus a clickable overview of the
 entire assessment. Drafts autosave, participants may revisit any question, and
 answers are locked together only when the assessment is finally submitted.
+Every manual submission asks for confirmation, including when every question
+contains an answer.
 Skipped and timed-out items remain distinct from ordinary wrong answers in the
 review and export.
 
@@ -178,8 +190,8 @@ npm run test:watch
 
 Tests cover account/session security, encrypted professor credentials, ephemeral
 conference keys, course auto-grading, conference examinee-funded grading,
-immutable feedback, generation, assessment stages, tenant isolation, duplicate
-job prevention, and bounded concurrent provider work.
+immutable per-question feedback, generation, assessment stages, tenant
+isolation, duplicate job prevention, and bounded concurrent provider work.
 
 There is also an explicitly opt-in live grading smoke test. It is excluded from
 `npm test` and can spend OpenRouter credit. Set all three variables before

@@ -44,6 +44,9 @@ export function AttemptSummary({
 
   const started = outline.answeredCount > 0;
   const complete = outline.graded || outline.gradable;
+  const feedbackCommentCount = outline.examineeFeedback
+    ? Object.keys(outline.examineeFeedback.commentsByQuestionId).length
+    : 0;
   const actionLabel = working
     ? complete
       ? "Loading results…"
@@ -188,7 +191,11 @@ export function AttemptSummary({
             Submitted {new Date(outline.examineeFeedback.submittedAt).toLocaleString()}
           </h2>
           <p>
-            {outline.examineeFeedback.comment || "The examinee submitted without a comment."}
+            {feedbackCommentCount > 0
+              ? `${feedbackCommentCount} question ${
+                  feedbackCommentCount === 1 ? "comment" : "comments"
+                } submitted below.`
+              : "The examinee submitted without comments."}
           </p>
           <p className="hint">This feedback is locked and cannot be edited.</p>
         </section>
@@ -230,6 +237,12 @@ export function AttemptSummary({
                 "No description was generated for this item."
               )}
             </p>
+            {outline.examineeFeedback?.commentsByQuestionId[item.questionId] && (
+              <div className="summary-question-feedback">
+                <span className="review-label">Examinee feedback</span>
+                <p>{outline.examineeFeedback.commentsByQuestionId[item.questionId]}</p>
+              </div>
+            )}
           </article>
         ))}
       </section>

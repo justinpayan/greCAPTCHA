@@ -168,6 +168,11 @@ export const questionSets = sqliteTable(
      * soft limits this one is enforced: once it is spent no further question is served.
      */
     overallTimeLimitSeconds: integer("overall_time_limit_seconds"),
+    /** Defaults copied onto each attempt created from this reusable question set. */
+    randomize: integer("randomize", { mode: "boolean" }).notNull().default(false),
+    countdownHidden: integer("countdown_hidden", { mode: "boolean" })
+      .notNull()
+      .default(false),
     configJson: text("config_json").notNull(),
     questionsJson: text("questions_json").notNull(),
     /** Unguessable capability used by the reusable, login-required assessment URL. */
@@ -271,10 +276,23 @@ export const attemptFeedback = sqliteTable(
     submitterUserId: text("submitter_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    comment: text("comment").notNull(),
     submittedAt: text("submitted_at").notNull(),
   },
   (table) => [index("attempt_feedback_submitter_idx").on(table.submitterUserId)],
+);
+
+export const attemptQuestionFeedback = sqliteTable(
+  "attempt_question_feedback",
+  {
+    attemptId: text("attempt_id")
+      .notNull()
+      .references(() => attempts.id, { onDelete: "cascade" }),
+    questionId: text("question_id").notNull(),
+    comment: text("comment").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.attemptId, table.questionId] }),
+  ],
 );
 
 export const attemptAnswers = sqliteTable(
@@ -328,4 +346,5 @@ export type QuestionSetRecord = typeof questionSets.$inferSelect;
 export type AttemptRecord = typeof attempts.$inferSelect;
 export type ConferenceSubmissionRecord = typeof conferenceSubmissions.$inferSelect;
 export type AttemptFeedbackRecord = typeof attemptFeedback.$inferSelect;
+export type AttemptQuestionFeedbackRecord = typeof attemptQuestionFeedback.$inferSelect;
 export type AttemptAnswerRecord = typeof attemptAnswers.$inferSelect;

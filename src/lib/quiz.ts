@@ -147,6 +147,18 @@ export type AttemptListEntry = {
   completedAt: string | null;
 };
 
+export type CreatedTestEntry = {
+  id: string;
+  workflowType: WorkflowType;
+  name: string;
+  modelId: string;
+  questionCount: number;
+  invitationEnabled: boolean;
+  invitationPath: string | null;
+  createdAt: string;
+  attempts: AttemptListEntry[];
+};
+
 export type StudyTemplateSummary = {
   id: string;
   name: string;
@@ -369,6 +381,11 @@ export type AttemptOutlineItem = {
   answered: boolean;
 };
 
+export type ExamineeFeedback = {
+  commentsByQuestionId: Record<string, string>;
+  submittedAt: string;
+};
+
 export type AttemptOutline = {
   attemptId: string;
   questionSetId: string;
@@ -396,10 +413,7 @@ export type AttemptOutline = {
    * while participants reach the app through a tunnel.
    */
   participantBaseUrl: string;
-  examineeFeedback: {
-    comment: string;
-    submittedAt: string;
-  } | null;
+  examineeFeedback: ExamineeFeedback | null;
   items: AttemptOutlineItem[];
 };
 

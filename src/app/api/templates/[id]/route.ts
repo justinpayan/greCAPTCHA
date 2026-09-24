@@ -33,8 +33,8 @@ export async function DELETE(
   try {
     const user = await requireUser();
     const { id } = await context.params;
-    await deleteTemplate(id, user.id);
-    return NextResponse.json({ deleted: true });
+    const deleted = await deleteTemplate(id, user.id);
+    return NextResponse.json({ deleted: true, ...deleted });
   } catch (error) {
     return errorResponse(error, "Unable to delete the template.");
   }

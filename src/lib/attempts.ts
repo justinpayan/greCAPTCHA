@@ -8,6 +8,7 @@ import { questionSetLabel } from "@/lib/catalog";
 import {
   attemptAnswers,
   attemptFeedback,
+  attemptQuestionFeedback,
   attempts,
   questionSets,
   users,
@@ -177,27 +178,11 @@ async function createTakerAttemptIfNeeded(
     .get();
   if (existing) return existing;
 
-  const previous = await db
-    .select({
-      randomize: attempts.randomize,
-      countdownHidden: attempts.countdownHidden,
-    })
-    .from(attempts)
-    .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
-    .where(
-      and(
-        eq(attempts.questionSetId, set.id),
-        eq(questionSets.ownerUserId, set.ownerUserId),
-      ),
-    )
-    .orderBy(desc(attempts.createdAt))
-    .get();
-
   return createAttempt({
     questionSetId: set.id,
     ownerUserId: set.ownerUserId,
-    randomize: previous?.randomize ?? false,
-    countdownHidden: previous?.countdownHidden ?? false,
+    randomize: set.randomize,
+    countdownHidden: set.countdownHidden,
     taker,
   });
 }
@@ -453,12 +438,20 @@ export async function getAttemptOutline(attemptId: string): Promise<AttemptOutli
     .where(eq(attemptAnswers.attemptId, attemptId));
   const feedback = await db
     .select({
-      comment: attemptFeedback.comment,
       submittedAt: attemptFeedback.submittedAt,
     })
     .from(attemptFeedback)
     .where(eq(attemptFeedback.attemptId, attemptId))
     .get();
+  const feedbackComments = feedback
+    ? await db
+        .select({
+          questionId: attemptQuestionFeedback.questionId,
+          comment: attemptQuestionFeedback.comment,
+        })
+        .from(attemptQuestionFeedback)
+        .where(eq(attemptQuestionFeedback.attemptId, attemptId))
+    : [];
   const answeredIds = new Set(
     answers.filter((answer) => answer.submittedAt).map((answer) => answer.questionId),
   );
@@ -496,7 +489,14 @@ export async function getAttemptOutline(attemptId: string): Promise<AttemptOutli
     graded,
     gradable: !graded && answeredCount === items.length && items.length > 0,
     participantBaseUrl: (process.env.PUBLIC_BASE_URL ?? "").trim().replace(/\/+$/, ""),
-    examineeFeedback: feedback ?? null,
+    examineeFeedback: feedback
+      ? {
+          commentsByQuestionId: Object.fromEntries(
+            feedbackComments.map((item) => [item.questionId, item.comment]),
+          ),
+          submittedAt: feedback.submittedAt,
+        }
+      : null,
     items,
   };
 }

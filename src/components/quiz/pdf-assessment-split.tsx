@@ -1,9 +1,16 @@
 "use client";
 
 import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from "react";
-import { useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import { useEffect, useRef, useState } from "react";
 
-import { PdfViewer } from "@/components/quiz/pdf-viewer";
+const PdfViewer = dynamic(
+  () => import("@/components/quiz/pdf-viewer").then((module) => module.PdfViewer),
+  {
+    ssr: false,
+    loading: () => <p className="pdf-message">Loading manuscript viewer…</p>,
+  },
+);
 
 const MIN_PANE_PX = 340;
 
@@ -18,6 +25,43 @@ export function PdfAssessmentSplit({
 }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const [pdfPercent, setPdfPercent] = useState(50);
+  const [pdfFileUrl, setPdfFileUrl] = useState<string | null>(null);
+  const [pdfError, setPdfError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let objectUrl = "";
+    setPdfFileUrl(null);
+    setPdfError("");
+
+    void fetch(`/api/attempts/${encodeURIComponent(attemptId)}/pdf`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(payload?.error ?? "The manuscript PDF is unavailable.");
+        }
+        return response.blob();
+      })
+      .then((blob) => {
+        if (controller.signal.aborted) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPdfFileUrl(objectUrl);
+      })
+      .catch((caught) => {
+        if (controller.signal.aborted) return;
+        setPdfError(
+          caught instanceof Error ? caught.message : "The manuscript PDF could not be displayed.",
+        );
+      });
+
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [attemptId]);
 
   function resize(clientX: number) {
     const shell = shellRef.current;
@@ -53,7 +97,8 @@ export function PdfAssessmentSplit({
     <div className="pdf-assessment-shell" ref={shellRef} style={style}>
       <div className="pdf-assessment-document">
         <PdfViewer
-          url={`/api/attempts/${encodeURIComponent(attemptId)}/pdf`}
+          fileUrl={pdfFileUrl}
+          error={pdfError}
           label={pdfLabel}
         />
       </div>

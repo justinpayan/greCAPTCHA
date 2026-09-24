@@ -18,7 +18,7 @@ export async function GET() {
   }
 }
 
-/** Save a named template. An existing name is replaced rather than duplicated. */
+/** Creates a named template or updates the explicitly selected one. */
 export async function POST(request: Request) {
   try {
     const user = await requireUser();
@@ -26,10 +26,17 @@ export async function POST(request: Request) {
       name?: unknown;
       config?: unknown;
       workflowType?: unknown;
+      templateId?: unknown;
     };
     const config = studyTemplateConfigSchema.parse(body.config);
     const workflowType = workflowTypeSchema.parse(body.workflowType ?? "course");
-    const saved = await saveTemplate(user.id, String(body.name ?? ""), config, workflowType);
+    const saved = await saveTemplate(
+      user.id,
+      String(body.name ?? ""),
+      config,
+      workflowType,
+      body.templateId ? String(body.templateId) : null,
+    );
     return NextResponse.json({ template: saved }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to save the template.";

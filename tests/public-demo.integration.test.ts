@@ -13,7 +13,16 @@ vi.mock("next/headers", () => ({
 }));
 
 import { db } from "@/db";
-import { attempts, jobs, openRouterCredentials, sessions, users } from "@/db/schema";
+import {
+  attempts,
+  conferenceSubmissions,
+  jobs,
+  openRouterCredentials,
+  questionSets,
+  sessions,
+  studyTemplates,
+  users,
+} from "@/db/schema";
 import {
   accountForSession,
   authenticateAccount,
@@ -29,7 +38,13 @@ import {
   loadAttemptContext,
 } from "@/lib/attempts";
 import { requireOpenAttempt } from "@/lib/attempt-access";
-import { getQuestionSetOverview, listTakerAttempts } from "@/lib/catalog";
+import {
+  deleteAttempt,
+  deleteQuestionSet,
+  getQuestionSetOverview,
+  listCreatedTests,
+  listTakerAttempts,
+} from "@/lib/catalog";
 import { buildAnswerCsv } from "@/lib/export";
 import {
   enqueueGenerationJob,
@@ -53,7 +68,11 @@ import {
   GET as getExamineeFeedback,
   POST as submitExamineeFeedback,
 } from "@/app/api/attempts/[id]/feedback/route";
-import { saveTemplate, setConferenceTemplateSharing } from "@/lib/templates";
+import {
+  deleteTemplate,
+  saveTemplate,
+  setConferenceTemplateSharing,
+} from "@/lib/templates";
 
 let activeProviderCalls = 0;
 let maxProviderCalls = 0;
@@ -238,12 +257,21 @@ describe("public demo account-to-grade flow", () => {
     if (!alice) throw new Error("Alice fixture missing.");
     const queued = await enqueueSet(alice.id, "complete-flow");
     const completed = await waitForJob(queued.jobId, alice.id);
-    const generatedAttemptId = String(
-      (completed.result as { attemptId?: string })?.attemptId ?? "",
+    const generatedSetId = String(
+      (completed.result as { questionSetId?: string })?.questionSetId ?? "",
     );
-    expect(generatedAttemptId).toBeTruthy();
-    const generated = await loadAttemptContext(generatedAttemptId);
-    const shared = await createQuestionSetShareLink(generated.set.id, alice.id);
+    expect(generatedSetId).toBeTruthy();
+    expect(
+      await db.select().from(attempts).where(eq(attempts.questionSetId, generatedSetId)),
+    ).toHaveLength(0);
+    const generatedSet = await db
+      .select()
+      .from(questionSets)
+      .where(eq(questionSets.id, generatedSetId))
+      .get();
+    expect(generatedSet?.randomize).toBe(false);
+    expect(generatedSet?.countdownHidden).toBe(false);
+    const shared = await createQuestionSetShareLink(generatedSetId, alice.id);
     const bob = await db
       .select()
       .from(users)
@@ -387,6 +415,19 @@ describe("public demo account-to-grade flow", () => {
     ]);
     sessionState.token = await createAccountSession(bob.id);
     expect((await getAttemptState(attemptId)).result?.overallScore).toBe(100);
+    const emptyFeedback = await submitExamineeFeedback(
+      new Request("http://localhost/api/attempts/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commentsByQuestionId: {} }),
+      }),
+      { params: Promise.resolve({ id: attemptId }) },
+    );
+    expect(emptyFeedback.status).toBe(200);
+    expect(await emptyFeedback.json()).toMatchObject({
+      submitted: true,
+      feedback: { commentsByQuestionId: {} },
+    });
     sessionState.token = "";
   });
 
@@ -428,6 +469,37 @@ describe("public demo account-to-grade flow", () => {
       },
       "conference",
     );
+    await expect(
+      saveTemplate(
+        alice.id,
+        "conference AUTHOR check",
+        {
+          modelId: "test/model",
+          pdfEngine: "native",
+          blocks,
+          randomize: false,
+          countdownHidden: false,
+          overallTimeLimitSeconds: null,
+        },
+        "conference",
+      ),
+    ).rejects.toThrow("already have a test");
+    await expect(
+      saveTemplate(
+        alice.id,
+        "Conference author check",
+        {
+          modelId: "test/model",
+          pdfEngine: "native",
+          blocks,
+          randomize: true,
+          countdownHidden: false,
+          overallTimeLimitSeconds: null,
+        },
+        "conference",
+        template.id,
+      ),
+    ).resolves.toMatchObject({ id: template.id });
     const sharing = await setConferenceTemplateSharing(template.id, alice.id, true);
     if (!sharing.conferenceShareToken) throw new Error("Conference token missing.");
 
@@ -462,6 +534,7 @@ describe("public demo account-to-grade flow", () => {
     await getAttemptState(attemptId);
     let context = await loadAttemptContext(attemptId);
     if (context.currentQuestion.type !== "multiple_choice") throw new Error("Expected MC first.");
+    const multipleChoiceQuestionId = context.currentQuestion.id;
     let response: Response = await submitAnswer(
       new Request("http://localhost/api/answer", {
         method: "POST",
@@ -488,6 +561,7 @@ describe("public demo account-to-grade flow", () => {
     expect(response.status).toBe(200);
     context = await loadAttemptContext(attemptId);
     if (context.currentQuestion.type !== "free_response") throw new Error("Expected free response.");
+    const freeResponseQuestionId = context.currentQuestion.id;
     response = await submitAnswer(
       new Request("http://localhost/api/answer", {
         method: "POST",
@@ -527,11 +601,28 @@ describe("public demo account-to-grade flow", () => {
     const grading = await gradeResponse.json() as { jobId: string };
     await waitForJob(grading.jobId, alice.id);
 
+    const unknownQuestionFeedback = await submitExamineeFeedback(
+      new Request("http://localhost/api/attempts/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          commentsByQuestionId: { "not-this-attempt": "Should be rejected." },
+        }),
+      }),
+      { params: Promise.resolve({ id: attemptId }) },
+    );
+    expect(unknownQuestionFeedback.status).toBe(400);
+
     const feedbackResponse = await submitExamineeFeedback(
       new Request("http://localhost/api/attempts/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comment: "The grading explanation was clear." }),
+        body: JSON.stringify({
+          commentsByQuestionId: {
+            [multipleChoiceQuestionId]: "The choices were clear.",
+            [freeResponseQuestionId]: "The grading explanation was clear.",
+          },
+        }),
       }),
       { params: Promise.resolve({ id: attemptId }) },
     );
@@ -540,7 +631,11 @@ describe("public demo account-to-grade flow", () => {
       new Request("http://localhost/api/attempts/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comment: "Changed feedback" }),
+        body: JSON.stringify({
+          commentsByQuestionId: {
+            [freeResponseQuestionId]: "Changed feedback",
+          },
+        }),
       }),
       { params: Promise.resolve({ id: attemptId }) },
     );
@@ -551,11 +646,39 @@ describe("public demo account-to-grade flow", () => {
     );
     expect(await storedFeedback.json()).toMatchObject({
       submitted: true,
-      feedback: { comment: "The grading explanation was clear." },
+      feedback: {
+        commentsByQuestionId: {
+          [multipleChoiceQuestionId]: "The choices were clear.",
+          [freeResponseQuestionId]: "The grading explanation was clear.",
+        },
+      },
     });
-    expect((await getAttemptOutline(attemptId)).examineeFeedback?.comment).toBe(
-      "The grading explanation was clear.",
-    );
+    expect(
+      (await getAttemptOutline(attemptId)).examineeFeedback?.commentsByQuestionId,
+    ).toMatchObject({
+      [multipleChoiceQuestionId]: "The choices were clear.",
+      [freeResponseQuestionId]: "The grading explanation was clear.",
+    });
+
+    const exported = await buildAnswerCsv(alice.id);
+    const [headerLine, ...dataLines] = exported.trim().split(/\r?\n/);
+    const header = headerLine.split(",");
+    const attemptIndex = header.indexOf("attempt_id");
+    const questionIndex = header.indexOf("question_id");
+    const feedbackIndex = header.indexOf("examinee_feedback");
+    const exportedRows = dataLines.map((line) => line.split(","));
+    expect(
+      exportedRows.find(
+        (row) =>
+          row[attemptIndex] === attemptId && row[questionIndex] === multipleChoiceQuestionId,
+      )?.[feedbackIndex],
+    ).toBe("The choices were clear.");
+    expect(
+      exportedRows.find(
+        (row) =>
+          row[attemptIndex] === attemptId && row[questionIndex] === freeResponseQuestionId,
+      )?.[feedbackIndex],
+    ).toBe("The grading explanation was clear.");
 
     sessionState.token = await createAccountSession(carol.id);
     const deniedFeedback = await getExamineeFeedback(
@@ -580,19 +703,24 @@ describe("public demo account-to-grade flow", () => {
       enqueueSet(alice.id, "alice-concurrent"),
       enqueueSet(bob.id, "bob-concurrent"),
     ]);
-    const [aliceResult, bobResult] = await Promise.all([
+    const [aliceResult] = await Promise.all([
       waitForJob(aliceJob.jobId, alice.id),
       waitForJob(bobJob.jobId, bob.id),
     ]);
     expect(maxProviderCalls).toBeLessThanOrEqual(2);
     await expect(getOwnedJob(aliceJob.jobId, bob.id)).rejects.toThrow("Job not found");
 
-    const aliceAttemptId = (aliceResult.result as { attemptId: string }).attemptId;
-    const aliceAttempt = await db.select().from(attempts).where(eq(attempts.id, aliceAttemptId)).get();
-    if (!aliceAttempt) throw new Error("Attempt missing.");
-    await expect(getQuestionSetOverview(aliceAttempt.questionSetId, bob.id)).rejects.toThrow(
+    const aliceSetId = (aliceResult.result as { questionSetId: string }).questionSetId;
+    expect(
+      await db.select().from(attempts).where(eq(attempts.questionSetId, aliceSetId)),
+    ).toHaveLength(0);
+    await expect(getQuestionSetOverview(aliceSetId, bob.id)).rejects.toThrow(
       "Question set not found",
     );
+    const aliceShare = await createQuestionSetShareLink(aliceSetId, alice.id);
+    const aliceToken = aliceShare.participantPath.split("/").pop();
+    if (!aliceToken) throw new Error("Share token missing.");
+    const { attemptId: aliceAttemptId } = await getOrCreateTakerAttempt(aliceToken, alice);
 
     const extra = await Promise.allSettled([
       enqueueSet(alice.id, "race-one"),
@@ -611,5 +739,67 @@ describe("public demo account-to-grade flow", () => {
       eq(jobs.attemptId, aliceAttemptId),
       eq(jobs.type, "grading"),
     ))).length).toBe(1);
+  });
+
+  it("groups created tests and distinguishes attempt deletion from whole-test deletion", async () => {
+    const [alice, bob] = await Promise.all([
+      db.select().from(users).where(eq(users.usernameNormalized, "alice.test")).get(),
+      db.select().from(users).where(eq(users.usernameNormalized, "bob.test")).get(),
+    ]);
+    if (!alice || !bob) throw new Error("Account fixtures missing.");
+
+    const before = await listCreatedTests(alice.id);
+    const conference = before.find(
+      (test) => test.workflowType === "conference" && test.name === "Conference author check",
+    );
+    expect(conference?.invitationPath).toMatch(/^\/conference\//);
+    expect(conference?.attempts.length).toBeGreaterThan(0);
+    expect(before.some((test) => test.workflowType === "course" && test.attempts.length === 0))
+      .toBe(true);
+
+    const courseWithAttempt = before.find(
+      (test) => test.workflowType === "course" && test.attempts.length > 0,
+    );
+    if (!courseWithAttempt) throw new Error("Course test fixture missing.");
+    const removedAttempt = courseWithAttempt.attempts[0];
+    await deleteAttempt(removedAttempt.id, alice.id);
+    const afterAttemptDelete = await listCreatedTests(alice.id);
+    expect(afterAttemptDelete.find((test) => test.id === courseWithAttempt.id)).toBeTruthy();
+    expect(
+      afterAttemptDelete
+        .find((test) => test.id === courseWithAttempt.id)
+        ?.attempts.some((attempt) => attempt.id === removedAttempt.id),
+    ).toBe(false);
+
+    const emptyCourse = afterAttemptDelete.find(
+      (test) => test.workflowType === "course" && test.attempts.length === 0,
+    );
+    if (!emptyCourse) throw new Error("Empty Course test fixture missing.");
+    await deleteQuestionSet(emptyCourse.id, alice.id);
+    expect((await listCreatedTests(alice.id)).some((test) => test.id === emptyCourse.id)).toBe(false);
+
+    if (!conference) throw new Error("Conference test fixture missing.");
+    const conferenceSetIds = conference.attempts.map((attempt) => attempt.questionSetId);
+    const conferenceAttemptIds = conference.attempts.map((attempt) => attempt.id);
+    const bobBefore = await listCreatedTests(bob.id);
+    await deleteTemplate(conference.id, alice.id);
+
+    expect(
+      await db.select().from(studyTemplates).where(eq(studyTemplates.id, conference.id)),
+    ).toHaveLength(0);
+    expect(
+      await db
+        .select()
+        .from(conferenceSubmissions)
+        .where(eq(conferenceSubmissions.templateId, conference.id)),
+    ).toHaveLength(0);
+    for (const setId of conferenceSetIds) {
+      expect(await db.select().from(questionSets).where(eq(questionSets.id, setId))).toHaveLength(0);
+    }
+    for (const attemptId of conferenceAttemptIds) {
+      expect(await db.select().from(attempts).where(eq(attempts.id, attemptId))).toHaveLength(0);
+      expect(await db.select().from(jobs).where(eq(jobs.attemptId, attemptId))).toHaveLength(0);
+    }
+    expect(await listCreatedTests(bob.id)).toEqual(bobBefore);
   });
 });

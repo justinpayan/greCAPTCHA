@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { and, eq, sql } from "drizzle-orm";
 
+import { db } from "@/db";
+import { questionSets, studyTemplates } from "@/db/schema";
 import { listQuestionSets } from "@/lib/catalog";
 import { enqueueGenerationJob } from "@/lib/jobs";
 import { validateOpenRouterKey } from "@/lib/openrouter";
@@ -107,9 +110,37 @@ export async function POST(request: Request) {
         throw new Error("The selected template does not match this workflow.");
       }
     }
+    const setName = String(form.get("name") ?? "").trim().slice(0, 120);
+    if (setName) {
+      const [duplicateSet, duplicateTemplate] = await Promise.all([
+        db
+          .select({ id: questionSets.id })
+          .from(questionSets)
+          .where(
+            and(
+              eq(questionSets.ownerUserId, user.id),
+              eq(questionSets.workflowType, "course"),
+              sql`lower(${questionSets.name}) = lower(${setName})`,
+            ),
+          )
+          .get(),
+        db
+          .select({ id: studyTemplates.id })
+          .from(studyTemplates)
+          .where(
+            and(
+              eq(studyTemplates.ownerUserId, user.id),
+              sql`lower(${studyTemplates.name}) = lower(${setName})`,
+            ),
+          )
+          .get(),
+      ]);
+      if (duplicateSet || duplicateTemplate) {
+        throw new Error(`You already have a test named “${setName}”. Choose a different name.`);
+      }
+    }
     const apiKey = await requireOpenRouterCredential(user.id);
     await validateOpenRouterKey(apiKey, { requireSafeguards: true });
-    const setName = String(form.get("name") ?? "").trim().slice(0, 120);
     const modelId = String(form.get("modelId") ?? "").trim();
     const pdfEngine = pdfEngineSchema.parse(form.get("pdfEngine"));
     const randomize = form.get("randomize") === "true";

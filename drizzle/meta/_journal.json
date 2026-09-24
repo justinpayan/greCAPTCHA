@@ -148,6 +148,20 @@
       "when": 1790281612434,
       "tag": "0020_lame_screwball",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1790284288488,
+      "tag": "0021_true_smasher",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1790284408428,
+      "tag": "0022_true_magik",
+      "breakpoints": true
     }
   ]
 }

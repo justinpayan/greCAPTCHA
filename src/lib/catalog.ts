@@ -3,15 +3,17 @@ import "server-only";
 import { and, count, desc, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { db } from "@/db";
-import { attemptAnswers, attempts, jobs, questionSets } from "@/db/schema";
+import { attemptAnswers, attempts, jobs, questionSets, studyTemplates } from "@/db/schema";
 import { deleteManuscript } from "@/lib/manuscripts";
 import {
   isWarmup,
   questionBlockName,
   questionTimeLimit,
   type AttemptListEntry,
+  type CreatedTestEntry,
   type QuestionSetListEntry,
   type QuestionSetOverview,
+  type StudyTemplateConfig,
   type StoredQuestion,
 } from "@/lib/quiz";
 
@@ -313,6 +315,120 @@ export async function listAttempts(ownerUserId: string): Promise<AttemptListEntr
     createdAt: row.createdAt,
     completedAt: row.completedAt,
   }));
+}
+
+/**
+ * The creator dashboard's real hierarchy.
+ *
+ * Course tests are generated sets. Conference tests are reusable templates whose examinees each
+ * generate a private set, so those generated sets are deliberately folded into their template.
+ */
+export async function listCreatedTests(ownerUserId: string): Promise<CreatedTestEntry[]> {
+  const [sets, templates, rows, answered] = await Promise.all([
+    db
+      .select()
+      .from(questionSets)
+      .where(eq(questionSets.ownerUserId, ownerUserId))
+      .orderBy(desc(questionSets.createdAt)),
+    db
+      .select()
+      .from(studyTemplates)
+      .where(
+        and(
+          eq(studyTemplates.ownerUserId, ownerUserId),
+          eq(studyTemplates.workflowType, "conference"),
+        ),
+      )
+      .orderBy(desc(studyTemplates.createdAt)),
+    db
+      .select({
+        id: attempts.id,
+        questionSetId: attempts.questionSetId,
+        status: attempts.status,
+        score: attempts.score,
+        randomize: attempts.randomize,
+        linkEnabled: attempts.linkEnabled,
+        questionOrderJson: attempts.questionOrderJson,
+        createdAt: attempts.createdAt,
+        completedAt: attempts.completedAt,
+        setName: questionSets.name,
+        paperName: questionSets.paperName,
+        takerUsername: attempts.takerUsername,
+        sourceTemplateId: questionSets.sourceTemplateId,
+      })
+      .from(attempts)
+      .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
+      .where(eq(questionSets.ownerUserId, ownerUserId))
+      .orderBy(desc(attempts.createdAt)),
+    db
+      .select({ attemptId: attemptAnswers.attemptId, total: count() })
+      .from(attemptAnswers)
+      .where(isNotNull(attemptAnswers.submittedAt))
+      .groupBy(attemptAnswers.attemptId),
+  ]);
+  const answeredByAttempt = new Map(answered.map((row) => [row.attemptId, row.total]));
+  const attemptsBySet = new Map<string, AttemptListEntry[]>();
+  const attemptsByTemplate = new Map<string, AttemptListEntry[]>();
+
+  for (const row of rows) {
+    const entry: AttemptListEntry = {
+      id: row.id,
+      questionSetId: row.questionSetId,
+      setLabel: questionSetLabel(row.setName, row.paperName),
+      paperName: row.paperName,
+      takerUsername: row.takerUsername ?? null,
+      status: row.status,
+      score: row.score,
+      randomize: row.randomize,
+      linkEnabled: row.linkEnabled,
+      answeredCount: answeredByAttempt.get(row.id) ?? 0,
+      totalQuestions: (JSON.parse(row.questionOrderJson) as string[]).length,
+      createdAt: row.createdAt,
+      completedAt: row.completedAt,
+    };
+    const bySet = attemptsBySet.get(row.questionSetId) ?? [];
+    bySet.push(entry);
+    attemptsBySet.set(row.questionSetId, bySet);
+    if (row.sourceTemplateId) {
+      const byTemplate = attemptsByTemplate.get(row.sourceTemplateId) ?? [];
+      byTemplate.push(entry);
+      attemptsByTemplate.set(row.sourceTemplateId, byTemplate);
+    }
+  }
+
+  const courseTests: CreatedTestEntry[] = sets
+    .filter((set) => set.workflowType === "course")
+    .map((set) => ({
+      id: set.id,
+      workflowType: "course",
+      name: questionSetLabel(set.name, set.paperName),
+      modelId: set.modelId,
+      questionCount: (JSON.parse(set.questionsJson) as StoredQuestion[]).length,
+      invitationEnabled: Boolean(set.shareToken),
+      invitationPath: set.shareToken ? `/take/${set.shareToken}` : null,
+      createdAt: set.createdAt,
+      attempts: attemptsBySet.get(set.id) ?? [],
+    }));
+  const conferenceTests: CreatedTestEntry[] = templates.map((template) => {
+    const config = JSON.parse(template.configJson) as StudyTemplateConfig;
+    return {
+      id: template.id,
+      workflowType: "conference",
+      name: template.name,
+      modelId: config.modelId,
+      questionCount: config.blocks.reduce((total, block) => total + block.count, 0),
+      invitationEnabled: Boolean(template.conferenceShareToken),
+      invitationPath: template.conferenceShareToken
+        ? `/conference/${template.conferenceShareToken}`
+        : null,
+      createdAt: template.createdAt,
+      attempts: attemptsByTemplate.get(template.id) ?? [],
+    };
+  });
+
+  return [...courseTests, ...conferenceTests].sort((left, right) =>
+    right.createdAt.localeCompare(left.createdAt),
+  );
 }
 
 export async function listTakerAttempts(takerUserId: string): Promise<AttemptListEntry[]> {

@@ -1,7 +1,7 @@
 import "server-only";
 
 import fs from "node:fs";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { attempts, conferenceSubmissions, questionSets } from "@/db/schema";
@@ -52,18 +52,38 @@ export async function executeGeneration(
     .where(eq(questionSets.id, payload.questionSetId))
     .get();
   if (existingSet) {
+    if (!payload.taker) return { questionSetId: payload.questionSetId };
     const existingAttempt = await db
       .select({ attemptId: attempts.id })
       .from(attempts)
-      .where(eq(attempts.questionSetId, payload.questionSetId))
+      .where(
+        and(
+          eq(attempts.questionSetId, payload.questionSetId),
+          eq(attempts.takerUserId, payload.taker.id),
+        ),
+      )
       .get();
-    if (existingAttempt) return existingAttempt;
-    return createAttempt({
-      questionSetId: payload.questionSetId,
-      ownerUserId,
-      randomize: payload.randomize,
-      countdownHidden: payload.countdownHidden,
-    });
+    const created =
+      existingAttempt ??
+      (await createAttempt({
+        questionSetId: payload.questionSetId,
+        ownerUserId,
+        randomize: payload.randomize,
+        countdownHidden: payload.countdownHidden,
+        taker: payload.taker,
+      }));
+    if (payload.conferenceSubmissionId) {
+      await db
+        .update(conferenceSubmissions)
+        .set({
+          questionSetId: payload.questionSetId,
+          attemptId: created.attemptId,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(conferenceSubmissions.id, payload.conferenceSubmissionId))
+        .run();
+    }
+    return { questionSetId: payload.questionSetId, attemptId: created.attemptId };
   }
 
   const selectedModel = (await getOpenRouterModels(apiKey)).find(
@@ -113,10 +133,13 @@ export async function executeGeneration(
     modelId: payload.modelId,
     pdfEngine: payload.pdfEngine,
     overallTimeLimitSeconds: payload.overallTimeLimitSeconds,
+    randomize: payload.randomize,
+    countdownHidden: payload.countdownHidden,
     configJson: JSON.stringify(payload.blocks),
     questionsJson: JSON.stringify(questions),
     createdAt: new Date().toISOString(),
   });
+  if (!payload.taker) return { questionSetId: payload.questionSetId };
   const created = await createAttempt({
     questionSetId: payload.questionSetId,
     ownerUserId,
@@ -135,5 +158,5 @@ export async function executeGeneration(
       .where(eq(conferenceSubmissions.id, payload.conferenceSubmissionId))
       .run();
   }
-  return created;
+  return { questionSetId: payload.questionSetId, attemptId: created.attemptId };
 }

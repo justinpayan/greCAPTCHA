@@ -12,7 +12,15 @@ const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2.5;
 const ZOOM_STEP = 0.25;
 
-export function PdfViewer({ url, label }: { url: string; label: string }) {
+export function PdfViewer({
+  fileUrl,
+  error,
+  label,
+}: {
+  fileUrl: string | null;
+  error: string;
+  label: string;
+}) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [pageCount, setPageCount] = useState(0);
   const [viewportWidth, setViewportWidth] = useState(0);
@@ -57,29 +65,35 @@ export function PdfViewer({ url, label }: { url: string; label: string }) {
         </div>
       </header>
       <div className="pdf-scroll-area" ref={viewportRef}>
-        <Document
-          file={url}
-          loading={<p className="pdf-message">Loading manuscript…</p>}
-          error={<p className="pdf-message error">The manuscript PDF could not be displayed.</p>}
-          onLoadSuccess={({ numPages }) => setPageCount(numPages)}
-        >
-          <div className="pdf-pages">
-            {Array.from({ length: pageCount }, (_, index) => (
-              <div className="pdf-page" key={index + 1}>
-                <Page
-                  pageNumber={index + 1}
-                  width={pageWidth}
-                  renderAnnotationLayer={false}
-                  renderTextLayer={false}
-                  loading={<p className="pdf-message">Loading page {index + 1}…</p>}
-                />
-                <small>
-                  Page {index + 1} of {pageCount}
-                </small>
-              </div>
-            ))}
-          </div>
-        </Document>
+        {error ? (
+          <p className="pdf-message error">{error}</p>
+        ) : fileUrl ? (
+          <Document
+            file={fileUrl}
+            loading={<p className="pdf-message">Loading manuscript…</p>}
+            error={<p className="pdf-message error">The manuscript PDF could not be displayed.</p>}
+            onLoadSuccess={({ numPages }) => setPageCount(numPages)}
+          >
+            <div className="pdf-pages">
+              {Array.from({ length: pageCount }, (_, index) => (
+                <div className="pdf-page" key={index + 1}>
+                  <Page
+                    pageNumber={index + 1}
+                    width={pageWidth}
+                    renderAnnotationLayer={false}
+                    renderTextLayer={false}
+                    loading={<p className="pdf-message">Loading page {index + 1}…</p>}
+                  />
+                  <small>
+                    Page {index + 1} of {pageCount}
+                  </small>
+                </div>
+              ))}
+            </div>
+          </Document>
+        ) : (
+          <p className="pdf-message">Loading manuscript…</p>
+        )}
       </div>
     </section>
   );

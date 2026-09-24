@@ -34,6 +34,7 @@ import {
   type AttemptListEntry,
   type AttemptOutline,
   type AttemptView,
+  type CreatedTestEntry,
   type QuestionSetListEntry,
   type QuestionSetOverview,
   type PdfEngine,
@@ -51,21 +52,28 @@ type CatalogModel = {
   recommended: boolean;
 };
 
-const DEFAULT_MODEL_ID = "openai/gpt-5.6-sol";
+const DEFAULT_MODEL_ID = "openai/gpt-6-sol";
 const FEATURED_MODEL_IDS = [
-  "anthropic/claude-fable-5.1",
+  "openai/gpt-6-astra",
   DEFAULT_MODEL_ID,
+  "openai/gpt-6-luna",
 ] as const;
 const FEATURED_MODELS: CatalogModel[] = [
   {
-    id: DEFAULT_MODEL_ID,
-    name: "GPT-5.6 Sol",
+    id: "openai/gpt-6-astra",
+    name: "GPT-6 Astra",
     inputModalities: ["text", "file"],
     recommended: true,
   },
   {
-    id: "anthropic/claude-fable-5.1",
-    name: "Claude Fable 5.1",
+    id: DEFAULT_MODEL_ID,
+    name: "GPT-6 Sol",
+    inputModalities: ["text", "file"],
+    recommended: true,
+  },
+  {
+    id: "openai/gpt-6-luna",
+    name: "GPT-6 Luna",
     inputModalities: ["text", "file"],
     recommended: true,
   },
@@ -207,12 +215,14 @@ export function ResearchCaptcha({ username }: { username: string }) {
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [setName, setSetName] = useState("");
   const [savedSets, setSavedSets] = useState<QuestionSetListEntry[]>([]);
+  const [createdTests, setCreatedTests] = useState<CreatedTestEntry[]>([]);
   const [attemptList, setAttemptList] = useState<AttemptListEntry[]>([]);
   const [myAssessments, setMyAssessments] = useState<AttemptListEntry[]>([]);
   const [catalogSearch, setCatalogSearch] = useState("");
   /** Attempt whose link is mid-update, so only that row's button shows a pending state. */
   const [togglingLinkId, setTogglingLinkId] = useState("");
   const [resettingId, setResettingId] = useState("");
+  const [expandedTestIds, setExpandedTestIds] = useState<Set<string>>(new Set());
   const [paperError, setPaperError] = useState("");
   /** The set whose overview is open. Replaces the old inline rename in the list. */
   const [setOverview, setSetOverview] = useState<QuestionSetOverview | null>(null);
@@ -325,13 +335,15 @@ export function ResearchCaptcha({ username }: { username: string }) {
           setSelectedModel(preferred);
           setModelSearch(preferred?.name ?? "");
         }
-        setTemplateStatus(
-          legacyDraft
-            ? "Updated the old starter configuration to the standard eight-question template."
-            : stored.draft
-              ? "Restored your last configuration."
-              : "Starting from the standard default template. Edit any setting below.",
-        );
+        if (legacyDraft) {
+          setTemplateStatus(
+            "Updated the old starter configuration to the standard eight-question template.",
+          );
+        } else if (!stored.draft) {
+          setTemplateStatus(
+            "Starting from the standard default template. Edit any setting below.",
+          );
+        }
       })
       .catch((caught) => {
         if (active) setError(caught instanceof Error ? caught.message : "Unable to initialize.");
@@ -446,13 +458,17 @@ export function ResearchCaptcha({ username }: { username: string }) {
   }
 
   const refreshCatalog = useCallback(async () => {
-    const [setsResult, attemptsResult, mineResult] = await Promise.allSettled([
+    const [setsResult, createdResult, attemptsResult, mineResult] = await Promise.allSettled([
       fetch("/api/question-sets").then((response) => response.json()),
+      fetch("/api/created-tests").then((response) => response.json()),
       fetch("/api/attempts").then((response) => response.json()),
       fetch("/api/attempts/mine").then((response) => response.json()),
     ]);
     if (setsResult.status === "fulfilled" && setsResult.value.sets) {
       setSavedSets(setsResult.value.sets as QuestionSetListEntry[]);
+    }
+    if (createdResult.status === "fulfilled" && createdResult.value.tests) {
+      setCreatedTests(createdResult.value.tests as CreatedTestEntry[]);
     }
     if (attemptsResult.status === "fulfilled" && attemptsResult.value.attempts) {
       setAttemptList(attemptsResult.value.attempts as AttemptListEntry[]);
@@ -478,15 +494,28 @@ export function ResearchCaptcha({ username }: { username: string }) {
     );
   }, [catalogSearch, savedSets]);
 
-  const visibleAttempts = useMemo(() => {
+  const visibleCreatedTests = useMemo(() => {
     const query = catalogSearch.trim().toLowerCase();
-    if (!query) return attemptList;
-    return attemptList.filter((entry) =>
-      [entry.setLabel, entry.paperName, entry.status, entry.id, entry.takerUsername ?? ""].some(
-        (field) => field.toLowerCase().includes(query),
-      ),
-    );
-  }, [catalogSearch, attemptList]);
+    if (!query) return createdTests;
+    return createdTests.filter((test) => {
+      const parentMatches = [test.name, test.modelId, test.workflowType, test.id].some((field) =>
+        field.toLowerCase().includes(query),
+      );
+      return (
+        parentMatches ||
+        test.attempts.some((entry) =>
+          [
+            entry.setLabel,
+            entry.paperName,
+            entry.status,
+            entry.id,
+            entry.takerUsername ?? "",
+          ].some((field) => field.toLowerCase().includes(query)),
+        )
+      );
+    });
+  }, [catalogSearch, createdTests]);
+
   const visibleMyAssessments = useMemo(() => {
     const query = catalogSearch.trim().toLowerCase();
     if (!query) return myAssessments;
@@ -497,7 +526,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
     );
   }, [catalogSearch, myAssessments]);
 
-  async function copyRecentAssessmentLink(set: QuestionSetListEntry) {
+  async function copyRecentAssessmentLink(set: Pick<QuestionSetListEntry, "id">) {
     setSharingSetId(set.id);
     setShareError("");
     try {
@@ -526,6 +555,114 @@ export function ResearchCaptcha({ username }: { username: string }) {
       );
     } finally {
       setSharingSetId("");
+    }
+  }
+
+  async function manageCreatedTestInvitation(test: CreatedTestEntry, revoke = false) {
+    setSharingSetId(test.id);
+    setShareError("");
+    try {
+      if (revoke) {
+        const response = await fetch(
+          `/api/templates/${encodeURIComponent(test.id)}/conference-share`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enabled: false }),
+          },
+        );
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? "Unable to revoke the invitation.");
+        setTemplates((current) =>
+          current.map((template) =>
+            template.id === test.id ? { ...template, conferenceShareToken: null } : template,
+          ),
+        );
+        setTemplateStatus("Conference invitation revoked.");
+        await refreshCatalog();
+        return;
+      }
+
+      let participantPath = test.invitationPath;
+      if (!participantPath) {
+        const endpoint =
+          test.workflowType === "course"
+            ? `/api/question-sets/${encodeURIComponent(test.id)}/share`
+            : `/api/templates/${encodeURIComponent(test.id)}/conference-share`;
+        const response = await fetch(endpoint, {
+          method: "POST",
+          ...(test.workflowType === "conference"
+            ? {
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ enabled: true }),
+              }
+            : {}),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? "Unable to create the invitation.");
+        participantPath = String(payload.participantPath ?? "");
+        if (!participantPath) throw new Error("The invitation link was not returned.");
+        if (test.workflowType === "conference") {
+          setTemplates((current) =>
+            current.map((template) =>
+              template.id === test.id
+                ? {
+                    ...template,
+                    conferenceShareToken: payload.conferenceShareToken ?? null,
+                  }
+                : template,
+            ),
+          );
+        }
+        await refreshCatalog();
+      }
+      await navigator.clipboard.writeText(
+        new URL(participantPath, window.location.origin).toString(),
+      );
+      setCopiedSetId(test.id);
+      window.setTimeout(() => setCopiedSetId(""), 2_000);
+    } catch (caught) {
+      setShareError(caught instanceof Error ? caught.message : "Unable to manage the invitation.");
+    } finally {
+      setSharingSetId("");
+    }
+  }
+
+  async function deleteCreatedTest(test: CreatedTestEntry) {
+    const count = test.attempts.length;
+    const consequence = count
+      ? `This also permanently deletes ${count} ${
+          count === 1 ? "attempt" : "attempts"
+        }, including every answer, grade, timing, and feedback entry.`
+      : "No attempts or response data are attached to it.";
+    if (
+      !window.confirm(
+        `Delete the ${test.workflowType} test “${test.name}”?\n\n${consequence}\n\nThis cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    setError("");
+    try {
+      const endpoint =
+        test.workflowType === "course"
+          ? `/api/question-sets/${encodeURIComponent(test.id)}`
+          : `/api/templates/${encodeURIComponent(test.id)}`;
+      const response = await fetch(endpoint, { method: "DELETE" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to delete the test.");
+      if (test.workflowType === "conference") {
+        setTemplates((current) => current.filter((template) => template.id !== test.id));
+        if (templateId === test.id) setTemplateId("");
+      }
+      setExpandedTestIds((current) => {
+        const next = new Set(current);
+        next.delete(test.id);
+        return next;
+      });
+      await refreshCatalog();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to delete the test.");
     }
   }
 
@@ -929,6 +1066,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
           name: setName,
           config,
           workflowType: "conference",
+          templateId: mode === "custom" ? templateId || undefined : undefined,
         }),
       });
       const payload = (await response.json()) as {
@@ -955,7 +1093,20 @@ export function ResearchCaptcha({ username }: { username: string }) {
   async function deleteTemplate() {
     const target = templates.find((one) => one.id === templateId);
     if (!target) return;
-    if (!window.confirm(`Delete the template “${target.name}”? This cannot be undone.`)) {
+    const createdTest = createdTests.find(
+      (test) => test.workflowType === "conference" && test.id === target.id,
+    );
+    const consequence =
+      target.workflowType === "conference" && createdTest?.attempts.length
+        ? ` This also permanently deletes its ${createdTest.attempts.length} ${
+            createdTest.attempts.length === 1 ? "attempt" : "attempts"
+          } and all associated manuscripts, answers, grades, timings, and feedback.`
+        : "";
+    if (
+      !window.confirm(
+        `Delete the template “${target.name}”?${consequence} This cannot be undone.`,
+      )
+    ) {
       return;
     }
     setError("");
@@ -968,6 +1119,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
       setTemplates((current) => current.filter((one) => one.id !== target.id));
       setTemplateId("");
       setTemplateStatus(`Deleted “${target.name}”. Your current setup is unchanged.`);
+      await refreshCatalog();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to delete the template.");
     }
@@ -1045,8 +1197,8 @@ export function ResearchCaptcha({ username }: { username: string }) {
       if (!response.ok) throw new Error(payload.error ?? "Unable to generate questions.");
       jobId = String(payload.jobId ?? "");
       if (!jobId) throw new Error("The generation job was not created.");
-      let attemptId = "";
-      while (!attemptId) {
+      let generationCompleted = false;
+      while (!generationCompleted) {
         await new Promise((resolve) => window.setTimeout(resolve, 1_000));
         const jobResponse = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);
         const jobPayload = await jobResponse.json();
@@ -1056,7 +1208,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
           progressCurrent: number;
           progressTotal: number;
           error?: string;
-          result?: { attemptId?: string };
+          result?: { questionSetId?: string };
         };
         setGenerationStatus(
           job.status === "running"
@@ -1065,8 +1217,10 @@ export function ResearchCaptcha({ username }: { username: string }) {
         );
         if (job.status === "failed") throw new Error(job.error ?? "Question generation failed.");
         if (job.status === "completed") {
-          attemptId = String(job.result?.attemptId ?? "");
-          if (!attemptId) throw new Error("Generation completed without an attempt.");
+          if (!job.result?.questionSetId) {
+            throw new Error("Generation completed without a question set.");
+          }
+          generationCompleted = true;
         }
       }
       await refreshCatalog();
@@ -1098,8 +1252,8 @@ export function ResearchCaptcha({ username }: { username: string }) {
       );
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to retry generation.");
-      let attemptId = "";
-      while (!attemptId) {
+      let generationCompleted = false;
+      while (!generationCompleted) {
         await new Promise((resolve) => window.setTimeout(resolve, 1_000));
         const jobResponse = await fetch(
           `/api/jobs/${encodeURIComponent(failedGenerationJobId)}`,
@@ -1109,12 +1263,14 @@ export function ResearchCaptcha({ username }: { username: string }) {
         const job = jobPayload.job as {
           status: string;
           error?: string;
-          result?: { attemptId?: string };
+          result?: { questionSetId?: string };
         };
         if (job.status === "failed") throw new Error(job.error ?? "Question generation failed.");
         if (job.status === "completed") {
-          attemptId = String(job.result?.attemptId ?? "");
-          if (!attemptId) throw new Error("Generation completed without an attempt.");
+          if (!job.result?.questionSetId) {
+            throw new Error("Generation completed without a question set.");
+          }
+          generationCompleted = true;
         }
       }
       await refreshCatalog();
@@ -1149,7 +1305,17 @@ export function ResearchCaptcha({ username }: { username: string }) {
     }
   }
 
-  if (result) return <ResultView result={result} onBack={exitToDashboard} />;
+  if (result) {
+    return (
+      <ResultView
+        result={result}
+        submittedFeedback={
+          outline?.attemptId === result.attemptId ? outline.examineeFeedback : null
+        }
+        onBack={exitToDashboard}
+      />
+    );
+  }
   if (intro) {
     return (
       <AttemptIntroPage
@@ -1228,13 +1394,13 @@ export function ResearchCaptcha({ username }: { username: string }) {
         <p className="lede">
           You can generate a question set from a paper in the &lsquo;New question set&rsquo; tab.
           Once you have generated a question set, copy the link on the right to share the exam
-          with someone. To see attempts completed on your exams, open the &lsquo;My tests&rsquo;
-          tab. You can also trigger grading of attempts from the My tests tab.
+          with someone. To see attempts completed on your exams, open the &lsquo;Tests I&apos;ve
+          Created&rsquo; tab.
         </p>
         <p className="lede">
-          The &lsquo;My assessments&rsquo; tab shows assessments you have taken. Return there to
-          continue an assessment, check whether it has been graded, or review your grades and
-          feedback once they are available.
+          The &lsquo;Tests I&apos;ve Taken&rsquo; tab shows assessments you have taken. Return
+          there to continue an assessment, check whether it has been graded, or review your
+          grades and feedback once they are available.
         </p>
       </section>
 
@@ -1288,7 +1454,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
               setAdvancedOpen(false);
             }}
           >
-            My tests
+            Tests I&apos;ve Created
           </button>
           <button
             type="button"
@@ -1298,7 +1464,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
               setAdvancedOpen(false);
             }}
           >
-            My assessments
+            Tests I&apos;ve Taken
           </button>
         </div>
         <div className="advanced-navigation">
@@ -1386,7 +1552,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
               <div className="field">
                 <label htmlFor="templateName">
                   Save current setup as
-                  <FieldHint text="Saving under a name that already exists replaces that template." />
+                  <FieldHint text="Test and template names must be unique within your account." />
                 </label>
                 <input
                   className="control"
@@ -1454,8 +1620,8 @@ export function ResearchCaptcha({ username }: { username: string }) {
               {mode === "load"
                 ? "Search saved sets"
                 : mode === "mine"
-                  ? "Search my assessments"
-                  : "Search attempts"}
+                  ? "Search tests I’ve taken"
+                  : "Search tests I’ve created"}
             </label>
             <input
               className="control"
@@ -1476,7 +1642,12 @@ export function ResearchCaptcha({ username }: { username: string }) {
                 ? `${savedSets.length} saved ${savedSets.length === 1 ? "set" : "sets"}`
                 : mode === "mine"
                   ? `${myAssessments.length} ${myAssessments.length === 1 ? "assessment" : "assessments"}`
-                  : `${attemptList.length} ${attemptList.length === 1 ? "attempt" : "attempts"} recorded`}
+                  : `${createdTests.length} ${
+                      createdTests.length === 1 ? "test" : "tests"
+                    } · ${createdTests.reduce(
+                      (total, test) => total + test.attempts.length,
+                      0,
+                    )} attempts`}
             </span>
             {mode === "resume" && (
               <button
@@ -1621,68 +1792,172 @@ export function ResearchCaptcha({ username }: { username: string }) {
                   {error}
                 </p>
               )}
+              {shareError && (
+                <p className="error" role="alert">
+                  {shareError}
+                </p>
+              )}
               <div className="catalog-list">
-                {visibleAttempts.length === 0 && (
+                {visibleCreatedTests.length === 0 && (
                   <p className="hint catalog-empty">
-                    {attemptList.length
-                      ? "No attempt matches that search."
-                      : "No attempts have been started yet."}
+                    {createdTests.length
+                      ? "No test or attempt matches that search."
+                      : "You have not created any tests yet."}
                   </p>
                 )}
-                {visibleAttempts.map((entry) => (
-                  <article className="catalog-row" key={entry.id}>
-                    <div className="catalog-main">
-                      <div className="catalog-title-row">
-                        <strong>{entry.setLabel}</strong>
-                        {entry.takerUsername && (
-                          <span className="pill">Taken by {entry.takerUsername}</span>
-                        )}
+                {visibleCreatedTests.map((test) => {
+                  const expanded = expandedTestIds.has(test.id);
+                  return (
+                    <article className="created-test" key={`${test.workflowType}:${test.id}`}>
+                      <div className="catalog-row created-test-parent">
+                        <div className="catalog-main">
+                          <div className="catalog-title-row">
+                            <strong>{test.name}</strong>
+                            <span className="pill">
+                              {test.workflowType === "course" ? "Course" : "Conference"}
+                            </span>
+                          </div>
+                          <span className="catalog-meta">
+                            {test.questionCount}{" "}
+                            {test.questionCount === 1 ? "question" : "questions"} ·{" "}
+                            {test.attempts.length}{" "}
+                            {test.attempts.length === 1 ? "attempt" : "attempts"} ·{" "}
+                            {test.modelId || "No model selected"} · created{" "}
+                            {new Date(test.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="catalog-actions">
+                          <button
+                            className="secondary"
+                            type="button"
+                            disabled={sharingSetId === test.id}
+                            onClick={() => void manageCreatedTestInvitation(test)}
+                          >
+                            {sharingSetId === test.id
+                              ? "Working…"
+                              : copiedSetId === test.id
+                                ? "Link copied"
+                                : test.invitationEnabled
+                                  ? "Copy invitation"
+                                  : "Create invitation"}
+                          </button>
+                          {test.workflowType === "conference" && test.invitationEnabled && (
+                            <button
+                              className="secondary"
+                              type="button"
+                              disabled={sharingSetId === test.id}
+                              onClick={() => void manageCreatedTestInvitation(test, true)}
+                            >
+                              Revoke invitation
+                            </button>
+                          )}
+                          {test.workflowType === "course" && (
+                            <button
+                              className="secondary"
+                              type="button"
+                              disabled={working}
+                              onClick={() => void showSetOverview(test.id)}
+                            >
+                              Overview
+                            </button>
+                          )}
+                          <button
+                            className="secondary danger"
+                            type="button"
+                            onClick={() => void deleteCreatedTest(test)}
+                          >
+                            Delete test
+                          </button>
+                          <button
+                            className="secondary"
+                            type="button"
+                            aria-expanded={expanded}
+                            onClick={() =>
+                              setExpandedTestIds((current) => {
+                                const next = new Set(current);
+                                if (next.has(test.id)) next.delete(test.id);
+                                else next.add(test.id);
+                                return next;
+                              })
+                            }
+                          >
+                            {expanded ? "Hide attempts" : "Show attempts"}
+                          </button>
+                        </div>
                       </div>
-                      <span className="catalog-meta">
-                        {entry.answeredCount} of {entry.totalQuestions} answered ·{" "}
-                        {entry.status === "graded"
-                          ? `graded${entry.score === null ? "" : ` at ${entry.score}%`}`
-                          : entry.status === "submitted"
-                            ? "awaiting evaluation"
-                            : "in progress"}
-                        {entry.randomize && " · randomized"} ·{" "}
-                        {new Date(entry.createdAt).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="catalog-actions">
-                      <button
-                        className="secondary danger"
-                        type="button"
-                        onClick={() => void deleteAttemptRow(entry)}
-                      >
-                        Delete
-                      </button>
-                      <button
-                        className="secondary"
-                        type="button"
-                        disabled={resettingId === entry.id}
-                        title="Clear this attempt's answers and run it again from the start. The question order is kept."
-                        onClick={() => void resetAttemptRow(entry)}
-                      >
-                        {resettingId === entry.id ? "Resetting…" : "Reset"}
-                      </button>
-                      <button
-                        className="primary"
-                        type="button"
-                        disabled={working}
-                        onClick={() => void openAttempt(entry.id)}
-                      >
-                        {entry.status === "graded"
-                          ? "Open"
-                          : entry.status === "submitted"
-                            ? "Evaluate"
-                          : entry.answeredCount
-                            ? "Resume"
-                            : "Open"}
-                      </button>
-                    </div>
-                  </article>
-                ))}
+                      {expanded && (
+                        <div className="created-test-attempts">
+                          {test.attempts.length === 0 ? (
+                            <p className="hint catalog-empty">
+                              No one has started this test yet. Copy the invitation to share it.
+                            </p>
+                          ) : (
+                            test.attempts.map((entry) => (
+                              <div className="catalog-row created-test-attempt" key={entry.id}>
+                                <div className="catalog-main">
+                                  <div className="catalog-title-row">
+                                    <strong>
+                                      {entry.takerUsername
+                                        ? `Attempt by ${entry.takerUsername}`
+                                        : "Creator attempt"}
+                                    </strong>
+                                    <span className="pill">
+                                      {entry.status === "graded"
+                                        ? `Graded${
+                                            entry.score === null ? "" : ` · ${entry.score}%`
+                                          }`
+                                        : entry.status === "submitted"
+                                          ? "Awaiting evaluation"
+                                          : "In progress"}
+                                    </span>
+                                  </div>
+                                  <span className="catalog-meta">
+                                    {entry.paperName} · {entry.answeredCount} of{" "}
+                                    {entry.totalQuestions} answered
+                                    {entry.randomize && " · randomized"} ·{" "}
+                                    {new Date(entry.createdAt).toLocaleString()}
+                                  </span>
+                                </div>
+                                <div className="catalog-actions">
+                                  <button
+                                    className="secondary danger"
+                                    type="button"
+                                    onClick={() => void deleteAttemptRow(entry)}
+                                  >
+                                    Delete attempt
+                                  </button>
+                                  <button
+                                    className="secondary"
+                                    type="button"
+                                    disabled={resettingId === entry.id}
+                                    title="Clear this attempt's answers and run it again from the start. The question order is kept."
+                                    onClick={() => void resetAttemptRow(entry)}
+                                  >
+                                    {resettingId === entry.id ? "Resetting…" : "Reset"}
+                                  </button>
+                                  <button
+                                    className="primary"
+                                    type="button"
+                                    disabled={working}
+                                    onClick={() => void openAttempt(entry.id)}
+                                  >
+                                    {entry.status === "graded"
+                                      ? "View report"
+                                      : entry.status === "submitted"
+                                        ? "Evaluate"
+                                        : entry.answeredCount
+                                          ? "Resume"
+                                          : "Open"}
+                                  </button>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
               </div>
             </>
           )}
