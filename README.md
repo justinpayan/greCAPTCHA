@@ -49,21 +49,24 @@ public demo.
 
 1. Create an account at `/signup` with a username and password, or return
    through `/login`.
-2. Upload a PDF and enter the contribution statement.
-3. Choose a model and PDF extractor, then configure question cards. Cards can
+2. Choose **Course** or **Conference** with the workflow control above the
+   dashboard tabs. The selection applies to both the default and custom-template
+   question-set forms.
+3. Upload a PDF and enter the contribution statement.
+4. Choose a model and PDF extractor, then configure question cards. Cards can
    be fill-in-the-blank, multiple-choice, or free response, with optional
    prompts, card names, warm-up status, and soft time limits.
-4. Select a course or conference workflow on the template. Course professors
-   connect an app-specific OAuth PKCE key once; conference examinees supply a
-   pasted or browser-managed PKCE key from the reusable conference link.
-5. Create an attempt from a saved set.
-6. Copy a reusable participant link. Each signed-in account receives one
+5. Course professors connect an app-specific OAuth PKCE key once; conference
+   examinees supply a pasted or browser-managed PKCE key from the reusable
+   conference link.
+6. Create an attempt from a saved set.
+7. Copy a reusable participant link. Each signed-in account receives one
    independent attempt for that question set.
-7. Submission starts grading immediately. Course grading uses the professor's
+8. Submission starts grading immediately. Course grading uses the professor's
    encrypted registered key. Conference grading asks the examinee to supply
    their key again. After the result appears, the examinee may submit one
    optional, immutable feedback comment for the assessor.
-8. Export responses with **Export all attempts as CSV**.
+9. Export responses with **Export all attempts as CSV**.
 
 The plan page is researcher-only and includes item descriptions and progress.
 The participant sees one question at a time plus a clickable overview of the

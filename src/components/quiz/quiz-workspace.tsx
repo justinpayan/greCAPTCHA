@@ -284,24 +284,12 @@ function ReviewTiming({
   return <p className="review-timing">{parts.join(" · ")}</p>;
 }
 
-/**
- * Score card plus the full answer review for one attempt, without a page around it.
- *
- * Separate from `ResultView` so a chained experiment run can stack both blocks' reviews on a
- * single reveal page instead of showing one and hiding the other.
- */
-export function ResultSections({
-  result,
-  label,
-}: {
-  result: AssessmentResult;
-  /** Names the block when more than one review is on the page. */
-  label?: string;
-}) {
+/** Score card plus the full answer review for one attempt, without a page around it. */
+function ResultSections({ result }: { result: AssessmentResult }) {
   return (
     <>
       <section className="card result neutral-result">
-        <p className="eyebrow">{label ?? "Assessment complete"}</p>
+        <p className="eyebrow">Assessment complete</p>
         <h1>Overall score</h1>
         {result.takerUsername && <p className="hint">Completed by {result.takerUsername}</p>}
         <div className="score-ring neutral-score">{result.overallScore}%</div>
@@ -721,20 +709,10 @@ export function PendingEvaluationView({
 export function QuizWorkspace({
   initialAttempt,
   collectFeedback = false,
-  onFinish,
   onBack,
 }: {
   initialAttempt: AttemptView;
   collectFeedback?: boolean;
-  /**
-   * Takes the graded result instead of this component showing it. A chained experiment run uses
-   * this to move straight into the next paper: the participant must not see a score, or an
-   * answer key, while a scored block is still ahead of them.
-   *
-   * Callers that swap in a new attempt afterwards must remount this component (key it by
-   * attempt ID) — the question, timer and answer state all initialise from props.
-   */
-  onFinish?: (result: AssessmentResult) => void;
   onBack?: () => void;
 }) {
   const [attempt, setAttempt] = useState(initialAttempt);
@@ -947,10 +925,7 @@ export function QuizWorkspace({
     return (
       <PendingEvaluationView
         attemptId={attempt.attemptId}
-        onResult={(graded) => {
-          if (onFinish) onFinish(graded);
-          else setResult(graded);
-        }}
+        onResult={setResult}
         onBack={onBack}
       />
     );
@@ -961,9 +936,6 @@ export function QuizWorkspace({
       <main className="app-shell">
       <header className="quiz-header sequential-header">
         <div>
-          {/* Server-chosen label: the real filename for a standalone attempt, "Paper 1"
-              or "Paper 2" inside an experiment, where a filename could reveal which
-              paper is the participant's own. */}
           <h1>{attempt.paperName}</h1>
         </div>
         <div className="sequence-status attempt-status">

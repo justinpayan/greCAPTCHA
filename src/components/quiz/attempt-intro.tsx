@@ -9,21 +9,16 @@ import type { AttemptIntro } from "@/lib/quiz";
  *
  * Nothing has been served when this is on screen, so the first question's clock has not
  * started; pressing Start is what begins it. That makes this more than a title card — it moves
- * the start of timing to a moment the participant chooses, instead of whenever the page
+ * the start of timing to a moment the examinee chooses, instead of whenever the page
  * happened to load or the laptop happened to be handed over.
  *
- * Participant-facing, and deliberately says very little. The paper is not named here: a
- * filename can hint at which of the two papers is the participant's own, which is exactly what
- * the study design must not reveal.
+ * Examinee-facing, and deliberately says very little.
  */
 export function AttemptIntroPage({
   intro,
-  blockProgress,
   onStart,
 }: {
   intro: AttemptIntro;
-  /** "Paper 2 of 2" during a chained experiment run. */
-  blockProgress?: { index: number; total: number };
   onStart: () => Promise<void> | void;
 }) {
   const [starting, setStarting] = useState(false);
@@ -43,12 +38,6 @@ export function AttemptIntroPage({
   return (
     <main className="app-shell">
       <section className="card intro-card">
-        {blockProgress && (
-          <p className="block-progress intro-block">
-            Paper {blockProgress.index} of {blockProgress.total}
-          </p>
-        )}
-
         <ul className="intro-facts">
           <li>
             {intro.totalQuestions} {intro.totalQuestions === 1 ? "question" : "questions"} in total.

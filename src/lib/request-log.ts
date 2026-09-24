@@ -22,7 +22,7 @@ function stamp() {
 export function logIncoming(method: string, pathname: string, outcome: string) {
   if (!requestLoggingOn) return;
   const redacted = pathname
-    .replace(/(\/(?:attempt|experiment)\/)[^/]+/g, "$1[id]")
+    .replace(/(\/attempt\/)[^/]+/g, "$1[id]")
     .replace(/(\/api\/(?:attempts|jobs|question-sets)\/)[^/]+/g, "$1[id]");
   console.log(`${stamp()}  in   ${method.padEnd(6)} ${redacted}  → ${outcome}`);
 }

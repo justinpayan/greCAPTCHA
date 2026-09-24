@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "tsc --noEmit",
+    "lint": "next typegen && tsc --noEmit",
     "test": "vitest run --exclude tests/live-openrouter.test.ts",
     "test:watch": "vitest",
     "test:live-openrouter": "vitest run tests/live-openrouter.test.ts",

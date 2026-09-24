@@ -9,7 +9,7 @@ function realFetch() {
   return fetcher;
 }
 
-deployed("serves the deployed app with authentication and security boundaries", async () => {
+deployed("serves course and conference workflows with authentication boundaries", async () => {
   const fetcher = realFetch();
   const health = await fetcher(`${baseUrl}/api/health`, { cache: "no-store" });
   expect(health.status).toBe(200);
@@ -30,6 +30,8 @@ deployed("serves the deployed app with authentication and security boundaries", 
 
   for (const path of [
     "/api/question-sets",
+    "/api/templates",
+    "/api/export/answers",
     "/api/openrouter/credential",
     "/api/conference/not-a-real-token",
     "/api/attempts/not-a-real-attempt/grade",

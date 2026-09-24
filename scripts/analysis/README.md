@@ -153,85 +153,6 @@ outlier points, and a three-item legend with per-box sample sizes. Its supplied
 layout omits the overall H2 p-value from the figure itself; that model result
 remains available in the analysis tables and PNG.
 
-### Participant condition scores and ROC
-
-Create an overlaid participant score plot and ROC curve directly from the
-repeated test-level `attempt_score` in the raw data:
-
-```powershell
-python scripts/analysis/plot_participant_attempt_scores.py research-captcha-answers-2026-09-10.csv --output-dir participant_attempt_score_plots
-```
-
-The dated ResearchCAPTCHA export schema is accepted directly: `condition` and
-`block_position` are normalized to the analysis names `paper_order` and
-`paper_position`. The input argument defaults to
-`research-captcha-answers-2026-09-10.csv`. The script uses condition directly:
-`own` is familiar and `foreign` is unfamiliar. It validates
-that each participant has exactly one eight-row test for each condition and
-that `attempt_score` is identical across all eight rows of each test.
-Standalone attempts with blank `participant_id` are excluded, as are rows
-marked as warm-up questions.
-
-The compact left panel uses separate Own and Unfamiliar x-axis columns with
-sample sizes in the tick labels. Blue circles and orange squares receive small
-horizontal jitter; open diamonds and colored segments show means and medians.
-The compact right panel shows the ROC curve and AUC. Native LaTeX uses
-`scale only axis`, 0.35-linewidth plotting rectangles, and a 0.16-linewidth
-gap, matching the manuscript layout.
-
-The right panel treats `foreign` as the positive class and uses
-`1 - attempt_score/100` as an unfamiliarity score, so larger decision scores
-indicate the positive class. It is titled
-`ROC: Predicting Unfamiliar Label with (1-score)` and plots the empirical ROC
-curve against the chance diagonal. The AUC is displayed in the panel and exported to
-`roc_auc.csv`; `roc_curve.csv` contains the plotted false-positive and
-true-positive rates. AUC is the probability that a randomly selected foreign
-test has a higher unfamiliarity score than a randomly selected own-paper test,
-with ties receiving half credit. It is descriptive and does not account for
-uncertainty from the paired participant design.
-
-The output root contains the PNG and native TikZ/PGFPlots figure,
-pseudonymized plotted data, condition summaries, ROC/AUC CSVs, accessibility
-text, and metadata. The LaTeX version requires `tikz`, `pgfplots`, the
-PGFPlots `groupplots` library, and the TikZ `calc` library.
-
-### Participant scores by question type
-
-Create the same overlaid familiar-versus-unfamiliar score and ROC layout
-separately for each question category:
-
-```powershell
-python scripts/analysis/plot_participant_question_type_scores.py research-captcha-answers-2026-09-10.csv --output-dir participant_question_type_score_plots
-```
-
-For each participant, condition, and category, the plotted score is the
-arithmetic mean of its two questions. Skipped and timed-out questions
-contribute zero. The script validates the eight-row test structure and the
-two-questions-per-category design before writing five separate PNG and native
-TikZ/PGFPlots figures: one per category and one pooled figure excluding
-Planted error. The new export columns `condition`, `block_position`, and
-`block_name` are normalized automatically; prefixed block labels such as
-`F1 planted error` are recognized. Each compact left panel uses separate Own
-and Unfamiliar columns with sample sizes in the tick labels, while the right
-panel shows the corresponding ROC and AUC. Standalone attempts with blank
-`participant_id` and warm-up rows are excluded before structural validation.
-
-Each right panel treats unfamiliar/foreign as positive and uses
-`1 - score_analysis/100` to plot its category-specific ROC curve and AUC. The
-combined ROC coordinates are exported to `roc_curves.csv`, and the four AUC
-values are exported to `roc_auc.csv`. That file also includes an
-`Overall excluding Planted error` row. For this analysis, each
-participant-condition score is the arithmetic mean of the six
-`score_analysis` values from Unstated rationale, Background knowledge, and
-Failure mode; skipped and timed-out questions remain zero. Its unfamiliarity
-score is `1 - mean_non_planted_score/100`, and its ROC coordinates are included
-in `roc_curves.csv`. Its write-up-ready PNG is
-`png/overall_excluding_planted_error_score_scatterplots.png`, with a matching
-native LaTeX file under `latex/`. The plotted participant-level values are
-exported to `participant_non_planted_scores.csv`. The output root also includes
-pseudonymized plotted data, condition summaries, accessible descriptions, and
-metadata.
-
 ### Authorship-evaluation prompt export
 
 Export each participant-paper test as one eight-question text prompt:
@@ -251,14 +172,10 @@ signals, red flags, lenient treatment of late blanks, probability anchors, and
 alternative-hypothesis sanity check.
 
 Question text is loaded from `question_sets.questions_json` in the
-ResearchCAPTCHA SQLite database. When the CSV contains `question_set_id` and
-`question_id`, those identifiers are used directly. For older exports without
-question identifiers, the script resolves each item through the participant's
-experiment attempt, condition, randomized position, and
-`attempts.question_order_json`. Existing prompt files are protected unless
-`--overwrite` is supplied. The generated `prompt_manifest.csv` maps each
-position-numbered prompt to its condition without putting that known condition
-inside the prompt.
+ResearchCAPTCHA SQLite database using `question_set_id` and `question_id`.
+Existing prompt files are protected unless `--overwrite` is supplied. The
+generated `prompt_manifest.csv` maps each position-numbered prompt to its
+source category without putting that category inside the prompt.
 
 ### OpenRouter authorship evaluation
 
@@ -659,24 +576,6 @@ For Overleaf, upload the generated `latex` directory and use:
 
 The generated fragments summarize the canonical mapping, sample/class counts,
 fixed effects, and model diagnostics.
-
-## Convert current answer exports
-
-Convert the current ResearchCAPTCHA export schema to the legacy
-`full_data_answers.csv` schema used by older analysis scripts:
-
-```powershell
-python scripts/analysis/convert_answer_export.py research-captcha-answers-2026-09-10.csv --output full_data_answers.csv
-```
-
-Both paths have those defaults and may be omitted. Add `--overwrite` to replace
-an existing output. The converter maps `condition` to `paper_order`,
-`block_position` to `paper_position`, and `foreign_stratum` to `field_type`;
-`out_of_field` is normalized to `out_field`. Canonical `question_target` values
-are derived from `block_name`, including prefixed labels such as
-`F1 planted error`. Standalone rows with blank participant IDs and warm-up rows
-are excluded. The output uses exactly the requested 21-column order and
-requires eight retained rows per participant-paper test.
 
 ## Descriptive distributions
 

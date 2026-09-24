@@ -594,6 +594,55 @@ textarea.control {
   font-size: 0.78rem;
 }
 
+.dashboard-workflow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--paper);
+}
+
+.dashboard-workflow .hint {
+  margin: 3px 0 0;
+}
+
+.workflow-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 4px;
+  background: white;
+}
+
+.workflow-toggle button {
+  display: grid;
+  gap: 2px;
+  border: 0;
+  border-radius: 7px;
+  padding: 8px 12px;
+  color: var(--muted);
+  background: transparent;
+  font-weight: 720;
+  text-align: left;
+}
+
+.workflow-toggle button small {
+  color: inherit;
+  font-size: 0.68rem;
+  font-weight: 560;
+}
+
+.workflow-toggle button.active {
+  color: white;
+  background: var(--green);
+}
+
 .dashboard-navigation {
   display: flex;
   align-items: stretch;
@@ -907,62 +956,6 @@ textarea.control {
   background: #fbf0db;
 }
 
-/* Experiments: a participant's paired own-paper and foreign-paper blocks. */
-.allocation-notice {
-  /* Bottom margin separates the notice from the paper pickers it is advising on. */
-  margin: 16px 0 20px;
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--green);
-  border-radius: 10px;
-  padding: 12px 14px;
-  background: var(--green-soft);
-  color: var(--ink);
-  font-size: 0.86rem;
-  line-height: 1.5;
-}
-
-.allocation-counts {
-  display: block;
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 0.76rem;
-}
-
-.experiment-create {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 18px;
-}
-
-.experiment-search {
-  margin-top: 26px;
-  padding-top: 22px;
-  border-top: 1px solid var(--line);
-}
-
-.experiment-card {
-  display: grid;
-  gap: 10px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 14px 16px;
-  background: white;
-}
-
-.experiment-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-
-.experiment-head .catalog-meta {
-  margin-right: auto;
-}
-
 /* Typeset math sits inside ordinary prose, headings and option buttons.
    The wrapper stays a plain inline span on purpose: giving it `display` or `overflow` would
    make it a scroll container, whose baseline is its bottom edge, dropping inline formulas
@@ -1022,10 +1015,6 @@ textarea.control {
   text-align: center;
 }
 
-.intro-block {
-  margin: 0;
-}
-
 .intro-facts {
   margin: 22px 0 28px;
   padding: 0;
@@ -1051,140 +1040,12 @@ textarea.control {
   font-size: 1rem;
 }
 
-/* Reveal page for a chained run: both blocks' scores before either review. */
-.session-summary {
-  text-align: center;
-}
-
-.session-scores {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 14px;
-  margin: 18px 0 6px;
-}
-
-.session-score {
-  display: grid;
-  gap: 4px;
-  min-width: min(100%, 240px);
-  flex: 1;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 16px 18px;
-  background: var(--paper);
-}
-
-.session-score strong {
-  font-size: 1.9rem;
-  font-weight: 780;
-  letter-spacing: -0.02em;
-}
-
-.session-score-label {
-  color: var(--green-dark);
-  font-size: 0.74rem;
-  font-weight: 780;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.session-score-meta {
-  color: var(--muted);
-  font-size: 0.76rem;
-}
-
-/* Which paper of the session this is. Never says which condition. */
-.block-progress {
-  color: var(--muted);
-  font-size: 0.74rem;
-  font-weight: 780;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-/* Monospaced so a 4-character code is easy to read out and to compare against a sheet. */
-.participant-id {
-  display: inline-flex;
-  align-items: baseline;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  color: var(--ink);
-}
-
-/* Body font and normal tracking, so the word reads as a label rather than part of the code. */
-.participant-id-label {
-  margin-right: 7px;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 0.72rem;
-  font-weight: 780;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.experiment-block {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 11px 13px;
-  background: var(--paper);
-}
-
-/* A block whose paper has not been chosen yet: dashed, so an unfinished experiment reads as
-   unfinished at a glance rather than looking like a row that failed to load. */
-.experiment-block.unassigned {
-  border-style: dashed;
-  background: white;
-}
-
-.unassigned-pill {
-  color: #7a4a11;
-  background: #fbf0db;
-}
-
-.assign-select {
-  min-width: min(100%, 220px);
-  min-height: 40px;
-  padding: 8px 12px;
-  font-size: 0.85rem;
-}
-
-.block-chip {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 6px;
-  padding: 3px 8px;
-  border: 1px solid var(--line);
-  background: white;
-  color: var(--muted);
-  font-size: 0.7rem;
-  font-weight: 780;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
 /* The plan header's right-hand column: identity above progress, both flush right. Kept as one
    grid child so the two-column header cannot spill onto an implicit row. */
 .summary-header-side {
   display: grid;
   justify-items: end;
   align-content: end;
-  gap: 10px;
-}
-
-.summary-experiment {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
   gap: 10px;
 }
 
@@ -1250,8 +1111,6 @@ textarea.control {
 .catalog-actions .primary,
 .catalog-actions .secondary,
 .catalog-toolbar .secondary,
-.experiment-head .primary,
-.experiment-head .secondary,
 .list-toolbar .secondary,
 .link-state-row .secondary {
   min-height: 40px;
@@ -2318,11 +2177,7 @@ button.option.selected {
 
 @media (max-width: 720px) {
   /* `minmax(0, 1fr)`, not `1fr`: a bare `1fr` track has an `auto` minimum, so it cannot shrink
-     below its content's min-content width. A select's min-content is its longest option, and the
-     experiment pickers list "pilot-vishisht-unfamiliar · 9 questions" — about 370px with the arrow
-     and padding, against 343px of page on a 375px phone. The column won, the document grew wider
-     than the viewport, and the browser shrank the whole page to fit: a gutter on the right and
-     smaller text, on that tab only. */
+     below its content's min-content width. */
   .form-grid,
   .quiz-header,
   .config-grid {
@@ -2338,10 +2193,6 @@ button.option.selected {
   .summary-header-side,
   .summary-header-side .sequence-status {
     justify-items: start;
-  }
-
-  .summary-experiment {
-    justify-content: flex-start;
   }
 
   .submit-row {
@@ -2370,6 +2221,16 @@ button.option.selected {
 
   .dashboard-navigation {
     flex-wrap: wrap;
+  }
+
+  .dashboard-workflow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .workflow-toggle {
+    grid-template-columns: 1fr;
+    width: 100%;
   }
 
   .mode-tabs {

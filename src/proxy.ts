@@ -29,9 +29,6 @@ export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const method = request.method;
 
-  if (pathname.startsWith("/experiment") || pathname.startsWith("/api/experiments")) {
-    return new NextResponse("Not found.", { status: 404 });
-  }
   if (ALWAYS_OPEN.has(pathname)) {
     logIncoming(method, pathname, "open");
     return NextResponse.next();

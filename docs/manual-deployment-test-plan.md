@@ -47,8 +47,9 @@ Remove the live-test variables afterward. Before deploying:
 
 ### Professor credential and template
 
-1. Sign in as the professor and create a **Course** template with one deterministic question
-   and one free-response question.
+1. Sign in as the professor, select **Course** in the workflow control above the dashboard tabs,
+   and confirm both question-set creation tabs show course credential controls. Create a template
+   with one deterministic question and one free-response question.
 2. Select **Connect professor OpenRouter account**. Complete OAuth/PKCE using a key with a small
    positive spending limit and near-term expiration.
 3. Try a key without a spending limit, without an expiration, and with exhausted credit.
@@ -83,8 +84,10 @@ Remove the live-test variables afterward. Before deploying:
 
 ### Reusable template link and examinee-funded generation
 
-1. As the assessor, create and save a **Conference** template, then select **Publish and copy
-   conference link**. Confirm the URL begins `/conference/`.
+1. As the assessor, select **Conference** in the workflow control above the dashboard tabs and
+   confirm both question-set creation tabs show conference key controls. Create and save a
+   template, then select **Publish and copy conference link**. Confirm the URL begins
+   `/conference/`.
 2. Open the link as examinee A. Upload a PDF and contribution statement.
 3. Generate once with a pasted OpenRouter key. Confirm the pasted field clears and the key is
    absent from SQLite, job JSON, logs, exports, and backups.
@@ -135,8 +138,11 @@ Test each case with a single Railway instance:
 
 ## Export, responsive UI, and final checks
 
-1. Test desktop and narrow mobile layouts for template workflow selection, both key panels,
-   `/take/` and `/conference/` pages, grading progress, results, feedback, and assessor reports.
+1. Test desktop and narrow mobile layouts for the global workflow control above the dashboard
+   tabs, both creation forms and key panels, `/take/` and `/conference/` pages, grading progress,
+   results, feedback, and assessor reports. Switch workflows with an incompatible saved template
+   selected and confirm the template selection clears; load a saved template and confirm the
+   global control changes to its workflow.
 2. Export assessor attempts. Confirm expected usernames, answers, `workflow_type`,
    `examinee_feedback`, and `examinee_feedback_submitted_at` are present.
 3. Confirm a second feedback POST returns 409 and no update endpoint exists.

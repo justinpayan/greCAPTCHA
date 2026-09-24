@@ -17,7 +17,6 @@ import {
 
 import { OpenRouterKeyPanel } from "@/components/openrouter-key-panel";
 import { ProfessorOpenRouterPanel } from "@/components/professor-openrouter-panel";
-import { ParticipantId } from "@/components/participant-id";
 import { SetOverview } from "@/components/set-overview";
 import {
   loadAttemptEntry,
@@ -27,20 +26,15 @@ import {
 import { AttemptIntroPage } from "@/components/quiz/attempt-intro";
 import { AttemptSummary } from "@/components/quiz/attempt-summary";
 import { QuizWorkspace, ResultView } from "@/components/quiz/quiz-workspace";
-import { SessionResults, type SessionBlock } from "@/components/quiz/session-results";
 import {
-  CONDITION_LABELS,
   DEFAULT_FILL_PROMPT,
   DEFAULT_FREE_RESPONSE_PROMPT,
   DEFAULT_MULTIPLE_CHOICE_PROMPT,
-  FOREIGN_STRATUM_LABELS,
   type AssessmentResult,
   type AttemptIntro,
   type AttemptListEntry,
   type AttemptOutline,
   type AttemptView,
-  type ExperimentAllocation,
-  type ExperimentListEntry,
   type QuestionSetListEntry,
   type QuestionSetOverview,
   type PdfEngine,
@@ -93,30 +87,6 @@ const BLOCK_LABELS: Record<QuestionBlockConfig["type"], string> = {
   multiple_choice: "Multiple choice",
   free_response: "Free response",
 };
-
-/**
- * Whether an experiment can be handed out as one chained link. Both blocks must be open: the
- * link walks straight from the first into the second, so a disabled second block would strand
- * the participant mid-session.
- */
-/**
- * Both blocks of an experiment in the order they will be asked, whether or not their paper has been
- * assigned yet. An unassigned block still has a position, because the order is allocated at
- * creation — which is what lets the card say which stratum of paper to go and find.
- */
-function experimentBlocks(entry: ExperimentListEntry) {
-  return (["own", "foreign"] as const)
-    .map((condition) => ({
-      condition,
-      position: (condition === "foreign") === entry.foreignFirst ? 1 : 2,
-      row: entry.attempts.find((attempt) => attempt.condition === condition),
-    }))
-    .sort((a, b) => a.position - b.position);
-}
-
-function bothLinksEnabled(entry: ExperimentListEntry) {
-  return entry.attempts.length === 2 && entry.attempts.every((row) => row.linkEnabled);
-}
 
 function newBlock(type: QuestionBlockConfig["type"]): QuestionBlockConfig {
   const id = crypto.randomUUID();
@@ -202,9 +172,9 @@ function CountdownToggle({
 }
 
 export function ResearchCaptcha({ username }: { username: string }) {
-  const [mode, setMode] = useState<
-    "default" | "custom" | "load" | "resume" | "mine" | "experiments"
-  >("default");
+  const [mode, setMode] = useState<"default" | "custom" | "load" | "resume" | "mine">(
+    "default",
+  );
   const [models, setModels] = useState<CatalogModel[]>(FEATURED_MODELS);
   const [defaultModel, setDefaultModel] = useState<CatalogModel | null>(FEATURED_MODELS[0]);
   const [defaultModelSearch, setDefaultModelSearch] = useState("");
@@ -261,34 +231,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
    * where a captured state value would be stale.
    */
   const layers = useRef<Array<"overview" | "outline" | "assessment">>([]);
-  const [experiments, setExperiments] = useState<ExperimentListEntry[]>([]);
-  const [allocation, setAllocation] = useState<ExperimentAllocation | null>(null);
-  const [ownSetId, setOwnSetId] = useState("");
-  const [foreignSetId, setForeignSetId] = useState("");
-  const [experimentSearch, setExperimentSearch] = useState("");
-  /** Set chosen in an unfilled block's picker, keyed by `experimentId:condition`. */
-  const [assignChoice, setAssignChoice] = useState<Record<string, string>>({});
-  const [assigningKey, setAssigningKey] = useState("");
-  /** Origin for participant links, from PUBLIC_BASE_URL; empty falls back to this origin. */
-  const [participantBaseUrl, setParticipantBaseUrl] = useState("");
-  /** Experiment whose session link was just copied, for the button's confirmation. */
-  const [copiedSessionId, setCopiedSessionId] = useState("");
-  /** Both blocks' reveal, shown once a chained run finishes. */
-  const [sessionResults, setSessionResults] = useState<{
-    participantId: string;
-    blocks: SessionBlock[];
-  } | null>(null);
-  /**
-   * The in-flight chained run. A ref, not state: it is read inside the callback handed to the
-   * workspace, where a captured state value would be stale by the time the block ends.
-   */
-  const chain = useRef<{
-    participantId: string;
-    remaining: Array<{ attemptId: string; label: string }>;
-    current: { attemptId: string; label: string } | null;
-    done: SessionBlock[];
-    total: number;
-  } | null>(null);
   const [templates, setTemplates] = useState<StudyTemplateSummary[]>([]);
   const [templateId, setTemplateId] = useState("");
   const [templateName, setTemplateName] = useState("");
@@ -543,31 +485,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
     );
   }, [catalogSearch, savedSets]);
 
-  /**
-   * The stratum the next experiment will get, repeated on the picker's own label. The notice
-   * above the pickers says the same thing, deliberately: this is the field where choosing the
-   * wrong paper actually costs something.
-   */
-  const stratumNote = !allocation
-    ? ""
-    : allocation.nextForeignStratum === "in_field"
-      ? "use an in-field paper"
-      : allocation.nextForeignStratum === "out_of_field"
-        ? "use an out-of-field paper"
-        : "in-field or out-of-field";
-
-  const visibleExperiments = useMemo(() => {
-    const query = experimentSearch.trim().toLowerCase();
-    if (!query) return experiments;
-    return experiments.filter((entry) =>
-      [
-        entry.participantId,
-        FOREIGN_STRATUM_LABELS[entry.foreignStratum],
-        ...entry.attempts.flatMap((row) => [row.setLabel, row.paperName]),
-      ].some((field) => field.toLowerCase().includes(query)),
-    );
-  }, [experimentSearch, experiments]);
-
   const visibleAttempts = useMemo(() => {
     const query = catalogSearch.trim().toLowerCase();
     if (!query) return attemptList;
@@ -698,8 +615,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
    * The confirmation spells out what is destroyed rather than asking a bare "are you sure",
    * because none of it is recoverable and a graded attempt loses a whole session's data. It also
    * says what is *kept* — the link and the question order — since that is the reason to reset
-   * rather than delete, and the only route back for an experiment block, which cannot be deleted
-   * on its own.
+   * rather than delete.
    */
   async function resetAttemptRow(row: {
     id: string;
@@ -755,132 +671,11 @@ export function ResearchCaptcha({ username }: { username: string }) {
       setAttemptList((current) =>
         current.map((row) => (row.id === entry.id ? { ...row, linkEnabled } : row)),
       );
-      setExperiments((current) =>
-        current.map((experiment) => ({
-          ...experiment,
-          attempts: experiment.attempts.map((row) =>
-            row.attemptId === entry.id ? { ...row, linkEnabled } : row,
-          ),
-        })),
-      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to update the link.");
     } finally {
       setTogglingLinkId("");
     }
-  }
-
-  /** Attaches a paper to an unfilled block, which creates that block's attempt. */
-  async function assignPaper(
-    entry: ExperimentListEntry,
-    condition: "own" | "foreign",
-    questionSetId: string,
-  ) {
-    const key = `${entry.id}:${condition}`;
-    setAssigningKey(key);
-    setError("");
-    try {
-      const response = await fetch(`/api/experiments/${encodeURIComponent(entry.id)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ condition, questionSetId }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "Unable to assign the paper.");
-      setAssignChoice((current) => ({ ...current, [key]: "" }));
-      await refreshCatalog();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to assign the paper.");
-    } finally {
-      setAssigningKey("");
-    }
-  }
-
-  /**
-   * Copies the chained link for an experiment: one URL that runs both blocks in order.
-   *
-   * Only offered once both blocks' links are enabled. A chained link that runs into a disabled
-   * block leaves the participant stranded on a "not open yet" page halfway through a session,
-   * which is worse than not handing out the link at all.
-   */
-  async function copySessionLink(entry: ExperimentListEntry) {
-    const origin = participantBaseUrl || window.location.origin;
-    const link = `${origin}/experiment/${entry.id}`;
-    setError("");
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopiedSessionId(entry.id);
-      window.setTimeout(() => setCopiedSessionId(""), 2000);
-    } catch {
-      setError(`Could not copy automatically. The session link is ${link}`);
-    }
-  }
-
-  /**
-   * Runs an experiment's blocks back to back.
-   *
-   * The queue lives in a ref rather than in state: it is read from inside a callback handed to
-   * the workspace, and a ref cannot go stale between the render that created that callback and
-   * the moment the block finishes.
-   */
-  async function runExperiment(entry: ExperimentListEntry) {
-    const ordered = [...entry.attempts].sort((a, b) => a.blockPosition - b.blockPosition);
-    chain.current = {
-      participantId: entry.participantId,
-      remaining: ordered.map((row) => ({
-        attemptId: row.attemptId,
-        label: `Block ${row.blockPosition} · ${CONDITION_LABELS[row.condition]}`,
-      })),
-      current: null,
-      done: [],
-      total: ordered.length,
-    };
-    setWorking(true);
-    setError("");
-    try {
-      await openNextBlock();
-    } catch (caught) {
-      chain.current = null;
-      setError(caught instanceof Error ? caught.message : "Unable to start the experiment.");
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  /**
-   * Opens the next block that still needs answering, on its landing page. A block that is
-   * already graded is collected and stepped over, so the button resumes a half-finished session
-   * and doubles as the reveal for one that is complete.
-   */
-  async function openNextBlock() {
-    const session = chain.current;
-    if (!session) return;
-
-    while (session.remaining.length > 0) {
-      const next = session.remaining[0];
-      const entry = await loadAttemptEntry(next.attemptId);
-      if (entry.kind === "closed") throw new Error(entry.message);
-
-      session.remaining.shift();
-      if (entry.kind === "result") {
-        session.done.push({ label: next.label, result: entry.result });
-        continue;
-      }
-      // Held so the finished block can be labelled once it is graded.
-      session.current = next;
-      showEntry(entry);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      return;
-    }
-
-    // Every block is graded: show the whole session's reveal. Still the assessment layer, so
-    // Back leaves for the dashboard rather than returning to a block that is over.
-    pushLayer("assessment");
-    setAttempt(null);
-    setIntro(null);
-    setSessionResults({ participantId: session.participantId, blocks: session.done });
-    chain.current = null;
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   /** Shows whichever screen an attempt is due: its landing page, or the current question. */
@@ -923,82 +718,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  /** A block finished. Its result is held back and the next paper starts immediately. */
-  async function advanceChain(graded: AssessmentResult) {
-    const session = chain.current;
-    if (!session) return setResult(graded);
-    session.done.push({ label: session.current?.label ?? "Assessment", result: graded });
-    session.current = null;
-    try {
-      await openNextBlock();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to open the next block.");
-    }
-  }
-
-  async function createExperiment() {
-    // Either paper may be left unset: the experiment reserves the participant ID and the
-    // allocation, and the banks are attached from the card as they are generated.
-    if (ownSetId && ownSetId === foreignSetId) {
-      setError("The own paper and the unfamiliar paper must be different question sets.");
-      return;
-    }
-    setWorking(true);
-    setError("");
-    try {
-      const response = await fetch("/api/experiments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ownQuestionSetId: ownSetId || null,
-          foreignQuestionSetId: foreignSetId || null,
-          randomize,
-          countdownHidden,
-        }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "Unable to create the experiment.");
-      setOwnSetId("");
-      setForeignSetId("");
-      await refreshCatalog();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to create the experiment.");
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  /**
-   * Deleting an experiment takes both attempts with it, so the confirmation counts the answers
-   * at stake rather than asking a bare "are you sure".
-   */
-  async function deleteExperimentRow(entry: ExperimentListEntry) {
-    const answers = entry.attempts.reduce((total, row) => total + row.answeredCount, 0);
-    const consequence = answers
-      ? `\n\nThis deletes both attempts and the ${answers} ${
-          answers === 1 ? "answer" : "answers"
-        } already submitted across them, with their timings.`
-      : "\n\nNeither attempt has any submitted answers, so no response data is affected.";
-    if (
-      !window.confirm(
-        `Delete the experiment for participant ${entry.participantId}?${consequence}\n\nThe two question sets are kept.\n\nThis cannot be undone.`,
-      )
-    ) {
-      return;
-    }
-    setError("");
-    try {
-      const response = await fetch(`/api/experiments/${encodeURIComponent(entry.id)}`, {
-        method: "DELETE",
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "Unable to delete the experiment.");
-      await refreshCatalog();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to delete the experiment.");
-    }
-  }
-
   /**
    * Records a screen opening on top of the dashboard.
    *
@@ -1025,8 +744,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
       setIntro(null);
       setAttempt(null);
       setResult(null);
-      setSessionResults(null);
-      chain.current = null;
     }
   }, []);
 
@@ -1145,6 +862,18 @@ export function ResearchCaptcha({ username }: { username: string }) {
     }
   }
 
+  function changeWorkflow(next: WorkflowType) {
+    if (next === workflowType) return;
+    const selected = templates.find((template) => template.id === templateId);
+    setWorkflowType(next);
+    if (selected && selected.workflowType !== next) {
+      setTemplateId("");
+      setTemplateStatus(
+        `Cleared “${selected.name}” because it uses the ${selected.workflowType} workflow.`,
+      );
+    }
+  }
+
   async function setConferenceSharing(enabled: boolean) {
     if (!templateId) return;
     setError("");
@@ -1172,7 +901,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
         ),
       );
       if (payload.participantPath) {
-        const origin = participantBaseUrl || window.location.origin;
+        const origin = window.location.origin;
         const link = `${origin}${payload.participantPath}`;
         await navigator.clipboard.writeText(link);
         setTemplateStatus("Conference link published and copied.");
@@ -1269,7 +998,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
     );
     form.set("name", setName);
     form.set("workflowType", workflowType);
-    if (templateId) form.set("sourceTemplateId", templateId);
+    if (mode === "custom" && templateId) form.set("sourceTemplateId", templateId);
     let jobId = "";
     try {
       if (workflowType === "conference") {
@@ -1397,25 +1126,11 @@ export function ResearchCaptcha({ username }: { username: string }) {
     }
   }
 
-  if (sessionResults) {
-    return (
-      <SessionResults
-        blocks={sessionResults.blocks}
-        participantId={sessionResults.participantId}
-        onDone={exitToDashboard}
-      />
-    );
-  }
   if (result) return <ResultView result={result} onBack={exitToDashboard} />;
   if (intro) {
     return (
       <AttemptIntroPage
         intro={intro}
-        blockProgress={
-          chain.current
-            ? { index: chain.current.done.length + 1, total: chain.current.total }
-            : undefined
-        }
         onStart={() => startFromIntro(intro.attemptId)}
       />
     );
@@ -1423,11 +1138,8 @@ export function ResearchCaptcha({ username }: { username: string }) {
   if (attempt) {
     return (
       <QuizWorkspace
-        // Keyed by attempt: a chained run swaps in the next block, and the question, timer
-        // and answer state all initialise from props, so it has to remount.
         key={attempt.attemptId}
         initialAttempt={attempt}
-        onFinish={chain.current ? (graded) => void advanceChain(graded) : undefined}
         onBack={exitToDashboard}
       />
     );
@@ -1505,6 +1217,34 @@ export function ResearchCaptcha({ username }: { username: string }) {
 
       <div className="dashboard-layout">
       <div className="dashboard-main">
+      <section className="dashboard-workflow" aria-labelledby="workflow-heading">
+        <div>
+          <span className="field-label" id="workflow-heading">Workflow</span>
+          <p className="hint">Choose who supplies the OpenRouter key for generation and grading.</p>
+        </div>
+        <div className="workflow-toggle" role="radiogroup" aria-label="Assessment workflow">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={workflowType === "course"}
+            className={workflowType === "course" ? "active" : ""}
+            onClick={() => changeWorkflow("course")}
+          >
+            Course
+            <small>Professor key · automatic grading</small>
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={workflowType === "conference"}
+            className={workflowType === "conference" ? "active" : ""}
+            onClick={() => changeWorkflow("conference")}
+          >
+            Conference
+            <small>Examinee supplies the key</small>
+          </button>
+        </div>
+      </section>
       <div className="dashboard-navigation">
         <div className="mode-tabs" role="tablist" aria-label="Dashboard section">
           <button
@@ -1596,18 +1336,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
           </div>
           <div className="template-controls">
             <div className="field">
-              <label htmlFor="workflowType">Workflow</label>
-              <select
-                className="control"
-                id="workflowType"
-                value={workflowType}
-                onChange={(event) => setWorkflowType(event.target.value as WorkflowType)}
-              >
-                <option value="course">Course — professor pays and grading is automatic</option>
-                <option value="conference">Conference — examinee supplies the key</option>
-              </select>
-            </div>
-            <div className="field">
               <label htmlFor="templatePicker">Saved templates</label>
               <select
                 className="control"
@@ -1686,313 +1414,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
         </section>
       )}
 
-      {mode === "experiments" ? (
-        <section className="card form-card">
-          <div className="section-heading">
-            <div>
-              <span className="field-label">New experiment</span>
-              <p className="hint">
-                Pairs one participant&apos;s own paper with an unfamiliar paper we chose for
-                them, as two attempts on one participant ID. Block order is counterbalanced
-                automatically, so both orderings stay evenly covered across participants.
-              </p>
-            </div>
-          </div>
-
-          {allocation && (
-            <p className="allocation-notice">
-              {allocation.nextForeignStratum ? (
-                <>
-                  Next unfamiliar paper should be{" "}
-                  <strong>
-                    {FOREIGN_STRATUM_LABELS[allocation.nextForeignStratum].toLowerCase()}
-                  </strong>{" "}
-                  — pick that paper&apos;s question set below.
-                </>
-              ) : (
-                <>
-                  Both field strata are level, so the next one is assigned at random. Either
-                  an in-field or an out-of-field unfamiliar paper is fine.
-                </>
-              )}{" "}
-              <span className="allocation-counts">
-                {allocation.counts.total}{" "}
-                {allocation.counts.total === 1 ? "experiment" : "experiments"} so far ·{" "}
-                {allocation.counts.inField} in-field / {allocation.counts.outOfField}{" "}
-                out-of-field · {allocation.counts.ownFirst} own-first /{" "}
-                {allocation.counts.foreignFirst} foreign-first
-              </span>
-            </p>
-          )}
-
-          <div className="form-grid">
-            <div className="field">
-              <label htmlFor="ownSet">
-                Own paper
-                <FieldHint text="The question set built from the manuscript this participant uploaded to us." />
-              </label>
-              <select
-                className="control"
-                id="ownSet"
-                value={ownSetId}
-                onChange={(event) => setOwnSetId(event.target.value)}
-              >
-                <option value="">
-                  {savedSets.length ? "Select a question set…" : "No question sets yet"}
-                </option>
-                {savedSets.map((set) => (
-                  <option key={set.id} value={set.id}>
-                    {set.label} · {set.questionCount} questions
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="foreignSet">
-                Unfamiliar paper
-                {stratumNote && <span className="label-note">{stratumNote}</span>}
-                <FieldHint text="The question set built from the unfamiliar paper we selected for this participant." />
-              </label>
-              <select
-                className="control"
-                id="foreignSet"
-                value={foreignSetId}
-                onChange={(event) => setForeignSetId(event.target.value)}
-              >
-                <option value="">
-                  {savedSets.length ? "Select a question set…" : "No question sets yet"}
-                </option>
-                {savedSets.map((set) => (
-                  <option key={set.id} value={set.id} disabled={set.id === ownSetId}>
-                    {set.label} · {set.questionCount} questions
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="toggle-group">
-            <label className="toggle-row">
-              <input
-                type="checkbox"
-                checked={randomize}
-                onChange={(event) => setRandomize(event.target.checked)}
-              />
-              Randomize question order within each block
-            </label>
-            <CountdownToggle hidden={countdownHidden} onChange={setCountdownHidden} />
-          </div>
-
-          {error && (
-            <p className="error" role="alert">
-              {error}
-            </p>
-          )}
-
-          <div className="experiment-create">
-            <span className="hint">
-              Both links are created disabled, so they can be sent out before the session. Either
-              paper may be left unset and assigned from the card once its bank exists.
-            </span>
-            <button
-              className="primary"
-              type="button"
-              disabled={working}
-              onClick={() => void createExperiment()}
-            >
-              {working ? "Creating…" : "Create experiment"}
-            </button>
-          </div>
-
-          <div className="field experiment-search">
-            <label htmlFor="experimentSearch">Search experiments</label>
-            <input
-              className="control"
-              id="experimentSearch"
-              value={experimentSearch}
-              placeholder="Filter by participant ID, paper, or stratum"
-              onChange={(event) => setExperimentSearch(event.target.value)}
-            />
-          </div>
-
-          <div className="catalog-list">
-            {visibleExperiments.length === 0 && (
-              <p className="hint catalog-empty">
-                {experiments.length
-                  ? "No experiment matches that search."
-                  : "No experiments have been created yet."}
-              </p>
-            )}
-            {visibleExperiments.map((entry) => (
-              <article className="experiment-card" key={entry.id}>
-                <div className="experiment-head">
-                  <ParticipantId id={entry.participantId} />
-                  <span className="pill">
-                    {FOREIGN_STRATUM_LABELS[entry.foreignStratum]} unfamiliar paper
-                  </span>
-                  <span className="catalog-meta">
-                    {entry.foreignFirst ? "unfamiliar paper first" : "own paper first"} ·{" "}
-                    {new Date(entry.createdAt).toLocaleString()}
-                  </span>
-                  <button
-                    className="secondary danger"
-                    type="button"
-                    onClick={() => void deleteExperimentRow(entry)}
-                  >
-                    Delete
-                  </button>
-                  <button
-                    className="secondary"
-                    type="button"
-                    disabled={!bothLinksEnabled(entry)}
-                    title={
-                      bothLinksEnabled(entry)
-                        ? "One link that runs both blocks in order"
-                        : "Enable both blocks' links first — a chained link cannot run into a disabled block"
-                    }
-                    onClick={() => void copySessionLink(entry)}
-                  >
-                    {copiedSessionId === entry.id ? "Link copied" : "Copy session link"}
-                  </button>
-                  <button
-                    className="primary"
-                    type="button"
-                    disabled={working || entry.attempts.length < 2}
-                    onClick={() => void runExperiment(entry)}
-                  >
-                    Run both blocks
-                  </button>
-                </div>
-                {experimentBlocks(entry).map(({ condition, position, row }) =>
-                  row ? (
-                  <div className="experiment-block" key={row.attemptId}>
-                    <div className="catalog-main">
-                      <div className="catalog-title-row">
-                        <span className="block-chip">Block {row.blockPosition}</span>
-                        <strong>{CONDITION_LABELS[row.condition]}</strong>
-                        <span
-                          className={`link-state ${row.linkEnabled ? "open" : "closed"}`}
-                        >
-                          {row.linkEnabled ? "Link enabled" : "Link disabled"}
-                        </span>
-                      </div>
-                      <span className="catalog-meta">
-                        {row.setLabel} · {row.answeredCount} of {row.totalQuestions} answered
-                        {row.status === "graded" &&
-                          ` · graded${row.score === null ? "" : ` at ${row.score}%`}`}
-                      </span>
-                    </div>
-                    <div className="catalog-actions">
-                      <button
-                        className="secondary"
-                        type="button"
-                        disabled={resettingId === row.attemptId}
-                        title="Clear this block's answers and run it again from the start. The link and the question order are kept."
-                        onClick={() =>
-                          void resetAttemptRow({
-                            id: row.attemptId,
-                            setLabel: row.setLabel,
-                            status: row.status,
-                            score: row.score,
-                            answeredCount: row.answeredCount,
-                            totalQuestions: row.totalQuestions,
-                          })
-                        }
-                      >
-                        {resettingId === row.attemptId ? "Resetting…" : "Reset"}
-                      </button>
-                      <button
-                        className={`secondary ${row.linkEnabled ? "danger" : ""}`}
-                        type="button"
-                        disabled={togglingLinkId === row.attemptId}
-                        onClick={() =>
-                          void toggleAttemptLink({
-                            id: row.attemptId,
-                            linkEnabled: row.linkEnabled,
-                          })
-                        }
-                      >
-                        {togglingLinkId === row.attemptId
-                          ? "Saving…"
-                          : row.linkEnabled
-                            ? "Disable link"
-                            : "Enable link"}
-                      </button>
-                      <button
-                        className="primary"
-                        type="button"
-                        disabled={working}
-                        onClick={() => void openAttempt(row.attemptId)}
-                      >
-                        {row.answeredCount && row.status !== "graded" ? "Resume" : "Open"}
-                      </button>
-                    </div>
-                  </div>
-                  ) : (
-                    // No paper yet: pick a bank and it becomes this block's attempt.
-                    <div className="experiment-block unassigned" key={`${entry.id}:${condition}`}>
-                      <div className="catalog-main">
-                        <div className="catalog-title-row">
-                          <span className="block-chip">Block {position}</span>
-                          <strong>{CONDITION_LABELS[condition]}</strong>
-                          <span className="pill unassigned-pill">No paper yet</span>
-                        </div>
-                        <span className="catalog-meta">
-                          Assign a question set to create this block. It inherits the
-                          experiment&apos;s own randomize and countdown settings, so both blocks run
-                          the same way.
-                        </span>
-                      </div>
-                      <div className="catalog-actions">
-                        <select
-                          className="control assign-select"
-                          value={assignChoice[`${entry.id}:${condition}`] ?? ""}
-                          onChange={(event) =>
-                            setAssignChoice((current) => ({
-                              ...current,
-                              [`${entry.id}:${condition}`]: event.target.value,
-                            }))
-                          }
-                        >
-                          <option value="">
-                            {savedSets.length ? "Select a question set…" : "No question sets yet"}
-                          </option>
-                          {savedSets.map((set) => (
-                            <option
-                              key={set.id}
-                              value={set.id}
-                              disabled={entry.attempts.some((a) => a.questionSetId === set.id)}
-                            >
-                              {set.label} · {set.questionCount} questions
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          className="primary"
-                          type="button"
-                          disabled={
-                            assigningKey === `${entry.id}:${condition}` ||
-                            !assignChoice[`${entry.id}:${condition}`]
-                          }
-                          onClick={() =>
-                            void assignPaper(
-                              entry,
-                              condition,
-                              assignChoice[`${entry.id}:${condition}`],
-                            )
-                          }
-                        >
-                          {assigningKey === `${entry.id}:${condition}` ? "Assigning…" : "Assign"}
-                        </button>
-                      </div>
-                    </div>
-                  ),
-                )}
-              </article>
-            ))}
-          </div>
-        </section>
-      ) : mode === "resume" || mode === "load" || mode === "mine" ? (
+      {mode === "resume" || mode === "load" || mode === "mine" ? (
         <section className="card form-card">
           <div className="field">
             <label htmlFor="catalogSearch">
@@ -2316,7 +1738,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
                   className="control"
                   id="contributions"
                   name="contributions"
-                  placeholder="Describe the experiments, theory, analysis, writing, or other work the claimed author has contributed..."
+                  placeholder="Describe the research, theory, analysis, writing, or other work the claimed author has contributed..."
                 />
               </div>
             </div>

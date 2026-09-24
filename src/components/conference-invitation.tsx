@@ -152,7 +152,7 @@ export function ConferenceInvitation({
               className="control"
               id="conference-contributions"
               name="contributions"
-              placeholder="Describe the experiments, theory, analysis, writing, or other work you contributed."
+              placeholder="Describe the research, theory, analysis, writing, or other work you contributed."
             />
           </div>
         </div>

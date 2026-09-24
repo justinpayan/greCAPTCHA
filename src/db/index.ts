@@ -44,16 +44,8 @@ withMigrationLock(absolutePath, () => {
   // SQLITE_BUSY rather than waiting when another connection is mid-open.
   sqlite.pragma("journal_mode = WAL");
 
-  /**
-   * Foreign keys are off for the migration window, and only for it.
-   *
-   * SQLite cannot relax a column constraint in place: the change is made by building a new table,
-   * copying the rows, dropping the old one and renaming. Dropping a table that another references —
-   * `attempts.experiment_id` here — is a foreign-key violation while enforcement is on, and the
-   * pragma cannot be changed from inside a transaction, which is what the migrator runs in.
-   * `defer_foreign_keys` does not help either: the implicit delete registers violations that a
-   * later rename does not clear, so the commit still fails.
-   */
+  // SQLite table-rebuild migrations may temporarily violate references, and the pragma cannot be
+  // changed from inside the transaction used by the migrator.
   sqlite.pragma("foreign_keys = OFF");
   try {
     migrate(db, { migrationsFolder: path.join(process.cwd(), "drizzle") });

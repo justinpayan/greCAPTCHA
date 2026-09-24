@@ -9,7 +9,6 @@ import {
   attemptAnswers,
   attemptFeedback,
   attempts,
-  experiments,
   questionSets,
   users,
 } from "@/db/schema";
@@ -172,7 +171,6 @@ async function createTakerAttemptIfNeeded(
       and(
         eq(attempts.questionSetId, set.id),
         eq(attempts.takerUserId, taker.id),
-        isNull(attempts.experimentId),
       ),
     )
     .orderBy(desc(attempts.createdAt))
@@ -190,7 +188,6 @@ async function createTakerAttemptIfNeeded(
       and(
         eq(attempts.questionSetId, set.id),
         eq(questionSets.ownerUserId, set.ownerUserId),
-        isNull(attempts.experimentId),
       ),
     )
     .orderBy(desc(attempts.createdAt))
@@ -250,36 +247,6 @@ export function attemptElapsedMs(
   );
 }
 
-/** Which block an experiment's attempt is, from its condition and the counterbalanced order. */
-function blockPosition(condition: string | null, foreignFirst: boolean) {
-  return (condition === "foreign") === foreignFirst ? 1 : 2;
-}
-
-/**
- * What to call an attempt's paper in anything the participant's browser receives.
- *
- * Inside an experiment it is "Paper 1" or "Paper 2" — never the filename, which can betray
- * which of the two papers is the participant's own. Withheld rather than merely hidden in the
- * markup, because a chained run hands the first block's graded result to the browser while the
- * second block is still ahead, where a network tab would be enough to read it.
- *
- * A standalone attempt keeps its real filename: with no second paper there is nothing to give
- * away, and the name is what makes the screen recognisable.
- */
-export async function attemptPaperLabel(
-  attempt: { experimentId: string | null; condition: string | null },
-  fallback: string,
-): Promise<string> {
-  if (!attempt.experimentId) return fallback;
-  const experiment = await db
-    .select({ foreignFirst: experiments.foreignFirst })
-    .from(experiments)
-    .where(eq(experiments.id, attempt.experimentId))
-    .get();
-  if (!experiment) return fallback;
-  return `Paper ${blockPosition(attempt.condition, experiment.foreignFirst)}`;
-}
-
 export async function getAttemptState(
   attemptId: string,
 ): Promise<{ attempt?: AttemptView; result?: AssessmentResult; pendingEvaluation?: boolean }> {
@@ -303,8 +270,6 @@ export async function getAttemptState(
     .where(eq(questionSets.id, attempt.questionSetId))
     .get();
   if (!set) throw new Error("Question set not found.");
-
-  const paperName = await attemptPaperLabel(attempt, set.paperName);
 
   const questions = JSON.parse(set.questionsJson) as StoredQuestion[];
   const questionById = new Map(questions.map((question) => [question.id, question]));
@@ -359,7 +324,7 @@ export async function getAttemptState(
     attempt: {
       attemptId,
       questionSetId: set.id,
-      paperName,
+      paperName: set.paperName,
       currentIndex: attempt.currentIndex,
       totalQuestions: order.length,
       question: toPublicQuestion(question),
@@ -482,13 +447,6 @@ export async function loadAttemptContext(attemptId: string) {
  */
 export async function getAttemptOutline(attemptId: string): Promise<AttemptOutline> {
   const quiz = await loadAttemptContextLoose(attemptId);
-  const experiment = quiz.attempt.experimentId
-    ? await db
-        .select()
-        .from(experiments)
-        .where(eq(experiments.id, quiz.attempt.experimentId))
-        .get()
-    : undefined;
   const answers = await db
     .select()
     .from(attemptAnswers)
@@ -532,15 +490,6 @@ export async function getAttemptOutline(attemptId: string): Promise<AttemptOutli
     workflowType: quiz.set.workflowType === "conference" ? "conference" : "course",
     status: quiz.attempt.status,
     linkEnabled: quiz.attempt.linkEnabled,
-    experiment: experiment
-      ? {
-          participantId: experiment.participantId,
-          condition: quiz.attempt.condition === "foreign" ? "foreign" : "own",
-          blockPosition: blockPosition(quiz.attempt.condition, experiment.foreignFirst),
-          foreignStratum:
-            experiment.foreignStratum === "out_of_field" ? "out_of_field" : "in_field",
-        }
-      : null,
     totalQuestions: items.length,
     answeredCount,
     scoredQuestionCount: items.filter((item) => !item.warmup).length,
@@ -639,7 +588,7 @@ export function buildResult(input: {
   });
 
   // Warm-ups are graded and reviewed but contribute nothing to the headline number, so a
-  // near-certain 100 cannot inflate the score or compress the between-condition gap.
+  // near-certain 100 cannot inflate the score.
   const scoredReviews = reviews.filter((review) => !review.warmup);
   const overallScore =
     scoredReviews.reduce((sum, review) => sum + review.score, 0) /

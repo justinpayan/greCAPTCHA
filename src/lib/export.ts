@@ -7,7 +7,6 @@ import {
   attemptAnswers,
   attemptFeedback,
   attempts,
-  experiments,
   questionSets,
 } from "@/db/schema";
 import { questionSetLabel } from "@/lib/catalog";
@@ -26,14 +25,6 @@ import { isWarmup, type StoredQuestion } from "@/lib/quiz";
  */
 const COLUMNS = [
   "attempt_id",
-  // Experiment fields, empty for a standalone attempt. `condition` and `block_position` are
-  // what make the §10 within-person analysis possible: Δ = score(own) − score(foreign) needs
-  // to know which attempt is which, and order effects need the block each one ran in.
-  "participant_id",
-  "experiment_id",
-  "condition",
-  "block_position",
-  "foreign_stratum",
   "question_set_id",
   "set_name",
   "paper_name",
@@ -132,14 +123,11 @@ export async function buildAnswerCsv(ownerUserId: string): Promise<string> {
       answer: attemptAnswers,
       attempt: attempts,
       set: questionSets,
-      experiment: experiments,
       examineeFeedback: attemptFeedback,
     })
     .from(attemptAnswers)
     .innerJoin(attempts, eq(attempts.id, attemptAnswers.attemptId))
     .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
-    // Left join: standalone attempts have no experiment and still belong in the export.
-    .leftJoin(experiments, eq(experiments.id, attempts.experimentId))
     .leftJoin(attemptFeedback, eq(attemptFeedback.attemptId, attempts.id))
     .where(eq(questionSets.ownerUserId, ownerUserId))
     .orderBy(asc(attempts.createdAt), asc(attemptAnswers.startedAt));
@@ -150,7 +138,7 @@ export async function buildAnswerCsv(ownerUserId: string): Promise<string> {
 
   const lines: string[] = [COLUMNS.join(",")];
 
-  for (const { answer, attempt, set, experiment, examineeFeedback } of rows) {
+  for (const { answer, attempt, set, examineeFeedback } of rows) {
     if (!questionCache.has(set.id)) {
       const parsed = parseJson<StoredQuestion[]>(set.questionsJson, []);
       questionCache.set(set.id, new Map(parsed.map((q) => [q.id, q])));
@@ -163,22 +151,9 @@ export async function buildAnswerCsv(ownerUserId: string): Promise<string> {
     const described = describeAnswer(question, answer.answerJson);
     const feedback = parseJson<{ feedback?: string }>(answer.feedbackJson, {}).feedback ?? "";
 
-    // Which block this attempt ran as, derived from the condition and the counterbalanced
-    // order rather than stored twice.
-    const blockPosition = experiment
-      ? (attempt.condition === "foreign") === experiment.foreignFirst
-        ? 1
-        : 2
-      : "";
-
     lines.push(
       [
         attempt.id,
-        experiment?.participantId ?? "",
-        experiment?.id ?? "",
-        attempt.condition ?? "",
-        blockPosition,
-        experiment?.foreignStratum ?? "",
         set.id,
         questionSetLabel(set.name, set.paperName),
         set.paperName,

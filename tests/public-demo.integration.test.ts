@@ -30,6 +30,7 @@ import {
 } from "@/lib/attempts";
 import { requireOpenAttempt } from "@/lib/attempt-access";
 import { getQuestionSetOverview, listTakerAttempts } from "@/lib/catalog";
+import { buildAnswerCsv } from "@/lib/export";
 import {
   enqueueGenerationJob,
   enqueueGradingJob,
@@ -360,6 +361,17 @@ describe("public demo account-to-grade flow", () => {
     expect(JSON.stringify(await db.select().from(openRouterCredentials))).not.toContain(
       "sk-or-professor-course-secret",
     );
+    const exportHeader = (await buildAnswerCsv(alice.id)).split(/\r?\n/, 1)[0].split(",");
+    expect(exportHeader).toEqual([
+      "attempt_id", "question_set_id", "set_name", "paper_name", "model_id",
+      "workflow_type", "attempt_status", "attempt_score", "randomize",
+      "countdown_hidden", "attempt_created_at", "attempt_completed_at", "position",
+      "question_id", "block_name", "question_type", "warmup", "time_limit_seconds",
+      "started_at", "first_interaction_at", "first_interaction_ms", "submitted_at",
+      "duration_ms", "overrun_ms", "score", "skipped", "timed_out", "response",
+      "correct_answer", "correct", "grader_feedback", "examinee_feedback",
+      "examinee_feedback_submitted_at",
+    ]);
     sessionState.token = await createAccountSession(bob.id);
     expect((await getAttemptState(attemptId)).result?.overallScore).toBe(100);
     sessionState.token = "";

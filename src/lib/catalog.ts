@@ -1,15 +1,14 @@
 import "server-only";
 
-import { and, count, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { db } from "@/db";
-import { attemptAnswers, attempts, experiments, jobs, questionSets } from "@/db/schema";
+import { attemptAnswers, attempts, jobs, questionSets } from "@/db/schema";
 import { deleteManuscript } from "@/lib/manuscripts";
 import {
   isWarmup,
   questionBlockName,
   questionTimeLimit,
-  type AttemptCondition,
   type AttemptListEntry,
   type QuestionSetListEntry,
   type QuestionSetOverview,
@@ -37,22 +36,6 @@ export async function listQuestionSets(ownerUserId: string): Promise<QuestionSet
     .groupBy(attempts.questionSetId);
   const countBySet = new Map(attemptCounts.map((row) => [row.questionSetId, row.total]));
 
-  // A set can be either paper of an experiment, so both columns count towards the total.
-  const experimentUses = await db
-    .select({
-      own: experiments.ownQuestionSetId,
-      foreign: experiments.foreignQuestionSetId,
-    })
-    .from(experiments);
-  const experimentsBySet = new Map<string, number>();
-  for (const use of experimentUses) {
-    // Either paper may be unassigned, and an experiment counts once per set it actually uses.
-    const used = new Set([use.own, use.foreign].filter((id): id is string => Boolean(id)));
-    for (const setId of used) {
-      experimentsBySet.set(setId, (experimentsBySet.get(setId) ?? 0) + 1);
-    }
-  }
-
   return sets.map((set) => ({
     id: set.id,
     name: set.name?.trim() ?? "",
@@ -61,7 +44,6 @@ export async function listQuestionSets(ownerUserId: string): Promise<QuestionSet
     modelId: set.modelId,
     questionCount: (JSON.parse(set.questionsJson) as StoredQuestion[]).length,
     attemptCount: countBySet.get(set.id) ?? 0,
-    experimentCount: experimentsBySet.get(set.id) ?? 0,
     createdAt: set.createdAt,
   }));
 }
@@ -82,12 +64,6 @@ export async function getQuestionSetOverview(id: string, ownerUserId: string): P
     .from(attempts)
     .where(eq(attempts.questionSetId, id))
     .get();
-  const experimentUses = await db
-    .select({ total: count() })
-    .from(experiments)
-    .where(or(eq(experiments.ownQuestionSetId, id), eq(experiments.foreignQuestionSetId, id)))
-    .get();
-
   const questions = JSON.parse(set.questionsJson) as StoredQuestion[];
   return {
     id: set.id,
@@ -98,7 +74,6 @@ export async function getQuestionSetOverview(id: string, ownerUserId: string): P
     pdfEngine: set.pdfEngine,
     overallTimeLimitSeconds: set.overallTimeLimitSeconds,
     attemptCount: attemptTotal?.total ?? 0,
-    experimentCount: experimentUses?.total ?? 0,
     createdAt: set.createdAt,
     items: questions.map((question, index) => ({
       position: index + 1,
@@ -182,25 +157,11 @@ export async function setQuestionSetOverallLimit(
  * attempts. `foreign_keys = ON` is set when the connection opens, so the cascade chains
  * from question_sets through attempts to attempt_answers.
  *
- * Refused while an experiment depends on the set. Deleting it would otherwise reach through
- * the experiment and take the *other* paper's attempt with it, which is far more destruction
- * than "delete this set" suggests.
  */
 export async function deleteQuestionSet(id: string, ownerUserId: string) {
   const owned = await db.select({ id: questionSets.id }).from(questionSets)
     .where(and(eq(questionSets.id, id), eq(questionSets.ownerUserId, ownerUserId))).get();
   if (!owned) throw new Error("Question set not found.");
-  const uses = await db
-    .select({ participantId: experiments.participantId })
-    .from(experiments)
-    .where(or(eq(experiments.ownQuestionSetId, id), eq(experiments.foreignQuestionSetId, id)));
-  if (uses.length > 0) {
-    const named = uses.map((use) => use.participantId).join(", ");
-    const plural = uses.length === 1;
-    throw new Error(
-      `This set is used by ${uses.length} experiment${plural ? "" : "s"} (participant${plural ? "" : "s"} ${named}). Delete ${plural ? "that experiment" : "those experiments"} first.`,
-    );
-  }
   const result = await db.delete(questionSets).where(and(eq(questionSets.id, id), eq(questionSets.ownerUserId, ownerUserId))).run();
   if (result.changes !== 1) throw new Error("Question set not found.");
   deleteManuscript(id);
@@ -233,22 +194,9 @@ export async function setAttemptLinkEnabled(id: string, enabled: boolean, ownerU
 /**
  * Deletes one attempt and its answers, leaving the question set intact.
  *
- * Refused for an attempt that belongs to an experiment: half a pair cannot answer the
- * within-person comparison the experiment exists for, so the pair is deleted as a unit.
  */
 export async function deleteAttempt(id: string, ownerUserId: string) {
   await requireOwnedAttempt(id, ownerUserId);
-  const attempt = await db
-    .select({ experimentId: attempts.experimentId })
-    .from(attempts)
-    .where(eq(attempts.id, id))
-    .get();
-  if (!attempt) throw new Error("Attempt not found.");
-  if (attempt.experimentId) {
-    throw new Error(
-      "This attempt is one block of an experiment. Delete the experiment instead, which removes both blocks.",
-    );
-  }
   const result = await db.delete(attempts).where(eq(attempts.id, id)).run();
   if (result.changes !== 1) throw new Error("Attempt not found.");
 }
@@ -259,8 +207,7 @@ export async function deleteAttempt(id: string, ownerUserId: string) {
  * Every answer row goes — responses, timings, first-interaction stamps, per-question scores and
  * grader feedback — along with the attempt's own grade. What survives is the attempt's identity:
  * the same ID, so a link already handed out still works, and the same question order, so a reset
- * is a clean re-run of the identical instrument rather than a new draw. That matters most inside
- * an experiment, where the other block has often already run against its own fixed order.
+ * is a clean re-run of the identical instrument rather than a new draw.
  *
  * A taker-assigned response remains available through the reusable set link after reset.
  *
@@ -336,15 +283,10 @@ export async function listAttempts(ownerUserId: string): Promise<AttemptListEntr
       completedAt: attempts.completedAt,
       setName: questionSets.name,
       paperName: questionSets.paperName,
-      condition: attempts.condition,
-      experimentId: attempts.experimentId,
       takerUsername: attempts.takerUsername,
-      participantId: experiments.participantId,
     })
     .from(attempts)
     .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
-    // Left join: most attempts are standalone and have no experiment.
-    .leftJoin(experiments, eq(experiments.id, attempts.experimentId))
     .where(eq(questionSets.ownerUserId, ownerUserId))
     .orderBy(desc(attempts.createdAt))
     .limit(LIST_LIMIT);
@@ -361,9 +303,7 @@ export async function listAttempts(ownerUserId: string): Promise<AttemptListEntr
     questionSetId: row.questionSetId,
     setLabel: questionSetLabel(row.setName, row.paperName),
     paperName: row.paperName,
-    participantId: row.participantId ?? null,
     takerUsername: row.takerUsername ?? null,
-    condition: (row.condition as AttemptCondition | null) ?? null,
     status: row.status,
     score: row.score,
     randomize: row.randomize,
@@ -389,14 +329,10 @@ export async function listTakerAttempts(takerUserId: string): Promise<AttemptLis
       completedAt: attempts.completedAt,
       setName: questionSets.name,
       paperName: questionSets.paperName,
-      condition: attempts.condition,
-      experimentId: attempts.experimentId,
       takerUsername: attempts.takerUsername,
-      participantId: experiments.participantId,
     })
     .from(attempts)
     .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
-    .leftJoin(experiments, eq(experiments.id, attempts.experimentId))
     .where(eq(attempts.takerUserId, takerUserId))
     .orderBy(desc(attempts.createdAt))
     .limit(LIST_LIMIT);
@@ -422,10 +358,8 @@ export async function listTakerAttempts(takerUserId: string): Promise<AttemptLis
     id: row.id,
     questionSetId: row.questionSetId,
     setLabel: questionSetLabel(row.setName, row.paperName),
-    paperName: row.experimentId ? "Assessment paper" : row.paperName,
-    participantId: row.participantId ?? null,
+    paperName: row.paperName,
     takerUsername: row.takerUsername ?? null,
-    condition: (row.condition as AttemptCondition | null) ?? null,
     status: evaluatingIds.has(row.id) ? "evaluating" : row.status,
     score: row.score,
     randomize: row.randomize,
