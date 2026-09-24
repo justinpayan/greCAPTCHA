@@ -4,8 +4,9 @@ import fs from "node:fs";
 import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
-import { attempts, questionSets } from "@/db/schema";
+import { attempts, conferenceSubmissions, questionSets } from "@/db/schema";
 import { createAttempt } from "@/lib/attempts";
+import { persistManuscript } from "@/lib/manuscripts";
 import {
   generateQuestionBlock,
   getOpenRouterModels,
@@ -21,6 +22,11 @@ import {
 
 export type GenerationJobPayload = {
   questionSetId: string;
+  questionSetOwnerUserId?: string;
+  sourceTemplateId?: string | null;
+  workflowType?: "course" | "conference";
+  conferenceSubmissionId?: string;
+  taker?: { id: string; username: string };
   filePath: string;
   fileName: string;
   setName: string;
@@ -39,6 +45,7 @@ export async function executeGeneration(
   apiKey: string,
   onProgress: (current: number, total: number) => Promise<void>,
 ) {
+  ownerUserId = payload.questionSetOwnerUserId ?? ownerUserId;
   const existingSet = await db
     .select({ id: questionSets.id })
     .from(questionSets)
@@ -91,9 +98,14 @@ export async function executeGeneration(
     await onProgress(index + 1, payload.blocks.length);
   }
 
+  // The job upload is temporary. Preserve the exact manuscript used for generation before the
+  // question set becomes visible, so every attempt can display the same source document.
+  persistManuscript(payload.filePath, payload.questionSetId);
   await db.insert(questionSets).values({
     id: payload.questionSetId,
     ownerUserId,
+    sourceTemplateId: payload.sourceTemplateId ?? null,
+    workflowType: payload.workflowType ?? "course",
     schemaVersion: 1,
     name: payload.setName || null,
     paperName: payload.fileName,
@@ -105,10 +117,23 @@ export async function executeGeneration(
     questionsJson: JSON.stringify(questions),
     createdAt: new Date().toISOString(),
   });
-  return createAttempt({
+  const created = await createAttempt({
     questionSetId: payload.questionSetId,
     ownerUserId,
     randomize: payload.randomize,
     countdownHidden: payload.countdownHidden,
+    taker: payload.taker,
   });
+  if (payload.conferenceSubmissionId) {
+    await db
+      .update(conferenceSubmissions)
+      .set({
+        questionSetId: payload.questionSetId,
+        attemptId: created.attemptId,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(conferenceSubmissions.id, payload.conferenceSubmissionId))
+      .run();
+  }
+  return created;
 }

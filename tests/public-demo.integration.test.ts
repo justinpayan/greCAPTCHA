@@ -13,7 +13,7 @@ vi.mock("next/headers", () => ({
 }));
 
 import { db } from "@/db";
-import { attempts, jobs, sessions, users } from "@/db/schema";
+import { attempts, jobs, openRouterCredentials, sessions, users } from "@/db/schema";
 import {
   accountForSession,
   authenticateAccount,
@@ -24,6 +24,7 @@ import {
 import {
   createQuestionSetShareLink,
   getAttemptState,
+  getAttemptOutline,
   getOrCreateTakerAttempt,
   loadAttemptContext,
 } from "@/lib/attempts";
@@ -32,14 +33,25 @@ import { getQuestionSetOverview, listTakerAttempts } from "@/lib/catalog";
 import {
   enqueueGenerationJob,
   enqueueGradingJob,
+  getConferenceJob,
   getAttemptGradingJob,
   getOwnedJob,
 } from "@/lib/jobs";
 import { clearJobKeys, registerJobKey, requireJobKey } from "@/lib/openrouter-key-store";
+import { saveOpenRouterCredential } from "@/lib/openrouter-credentials";
 import { setOpenRouterTransportForTests, validateOpenRouterKey } from "@/lib/openrouter";
 import type { QuestionBlockConfig } from "@/lib/quiz";
 import { POST as submitAnswer } from "@/app/api/attempts/[id]/answers/route";
+import { POST as navigateAttempt } from "@/app/api/attempts/[id]/navigate/route";
 import { POST as runEvaluation } from "@/app/api/attempts/[id]/outline/route";
+import { POST as submitAttempt } from "@/app/api/attempts/[id]/submit/route";
+import { POST as createConferenceAssessment } from "@/app/api/conference/[token]/route";
+import { POST as gradeConferenceAttempt } from "@/app/api/attempts/[id]/grade/route";
+import {
+  GET as getExamineeFeedback,
+  POST as submitExamineeFeedback,
+} from "@/app/api/attempts/[id]/feedback/route";
+import { saveTemplate, setConferenceTemplateSharing } from "@/lib/templates";
 
 let activeProviderCalls = 0;
 let maxProviderCalls = 0;
@@ -259,28 +271,70 @@ describe("public demo account-to-grade flow", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: "multiple_choice",
-          optionId: context.currentQuestion.correctOptionId,
+          questionId: context.currentQuestion.id,
+          answer: {
+            type: "multiple_choice",
+            optionId: context.currentQuestion.correctOptionId,
+          },
         }),
       }),
       { params: Promise.resolve({ id: attemptId }) },
     );
     expect(response.status).toBe(200);
 
+    response = await navigateAttempt(
+      new Request("http://localhost/api/navigate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ index: 1 }),
+      }),
+      { params: Promise.resolve({ id: attemptId }) },
+    );
+    expect(response.status).toBe(200);
     context = await loadAttemptContext(attemptId);
     if (context.currentQuestion.type !== "free_response") throw new Error("Expected free response.");
     response = await submitAnswer(
       new Request("http://localhost/api/answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "free_response", response: "The main contribution." }),
+        body: JSON.stringify({
+          questionId: context.currentQuestion.id,
+          answer: { type: "free_response", response: "The main contribution." },
+        }),
       }),
       { params: Promise.resolve({ id: attemptId }) },
     );
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ pendingEvaluation: true });
+
+    await saveOpenRouterCredential(alice.id, "sk-or-professor-course-secret");
+    response = await submitAttempt(
+      new Request("http://localhost/api/submit", { method: "POST" }),
+      { params: Promise.resolve({ id: attemptId }) },
+    );
+    expect(response.status).toBe(202);
+    const submitted = await response.json() as {
+      pendingEvaluation: boolean;
+      gradingCredentialRequired: boolean;
+      grading: { jobId: string };
+    };
+    expect(submitted).toMatchObject({
+      pendingEvaluation: true,
+      gradingCredentialRequired: false,
+    });
+    const queuedGrading = await db
+      .select()
+      .from(jobs)
+      .where(eq(jobs.id, submitted.grading.jobId))
+      .get();
+    expect(JSON.parse(queuedGrading?.payloadJson ?? "{}")).toMatchObject({
+      attemptId,
+      credentialOwnerUserId: alice.id,
+    });
+    // A course grading job resolves the encrypted professor credential at execution time and
+    // therefore does not depend on the process-local key map.
+    clearJobKeys();
     const pending = await db.select().from(attempts).where(eq(attempts.id, attemptId)).get();
-    expect(pending?.status).toBe("submitted");
+    expect(["submitted", "graded"]).toContain(pending?.status);
     expect((await listTakerAttempts(bob.id)).map((entry) => entry.id)).toContain(attemptId);
     expect((await listTakerAttempts(carol.id)).map((entry) => entry.id)).not.toContain(attemptId);
 
@@ -295,18 +349,7 @@ describe("public demo account-to-grade flow", () => {
     // Owner-only resources deliberately look nonexistent to other accounts.
     expect(denied.status).toBe(404);
 
-    sessionState.token = await createAccountSession(alice.id);
-    const evaluation = await runEvaluation(
-      new Request("http://localhost/api/attempts/evaluate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ openrouterApiKey: "sk-or-evaluation-secret", keySource: "paste" }),
-      }),
-      { params: Promise.resolve({ id: attemptId }) },
-    );
-    expect(evaluation.status).toBe(202);
-    const gradingRequest = (await evaluation.json()) as { jobId: string };
-    await waitForJob(gradingRequest.jobId, alice.id);
+    await waitForJob(submitted.grading.jobId, alice.id);
     const grading = await getAttemptGradingJob(attemptId);
     expect(grading.status).toBe("completed");
     expect((grading.result as { overallScore: number }).overallScore).toBe(100);
@@ -314,8 +357,174 @@ describe("public demo account-to-grade flow", () => {
     expect(claimed?.takerUserId).toBe(bob.id);
     expect(claimed?.takerUsername).toBe(bob.username);
     expect(JSON.stringify(await db.select().from(jobs))).not.toContain("sk-or-");
+    expect(JSON.stringify(await db.select().from(openRouterCredentials))).not.toContain(
+      "sk-or-professor-course-secret",
+    );
     sessionState.token = await createAccountSession(bob.id);
     expect((await getAttemptState(attemptId)).result?.overallScore).toBe(100);
+    sessionState.token = "";
+  });
+
+  it("runs the examinee-funded conference flow and locks post-grade feedback", async () => {
+    const [alice, bob, carol] = await Promise.all([
+      db.select().from(users).where(eq(users.usernameNormalized, "alice.test")).get(),
+      db.select().from(users).where(eq(users.usernameNormalized, "bob.test")).get(),
+      db.select().from(users).where(eq(users.usernameNormalized, "carol.test")).get(),
+    ]);
+    if (!alice || !bob || !carol) throw new Error("Account fixtures missing.");
+
+    const template = await saveTemplate(
+      alice.id,
+      "Conference author check",
+      {
+        modelId: "test/model",
+        pdfEngine: "native",
+        blocks,
+        randomize: false,
+        countdownHidden: false,
+        overallTimeLimitSeconds: null,
+      },
+      "conference",
+    );
+    const sharing = await setConferenceTemplateSharing(template.id, alice.id, true);
+    if (!sharing.conferenceShareToken) throw new Error("Conference token missing.");
+
+    sessionState.token = await createAccountSession(bob.id);
+    const form = new FormData();
+    form.set(
+      "paper",
+      new File([Buffer.from("%PDF-1.7 conference")], "conference.pdf", {
+        type: "application/pdf",
+      }),
+    );
+    form.set("contributions", "Designed and evaluated the method.");
+    form.set("openrouterApiKey", "sk-or-conference-generation-secret");
+    form.set("keySource", "paste");
+    const generationResponse = await createConferenceAssessment(
+      new Request("http://localhost/api/conference/token", {
+        method: "POST",
+        body: form,
+      }),
+      { params: Promise.resolve({ token: sharing.conferenceShareToken }) },
+    );
+    expect(generationResponse.status).toBe(202);
+    const generation = await generationResponse.json() as { jobId: string };
+    expect((await getConferenceJob(generation.jobId, bob.id)).status).toMatch(
+      /queued|running|completed/,
+    );
+    const generated = await waitForJob(generation.jobId, bob.id);
+    const attemptId = String(
+      (generated.result as { attemptId?: string } | null)?.attemptId ?? "",
+    );
+    expect(attemptId).toBeTruthy();
+
+    await getAttemptState(attemptId);
+    let context = await loadAttemptContext(attemptId);
+    if (context.currentQuestion.type !== "multiple_choice") throw new Error("Expected MC first.");
+    let response = await submitAnswer(
+      new Request("http://localhost/api/answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          questionId: context.currentQuestion.id,
+          answer: {
+            type: "multiple_choice",
+            optionId: context.currentQuestion.correctOptionId,
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: attemptId }) },
+    );
+    expect(response.status).toBe(200);
+    response = await navigateAttempt(
+      new Request("http://localhost/api/navigate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ index: 1 }),
+      }),
+      { params: Promise.resolve({ id: attemptId }) },
+    );
+    expect(response.status).toBe(200);
+    context = await loadAttemptContext(attemptId);
+    if (context.currentQuestion.type !== "free_response") throw new Error("Expected free response.");
+    response = await submitAnswer(
+      new Request("http://localhost/api/answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          questionId: context.currentQuestion.id,
+          answer: { type: "free_response", response: "The main contribution." },
+        }),
+      }),
+      { params: Promise.resolve({ id: attemptId }) },
+    );
+    expect(response.status).toBe(200);
+
+    const submitResponse = await submitAttempt(
+      new Request("http://localhost/api/submit", { method: "POST" }),
+      { params: Promise.resolve({ id: attemptId }) },
+    );
+    expect(submitResponse.status).toBe(202);
+    expect(await submitResponse.json()).toMatchObject({
+      pendingEvaluation: true,
+      gradingCredentialRequired: true,
+    });
+    expect((await getAttemptGradingJob(attemptId)).status).toBe("not_started");
+
+    const gradeResponse = await gradeConferenceAttempt(
+      new Request("http://localhost/api/attempts/grade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          openrouterApiKey: "sk-or-conference-grading-secret",
+          keySource: "paste",
+        }),
+      }),
+      { params: Promise.resolve({ id: attemptId }) },
+    );
+    expect(gradeResponse.status).toBe(202);
+    const grading = await gradeResponse.json() as { jobId: string };
+    await waitForJob(grading.jobId, alice.id);
+
+    const feedbackResponse = await submitExamineeFeedback(
+      new Request("http://localhost/api/attempts/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: "The grading explanation was clear." }),
+      }),
+      { params: Promise.resolve({ id: attemptId }) },
+    );
+    expect(feedbackResponse.status).toBe(200);
+    const duplicateFeedback = await submitExamineeFeedback(
+      new Request("http://localhost/api/attempts/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: "Changed feedback" }),
+      }),
+      { params: Promise.resolve({ id: attemptId }) },
+    );
+    expect(duplicateFeedback.status).toBe(409);
+    const storedFeedback = await getExamineeFeedback(
+      new Request("http://localhost/api/attempts/feedback"),
+      { params: Promise.resolve({ id: attemptId }) },
+    );
+    expect(await storedFeedback.json()).toMatchObject({
+      submitted: true,
+      feedback: { comment: "The grading explanation was clear." },
+    });
+    expect((await getAttemptOutline(attemptId)).examineeFeedback?.comment).toBe(
+      "The grading explanation was clear.",
+    );
+
+    sessionState.token = await createAccountSession(carol.id);
+    const deniedFeedback = await getExamineeFeedback(
+      new Request("http://localhost/api/attempts/feedback"),
+      { params: Promise.resolve({ id: attemptId }) },
+    );
+    expect(deniedFeedback.status).toBe(400);
+    expect(JSON.stringify(await db.select().from(jobs))).not.toContain(
+      "sk-or-conference",
+    );
     sessionState.token = "";
   });
 
@@ -353,8 +562,8 @@ describe("public demo account-to-grade flow", () => {
     if (accepted?.status === "fulfilled") await waitForJob(accepted.value.jobId, alice.id);
 
     const duplicate = await Promise.all([
-      enqueueGradingJob(aliceAttemptId, "sk-or-race-secret"),
-      enqueueGradingJob(aliceAttemptId, "sk-or-race-secret"),
+      enqueueGradingJob(aliceAttemptId, { apiKey: "sk-or-race-secret" }),
+      enqueueGradingJob(aliceAttemptId, { apiKey: "sk-or-race-secret" }),
     ]);
     expect(duplicate[0].jobId).toBe(duplicate[1].jobId);
     expect((await db.select().from(jobs).where(and(

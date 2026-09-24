@@ -22,8 +22,8 @@ If you use our work please cite it. A bibtex blurb is available [below](#please-
 
 ## Local setup
 
-Requirements: Node.js 20.9+. OpenRouter keys are supplied only when a user starts
-generation or evaluation; they are not part of account creation.
+Requirements: Node.js 20.9+. Set `OPENROUTER_CREDENTIAL_ENCRYPTION_KEY` to 32
+random base64-encoded bytes before connecting a professor OpenRouter account.
 
 ```bash
 npm install
@@ -53,27 +53,35 @@ public demo.
 3. Choose a model and PDF extractor, then configure question cards. Cards can
    be fill-in-the-blank, multiple-choice, or free response, with optional
    prompts, card names, warm-up status, and soft time limits.
-4. Paste an OpenRouter key for this generation or connect a browser-managed
-   OAuth PKCE key, then generate and review the question set.
+4. Select a course or conference workflow on the template. Course professors
+   connect an app-specific OAuth PKCE key once; conference examinees supply a
+   pasted or browser-managed PKCE key from the reusable conference link.
 5. Create an attempt from a saved set.
 6. Copy a reusable participant link. Each signed-in account receives one
    independent attempt for that question set.
-7. After a participant submits, open the attempt, provide an OpenRouter key,
-   and select **Run evaluation**. The participant can revisit it under
-   **My assessments** once the grade appears.
+7. Submission starts grading immediately. Course grading uses the professor's
+   encrypted registered key. Conference grading asks the examinee to supply
+   their key again. After the result appears, the examinee may submit one
+   optional, immutable feedback comment for the assessor.
 8. Export responses with **Export all attempts as CSV**.
 
 The plan page is researcher-only and includes item descriptions and progress.
-The participant sees only the current question. Submitted answers are locked;
-questions may be skipped, and skipped or timed-out items remain distinct from
-ordinary wrong answers in the review and export.
+The participant sees one question at a time plus a clickable overview of the
+entire assessment. Drafts autosave, participants may revisit any question, and
+answers are locked together only when the assessment is finally submitted.
+Skipped and timed-out items remain distinct from ordinary wrong answers in the
+review and export.
 
 ## Assessment behavior
 
-- A landing page appears before each question set. The first question's clock
-  starts only when the participant presses **Start**.
-- Per-question limits are soft: they record overruns but never cut off an
-  answer. An optional overall set limit is enforced server-side.
+- A landing page appears before each question set. Timing starts only when the
+  participant presses **Start**.
+- The taking screen shows only the optional overall set timer. It is enforced
+  server-side; when it expires, all autosaved drafts are submitted as-is and
+  genuinely unanswered questions are marked timed out.
+- **Previous**, **Next**, and the numbered overview can open any question.
+  **Submit assessment** finalizes all drafts, with a warning if any questions
+  remain unanswered.
 - Warm-up questions appear first and are excluded from the overall score.
 - Fill-in-the-blank and multiple-choice items are graded deterministically;
   free responses are graded in grouped model calls using their rubrics.
@@ -82,14 +90,13 @@ ordinary wrong answers in the review and export.
 ## Access and data
 
 Accounts use scrypt password hashes and revocable, opaque server-side sessions.
-OpenRouter keys are never stored by the server. A pasted or browser-managed key
-is sent over HTTPS only when generation or evaluation is requested, held in
-process memory for that job, and then discarded. OAuth PKCE keys are created
-and retained in browser storage; greCAPTCHA requires those keys to have a
-positive spending limit and future expiration date before use. Browser storage
-is accessible to scripts running on this origin, so use a trusted device and
-disconnect the key on shared computers. Each account can access only its own
-sets, templates, attempts, and exports.
+Conference examinee keys are never stored by the server. A pasted or
+browser-managed key is sent over HTTPS only for generation or grading, held in
+process memory for that job, and discarded. Professor OAuth PKCE keys are
+encrypted at rest with `OPENROUTER_CREDENTIAL_ENCRYPTION_KEY` so course
+submissions can be graded immediately even when the professor is offline.
+Every OAuth key must have a positive spending limit and future expiration date.
+Each account can access only its own sets, templates, attempts, and exports.
 Participant links are capability URLs, so treat them as sensitive. The server
 keeps API keys and answer keys private, and timing is recorded authoritatively
 on the server.
@@ -125,18 +132,20 @@ the replica count: SQLite and a Railway volume belong to one service instance.
    detects `railway.toml` and builds the included `Dockerfile`.
 2. Add a 1–5 GB volume mounted at `/app/data`.
 3. Set `DATABASE_URL=./data/public-grecaptcha.db`,
-   `BACKUP_DIR=./data/backups`, `RATE_LIMIT_SALT`, `PUBLIC_BASE_URL`, and the
-   optional limits shown in `.env.example`. Keep the salt stable across deployments.
+   `BACKUP_DIR=./data/backups`, `RATE_LIMIT_SALT`, `PUBLIC_BASE_URL`, and
+   `OPENROUTER_CREDENTIAL_ENCRYPTION_KEY`, plus the optional limits shown in
+   `.env.example`. Keep both the salt and encryption key stable across deployments;
+   replacing the encryption key makes registered professor credentials unreadable.
 4. Generate a Railway HTTPS domain or attach a custom domain, then set
    `PUBLIC_BASE_URL` to that exact `https://` origin.
 5. In the volume Backups tab, schedule daily, weekly, and monthly snapshots.
    Before a schema deployment, create and lock a manual snapshot.
 
 The `/api/health` readiness probe checks the database and volume directory.
-Question generation and free-response grading use SQLite-backed job metadata,
-but API keys exist only in the receiving Node process. Run one Railway instance.
-A restart interrupts active jobs and requires the owner to paste or reconnect a
-key and run them again. Two jobs run at once by default; adjust
+Question generation and free-response grading use SQLite-backed job metadata.
+A restart interrupts jobs using temporary conference keys, while course grading
+jobs resume from the encrypted professor credential. Run one Railway instance.
+Two jobs run at once by default; adjust
 `JOB_CONCURRENCY` between 1 and 4 only after checking memory and OpenRouter limits.
 
 Railway volume snapshots can be restored from the Backups tab. To take an
@@ -160,9 +169,10 @@ npm test
 npm run test:watch
 ```
 
-Tests cover account/session security, non-persistence of API keys, generation,
-manual evaluation, assessment stages, tenant isolation, duplicate job
-prevention, and bounded concurrent provider work.
+Tests cover account/session security, encrypted professor credentials, ephemeral
+conference keys, course auto-grading, conference examinee-funded grading,
+immutable feedback, generation, assessment stages, tenant isolation, duplicate
+job prevention, and bounded concurrent provider work.
 
 There is also an explicitly opt-in live grading smoke test. It is excluded from
 `npm test` and can spend OpenRouter credit. Set all three variables before
@@ -186,8 +196,8 @@ DEPLOYED_BASE_URL=https://your-domain.example
 npm run test:deployed
 ```
 
-This checks health, login redirection, protected API access, and key security
-headers without creating data. Then follow the
+This checks health, login redirection for both link types, redesigned protected
+API boundaries, and security headers without creating data. Then follow the
 [manual deployment test plan](docs/manual-deployment-test-plan.md) with separate
 evaluator and taker browser profiles.
 

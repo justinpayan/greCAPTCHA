@@ -3,7 +3,13 @@ import "server-only";
 import { asc, eq } from "drizzle-orm";
 
 import { db } from "@/db";
-import { attemptAnswers, attempts, experiments, questionSets } from "@/db/schema";
+import {
+  attemptAnswers,
+  attemptFeedback,
+  attempts,
+  experiments,
+  questionSets,
+} from "@/db/schema";
 import { questionSetLabel } from "@/lib/catalog";
 import { isWarmup, type StoredQuestion } from "@/lib/quiz";
 
@@ -32,6 +38,7 @@ const COLUMNS = [
   "set_name",
   "paper_name",
   "model_id",
+  "workflow_type",
   "attempt_status",
   "attempt_score",
   "randomize",
@@ -60,6 +67,8 @@ const COLUMNS = [
   "correct_answer",
   "correct",
   "grader_feedback",
+  "examinee_feedback",
+  "examinee_feedback_submitted_at",
 ] as const;
 
 /** RFC 4180 quoting: a field is quoted when it holds a quote, comma, or newline. */
@@ -124,12 +133,14 @@ export async function buildAnswerCsv(ownerUserId: string): Promise<string> {
       attempt: attempts,
       set: questionSets,
       experiment: experiments,
+      examineeFeedback: attemptFeedback,
     })
     .from(attemptAnswers)
     .innerJoin(attempts, eq(attempts.id, attemptAnswers.attemptId))
     .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
     // Left join: standalone attempts have no experiment and still belong in the export.
     .leftJoin(experiments, eq(experiments.id, attempts.experimentId))
+    .leftJoin(attemptFeedback, eq(attemptFeedback.attemptId, attempts.id))
     .where(eq(questionSets.ownerUserId, ownerUserId))
     .orderBy(asc(attempts.createdAt), asc(attemptAnswers.startedAt));
 
@@ -139,7 +150,7 @@ export async function buildAnswerCsv(ownerUserId: string): Promise<string> {
 
   const lines: string[] = [COLUMNS.join(",")];
 
-  for (const { answer, attempt, set, experiment } of rows) {
+  for (const { answer, attempt, set, experiment, examineeFeedback } of rows) {
     if (!questionCache.has(set.id)) {
       const parsed = parseJson<StoredQuestion[]>(set.questionsJson, []);
       questionCache.set(set.id, new Map(parsed.map((q) => [q.id, q])));
@@ -172,6 +183,7 @@ export async function buildAnswerCsv(ownerUserId: string): Promise<string> {
         questionSetLabel(set.name, set.paperName),
         set.paperName,
         set.modelId,
+        set.workflowType,
         attempt.status,
         attempt.score,
         attempt.randomize,
@@ -197,6 +209,8 @@ export async function buildAnswerCsv(ownerUserId: string): Promise<string> {
         described.correctAnswer,
         described.correct,
         feedback,
+        examineeFeedback?.comment ?? "",
+        examineeFeedback?.submittedAt ?? "",
       ]
         .map(csvField)
         .join(","),

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 
 import { db } from "@/db";
@@ -9,6 +9,7 @@ import {
   studyTemplateConfigSchema,
   type StudyTemplateConfig,
   type StudyTemplateSummary,
+  type WorkflowType,
 } from "@/lib/quiz";
 
 const DRAFT_KEY = "template_draft";
@@ -18,12 +19,14 @@ export async function listTemplates(ownerUserId: string): Promise<StudyTemplateS
     .select({
       id: studyTemplates.id,
       name: studyTemplates.name,
+      workflowType: studyTemplates.workflowType,
+      conferenceShareToken: studyTemplates.conferenceShareToken,
       updatedAt: studyTemplates.updatedAt,
     })
     .from(studyTemplates)
     .where(eq(studyTemplates.ownerUserId, ownerUserId))
     .orderBy(desc(studyTemplates.updatedAt));
-  return rows;
+  return rows as StudyTemplateSummary[];
 }
 
 export async function getTemplate(id: string, ownerUserId: string) {
@@ -36,13 +39,20 @@ export async function getTemplate(id: string, ownerUserId: string) {
   return {
     id: row.id,
     name: row.name,
+    workflowType: row.workflowType as WorkflowType,
+    conferenceShareToken: row.conferenceShareToken,
     updatedAt: row.updatedAt,
     config: studyTemplateConfigSchema.parse(JSON.parse(row.configJson)),
   };
 }
 
 /** Saving under an existing name replaces that template rather than creating a duplicate. */
-export async function saveTemplate(ownerUserId: string, name: string, config: StudyTemplateConfig) {
+export async function saveTemplate(
+  ownerUserId: string,
+  name: string,
+  config: StudyTemplateConfig,
+  workflowType: WorkflowType,
+) {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Give the template a name.");
   if (trimmed.length > 120) throw new Error("Template names are limited to 120 characters.");
@@ -58,17 +68,76 @@ export async function saveTemplate(ownerUserId: string, name: string, config: St
   if (existing) {
     await db
       .update(studyTemplates)
-      .set({ configJson, updatedAt: now })
+      .set({
+        configJson,
+        workflowType,
+        conferenceShareToken:
+          workflowType === "conference" ? existing.conferenceShareToken : null,
+        updatedAt: now,
+      })
       .where(eq(studyTemplates.id, existing.id))
       .run();
-    return { id: existing.id, name: trimmed, updatedAt: now };
+    return {
+      id: existing.id,
+      name: trimmed,
+      workflowType,
+      conferenceShareToken:
+        workflowType === "conference" ? existing.conferenceShareToken : null,
+      updatedAt: now,
+    };
   }
 
   const id = randomUUID();
   await db
     .insert(studyTemplates)
-    .values({ id, ownerUserId, name: trimmed, configJson, createdAt: now, updatedAt: now });
-  return { id, name: trimmed, updatedAt: now };
+    .values({
+      id,
+      ownerUserId,
+      name: trimmed,
+      workflowType,
+      configJson,
+      createdAt: now,
+      updatedAt: now,
+    });
+  return { id, name: trimmed, workflowType, conferenceShareToken: null, updatedAt: now };
+}
+
+export async function setConferenceTemplateSharing(
+  id: string,
+  ownerUserId: string,
+  enabled: boolean,
+) {
+  const template = await getTemplate(id, ownerUserId);
+  if (template.workflowType !== "conference") {
+    throw new Error("Only conference templates can publish an examinee link.");
+  }
+  const conferenceShareToken = enabled ? randomBytes(24).toString("base64url") : null;
+  await db
+    .update(studyTemplates)
+    .set({ conferenceShareToken, updatedAt: new Date().toISOString() })
+    .where(and(eq(studyTemplates.id, id), eq(studyTemplates.ownerUserId, ownerUserId)))
+    .run();
+  return { conferenceShareToken };
+}
+
+export async function getConferenceTemplateByToken(token: string) {
+  const row = await db
+    .select()
+    .from(studyTemplates)
+    .where(
+      and(
+        eq(studyTemplates.conferenceShareToken, token),
+        eq(studyTemplates.workflowType, "conference"),
+      ),
+    )
+    .get();
+  if (!row) throw new Error("Conference invitation not found.");
+  return {
+    id: row.id,
+    ownerUserId: row.ownerUserId,
+    name: row.name,
+    config: studyTemplateConfigSchema.parse(JSON.parse(row.configJson)),
+  };
 }
 
 export async function deleteTemplate(id: string, ownerUserId: string) {

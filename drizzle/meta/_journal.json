@@ -134,6 +134,13 @@
       "when": 1789758619507,
       "tag": "0018_true_toro",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1790277919742,
+      "tag": "0019_white_squadron_sinister",
+      "breakpoints": true
     }
   ]
 }

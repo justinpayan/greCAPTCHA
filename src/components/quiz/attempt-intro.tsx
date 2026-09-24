@@ -40,10 +40,6 @@ export function AttemptIntroPage({
     }
   }
 
-  // Only mentioned when a countdown will actually be visible. An attempt configured to hide it
-  // is meant not to make time salient, so advertising limits here would undo that.
-  const mentionTiming = intro.timedQuestionCount > 0 && !intro.countdownHidden;
-
   return (
     <main className="app-shell">
       <section className="card intro-card">
@@ -55,28 +51,22 @@ export function AttemptIntroPage({
 
         <ul className="intro-facts">
           <li>
-            {intro.totalQuestions} {intro.totalQuestions === 1 ? "question" : "questions"}, shown
-            one at a time.
+            {intro.totalQuestions} {intro.totalQuestions === 1 ? "question" : "questions"} in total.
+            Use the question overview to move between them at any time.
           </li>
           <li>
-            Each answer is locked once submitted, and you cannot return to an earlier question.
+            Your work saves automatically. You can skip a question and return to it before you
+            submit the assessment.
           </li>
-          {mentionTiming && (
-            <li>
-              Some questions show a soft time limit. Running over it is recorded, but nothing
-              cuts you off and nothing is taken away.
-            </li>
-          )}
           {intro.overallTimeLimitSeconds !== null && (
             <li>
               You have {Math.round(intro.overallTimeLimitSeconds / 60)} minutes for the whole set.
-              When that runs out the assessment ends and anything unanswered is left unanswered.
+              When time runs out, all saved work is submitted automatically as-is.
             </li>
           )}
           <li>
-            {mentionTiming
-              ? "Timing begins when you press Start, so take as long as you need on this page."
-              : "Nothing begins until you press Start, so take as long as you need on this page."}
+            Submit the assessment when you are finished. Nothing begins until you press Start, so
+            take as long as you need on this page.
           </li>
         </ul>
 

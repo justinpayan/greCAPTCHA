@@ -14,10 +14,9 @@ import type { AssessmentResult, AttemptIntro, AttemptView } from "@/lib/quiz";
 /**
  * Loads an attempt straight from its ID and hands it to the assessment interface.
  *
- * A fresh attempt opens on its landing page, so the first question's clock starts when the
+ * A fresh attempt opens on its landing page, so assessment timing starts when the
  * participant presses Start rather than when the link is opened. An attempt already under way
- * skips that and resumes at the current question with its timer intact, so a refresh never
- * loses the session or pretends the clock is not running.
+ * skips that and resumes at the last-opened question with its draft and overall timer intact.
  */
 export function ParticipantSession({ attemptId }: { attemptId: string }) {
   const [intro, setIntro] = useState<AttemptIntro | null>(null);
@@ -106,15 +105,31 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
   }
 
   if (result) {
-    return <ResultView result={result} onBack={() => { window.location.href = "/"; }} />;
+    return (
+      <ResultView
+        result={result}
+        collectFeedback
+        onBack={() => { window.location.href = "/"; }}
+      />
+    );
   }
   if (pendingEvaluation) {
-    return <PendingEvaluationView onBack={() => { window.location.href = "/"; }} />;
+    return (
+      <PendingEvaluationView
+        attemptId={attemptId}
+        onResult={(graded) => {
+          setPendingEvaluation(false);
+          setResult(graded);
+        }}
+        onBack={() => { window.location.href = "/"; }}
+      />
+    );
   }
   if (attempt) {
     return (
       <QuizWorkspace
         initialAttempt={attempt}
+        collectFeedback
         onBack={() => {
           window.location.href = "/";
         }}

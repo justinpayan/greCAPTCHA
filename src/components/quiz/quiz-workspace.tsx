@@ -13,13 +13,21 @@ import {
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 
 import { MathText } from "@/components/quiz/math-text";
-import type {
-  AssessmentResult,
-  AttemptView,
-  PublicFillQuestion,
-  PublicMultipleChoiceQuestion,
-  QuestionTiming,
-  QuizChoice,
+import { OpenRouterKeyPanel } from "@/components/openrouter-key-panel";
+import { PdfAssessmentSplit } from "@/components/quiz/pdf-assessment-split";
+import {
+  validateBrowserOpenRouterKey,
+  type KeySource,
+} from "@/lib/openrouter-browser-key";
+import {
+  draftHasAnswer,
+  type AssessmentResult,
+  type AttemptView,
+  type DraftAnswer,
+  type PublicFillQuestion,
+  type PublicMultipleChoiceQuestion,
+  type QuestionTiming,
+  type QuizChoice,
 } from "@/lib/quiz";
 
 const QUESTION_LABELS = {
@@ -211,37 +219,10 @@ function formatClock(durationMs: number) {
 }
 
 /**
- * Soft countdown. It reports the remaining time against the question's limit and keeps
- * counting once that limit passes; nothing about the attempt changes when it does. The
- * authoritative duration is measured on the server, so this display is informational.
- */
-function QuestionTimer({
-  elapsedMs,
-  timeLimitSeconds,
-}: {
-  elapsedMs: number;
-  timeLimitSeconds: number | null;
-}) {
-  if (timeLimitSeconds === null) {
-    return <div className="question-timer">{formatClock(elapsedMs)} elapsed</div>;
-  }
-  const remainingMs = timeLimitSeconds * 1000 - elapsedMs;
-  const over = remainingMs < 0;
-  return (
-    <div className={`question-timer ${over ? "over" : ""}`}>
-      {over
-        ? `${formatClock(-remainingMs)} over ${formatDuration(timeLimitSeconds * 1000)}`
-        : `${formatClock(remainingMs)} left of ${formatDuration(timeLimitSeconds * 1000)}`}
-    </div>
-  );
-}
-
-/**
  * Both clocks for the whole set: how long has been spent and how much is left.
  *
- * Only shown when a set carries an overall limit, since without one there is no remainder to
- * report. Unlike the per-question timer this budget is enforced, so reaching zero asks the server
- * to close the attempt — the server checks the budget itself and is free to disagree.
+ * Only shown when a set carries an overall limit. Reaching zero asks the server to close the
+ * attempt; the server checks the budget itself and is free to disagree.
  *
  * Elapsed is the sum of the time each question was open, not wall-clock, so it holds still while a
  * session is paused. That is the same figure the limit is enforced against, which is what keeps the
@@ -490,37 +471,243 @@ export function ResultSections({
 }
 
 /** Read-only review of one graded attempt, as its own page. */
-export function ResultView({
-  result,
-  onBack,
-}: {
-  result: AssessmentResult;
-  onBack?: () => void;
-}) {
+function ExamineeFeedbackForm({ attemptId }: { attemptId: string }) {
+  const [comment, setComment] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void fetch(`/api/attempts/${encodeURIComponent(attemptId)}/feedback`, {
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        const payload = (await response.json()) as {
+          submitted?: boolean;
+          feedback?: { comment?: string } | null;
+          error?: string;
+        };
+        if (!response.ok) throw new Error(payload.error ?? "Unable to load feedback.");
+        if (active) {
+          setSubmitted(payload.submitted === true);
+          setComment(payload.feedback?.comment ?? "");
+        }
+      })
+      .catch((caught) => {
+        if (active) {
+          setError(caught instanceof Error ? caught.message : "Unable to load feedback.");
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [attemptId]);
+
+  async function submit() {
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/attempts/${encodeURIComponent(attemptId)}/feedback`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ comment }),
+        },
+      );
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Unable to submit feedback.");
+      setSubmitted(true);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to submit feedback.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) return <p className="hint">Loading feedback form…</p>;
+  if (submitted) {
+    return (
+      <section className="card">
+        <p className="eyebrow">Feedback submitted</p>
+        <h2>Thank you for your feedback.</h2>
+        <p className="hint">Your response is locked and cannot be changed.</p>
+        {comment && <p>{comment}</p>}
+      </section>
+    );
+  }
   return (
-    <main className="app-shell">
-      {onBack && (
-        <div className="result-navigation">
-          <button className="secondary" type="button" onClick={onBack}>
-            Back to dashboard
-          </button>
-        </div>
-      )}
-      <ResultSections result={result} />
-    </main>
+    <section className="card form-card">
+      <p className="eyebrow">Examinee feedback</p>
+      <h2>Share feedback with the assessor</h2>
+      <p className="hint">
+        This optional comment can be submitted once. After submission it cannot be edited.
+      </p>
+      <textarea
+        className="control"
+        value={comment}
+        maxLength={10_000}
+        placeholder="Optional feedback about the assessment or grading"
+        onChange={(event) => setComment(event.target.value)}
+      />
+      {error && <p className="error" role="alert">{error}</p>}
+      <button className="primary" type="button" disabled={saving} onClick={() => void submit()}>
+        {saving ? "Submitting…" : comment.trim() ? "Submit feedback" : "Submit without comment"}
+      </button>
+    </section>
   );
 }
 
-export function PendingEvaluationView({ onBack }: { onBack?: () => void }) {
+export function ResultView({
+  result,
+  collectFeedback = false,
+  onBack,
+}: {
+  result: AssessmentResult;
+  collectFeedback?: boolean;
+  onBack?: () => void;
+}) {
+  return (
+    <PdfAssessmentSplit attemptId={result.attemptId} pdfLabel={result.paperName}>
+      <main className="app-shell">
+        {onBack && (
+          <div className="result-navigation">
+            <button className="secondary" type="button" onClick={onBack}>
+              Back to dashboard
+            </button>
+          </div>
+        )}
+        <ResultSections result={result} />
+        {collectFeedback && <ExamineeFeedbackForm attemptId={result.attemptId} />}
+      </main>
+    </PdfAssessmentSplit>
+  );
+}
+
+export function PendingEvaluationView({
+  attemptId,
+  onResult,
+  onBack,
+}: {
+  attemptId: string;
+  onResult: (result: AssessmentResult) => void;
+  onBack?: () => void;
+}) {
+  const [apiKey, setApiKey] = useState("");
+  const [keySource, setKeySource] = useState<KeySource>("paste");
+  const [credentialRequired, setCredentialRequired] = useState(false);
+  const [status, setStatus] = useState("Waiting for the evaluator…");
+  const [error, setError] = useState("");
+  const [submittingKey, setSubmittingKey] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    async function poll() {
+      try {
+        const response = await fetch(
+          `/api/attempts/${encodeURIComponent(attemptId)}/grading`,
+          { cache: "no-store" },
+        );
+        const payload = (await response.json()) as {
+          status?: string;
+          error?: string;
+          gradingCredentialRequired?: boolean;
+          result?: AssessmentResult;
+        };
+        if (!response.ok) throw new Error(payload.error ?? "Unable to check grading.");
+        if (!active) return;
+        if (payload.status === "completed" && payload.result) {
+          onResult(payload.result);
+          return;
+        }
+        setCredentialRequired(payload.gradingCredentialRequired === true);
+        setStatus(
+          payload.status === "running"
+            ? "Grading your assessment…"
+            : payload.status === "queued"
+              ? "Your assessment is queued for grading…"
+              : payload.status === "failed"
+                ? "Grading was interrupted. Supply your key again to retry."
+                : "Supply your OpenRouter key to grade this conference assessment.",
+        );
+        if (payload.status === "failed" && payload.error) setError(payload.error);
+      } catch (caught) {
+        if (active) {
+          setError(caught instanceof Error ? caught.message : "Unable to check grading.");
+        }
+      }
+    }
+    void poll();
+    const timer = window.setInterval(() => void poll(), 1_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [attemptId, onResult]);
+
+  async function submitGradingKey() {
+    setSubmittingKey(true);
+    setError("");
+    try {
+      const key =
+        keySource === "oauth" ? (await validateBrowserOpenRouterKey()).key : apiKey.trim();
+      if (!key) throw new Error("Enter or connect an OpenRouter API key.");
+      const response = await fetch(`/api/attempts/${encodeURIComponent(attemptId)}/grade`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ openrouterApiKey: key, keySource }),
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        result?: AssessmentResult;
+      };
+      if (!response.ok) throw new Error(payload.error ?? "Unable to start grading.");
+      if (keySource === "paste") setApiKey("");
+      setCredentialRequired(false);
+      setStatus("Your assessment is queued for grading…");
+      if (payload.result) onResult(payload.result);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to start grading.");
+    } finally {
+      setSubmittingKey(false);
+    }
+  }
+
   return (
     <main className="app-shell">
       <section className="card result neutral-result">
         <p className="eyebrow">Assessment submitted</p>
-        <h1>Your assessment has not been graded yet.</h1>
-        <p className="lede">
-          Please check back here later. The evaluator must run the evaluation before your score
-          and feedback appear.
-        </p>
+        <h1>{credentialRequired ? "Submit your key to grade the assessment." : status}</h1>
+        {credentialRequired && (
+          <>
+            <p className="lede">
+              As with generation, your key is used for this grading job and is not saved by
+              greCAPTCHA.
+            </p>
+            <OpenRouterKeyPanel
+              apiKey={apiKey}
+              source={keySource}
+              onChange={(key, source) => {
+                setApiKey(key);
+                setKeySource(source);
+              }}
+            />
+            <button
+              className="primary"
+              type="button"
+              disabled={submittingKey}
+              onClick={() => void submitGradingKey()}
+            >
+              {submittingKey ? "Starting grading…" : "Grade assessment"}
+            </button>
+          </>
+        )}
+        {error && <p className="error" role="alert">{error}</p>}
         {onBack && (
           <button className="primary" type="button" onClick={onBack}>
             Back to dashboard
@@ -533,10 +720,12 @@ export function PendingEvaluationView({ onBack }: { onBack?: () => void }) {
 
 export function QuizWorkspace({
   initialAttempt,
+  collectFeedback = false,
   onFinish,
   onBack,
 }: {
   initialAttempt: AttemptView;
+  collectFeedback?: boolean;
   /**
    * Takes the graded result instead of this component showing it. A chained experiment run uses
    * this to move straight into the next paper: the participant must not see a score, or an
@@ -549,17 +738,20 @@ export function QuizWorkspace({
   onBack?: () => void;
 }) {
   const [attempt, setAttempt] = useState(initialAttempt);
-  const [fillSelections, setFillSelections] = useState<FillSelections>({});
-  const [freeResponse, setFreeResponse] = useState("");
-  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<DraftAnswer>(initialAttempt.draft);
   const [submitting, setSubmitting] = useState(false);
+  const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
   const [error, setError] = useState("");
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [pendingEvaluation, setPendingEvaluation] = useState(false);
-  const [elapsedMs, setElapsedMs] = useState(initialAttempt.elapsedMs);
   const [overallElapsedMs, setOverallElapsedMs] = useState(initialAttempt.overallElapsedMs);
   const interactionReported = useRef(initialAttempt.firstInteractionRecorded);
   const timeoutFired = useRef(false);
+  const autosaveTimer = useRef<number | null>(null);
+  const saveChain = useRef<Promise<void>>(Promise.resolve());
+  const savedDraft = useRef(
+    JSON.stringify({ questionId: initialAttempt.question.id, answer: initialAttempt.draft }),
+  );
   const question = attempt.question;
   const overallLimitMs =
     attempt.overallTimeLimitSeconds === null ? null : attempt.overallTimeLimitSeconds * 1000;
@@ -569,14 +761,11 @@ export function QuizWorkspace({
     attempt.overallTimeLimitSeconds !== null && overallRemainingMs !== null
       ? { limitSeconds: attempt.overallTimeLimitSeconds, remainingMs: overallRemainingMs }
       : null;
-  const showClocks = overallClock !== null || !attempt.countdownHidden;
 
-  // The server tells us how long this question has already been open, so the display
-  // resumes correctly after a refresh instead of restarting at zero.
+  // The overall clock resumes from the server's active-time total after refresh/navigation.
   useEffect(() => {
-    const servedAt = Date.now() - attempt.elapsedMs;
-    const overallBase = attempt.overallElapsedMs - attempt.elapsedMs;
-    setElapsedMs(attempt.elapsedMs);
+    const servedAt = Date.now();
+    const overallBase = attempt.overallElapsedMs;
     setOverallElapsedMs(attempt.overallElapsedMs);
     interactionReported.current = attempt.firstInteractionRecorded;
     timeoutFired.current = false;
@@ -584,9 +773,7 @@ export function QuizWorkspace({
     // otherwise hiding the countdown would quietly disable the limit.
     if (attempt.countdownHidden && attempt.overallTimeLimitSeconds === null) return;
     const ticker = window.setInterval(() => {
-      const onThisQuestion = Date.now() - servedAt;
-      setElapsedMs(onThisQuestion);
-      setOverallElapsedMs(overallBase + onThisQuestion);
+      setOverallElapsedMs(overallBase + Date.now() - servedAt);
     }, 1000);
     return () => window.clearInterval(ticker);
   }, [attempt]);
@@ -606,10 +793,83 @@ export function QuizWorkspace({
     });
   }
 
+  function persistDraft(value: DraftAnswer = draft) {
+    const body = { questionId: attempt.question.id, answer: value };
+    const serialized = JSON.stringify(body);
+    if (serialized === savedDraft.current) return saveChain.current;
+    setSaveState("saving");
+    const request = saveChain.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (serialized === savedDraft.current) return;
+        const response = await fetch(`/api/attempts/${attempt.attemptId}/answers`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: serialized,
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? "Unable to save your answer.");
+        savedDraft.current = serialized;
+        setSaveState("saved");
+      })
+      .catch((caught) => {
+        setSaveState("error");
+        setError(caught instanceof Error ? caught.message : "Unable to save your answer.");
+        throw caught;
+      });
+    saveChain.current = request;
+    return request;
+  }
+
+  useEffect(() => {
+    if (autosaveTimer.current !== null) window.clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = window.setTimeout(() => {
+      void persistDraft().catch(() => undefined);
+    }, 500);
+    return () => {
+      if (autosaveTimer.current !== null) window.clearTimeout(autosaveTimer.current);
+    };
+    // Persisting is intentionally keyed to the current editor value and question.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, attempt.question.id]);
+
+  function loadAttempt(next: AttemptView) {
+    setAttempt(next);
+    setDraft(next.draft);
+    savedDraft.current = JSON.stringify({
+      questionId: next.question.id,
+      answer: next.draft,
+    });
+    setSaveState("saved");
+  }
+
+  async function goToQuestion(index: number) {
+    if (index === attempt.currentIndex || submitting) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      if (autosaveTimer.current !== null) window.clearTimeout(autosaveTimer.current);
+      await persistDraft();
+      const response = await fetch(`/api/attempts/${attempt.attemptId}/navigate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ index }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to open that question.");
+      if (payload.pendingEvaluation) setPendingEvaluation(true);
+      else if (payload.attempt) loadAttempt(payload.attempt as AttemptView);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to open that question.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   /**
-   * Fires once when the budget runs out. An answer already entered is submitted first, so the bell
-   * does not discard work; otherwise the server is asked to close the attempt. Guarded by a ref so
-   * a slow round trip cannot fire it twice.
+   * Fires once when the budget runs out. The current editor is flushed before the server locks
+   * every draft, so the bell preserves work that has not reached the debounce yet.
    */
   useEffect(() => {
     if (overallRemainingMs === null || overallRemainingMs > 0) return;
@@ -621,13 +881,11 @@ export function QuizWorkspace({
   }, [overallRemainingMs, submitting, result]);
 
   async function closeOnTimeout() {
-    if (answerComplete) {
-      await submitCurrentAnswer();
-      return;
-    }
     setSubmitting(true);
     setError("");
     try {
+      if (autosaveTimer.current !== null) window.clearTimeout(autosaveTimer.current);
+      await persistDraft();
       const response = await fetch(`/api/attempts/${attempt.attemptId}/timeout`, {
         method: "POST",
       });
@@ -637,7 +895,7 @@ export function QuizWorkspace({
         setPendingEvaluation(true);
       } else if (payload.attempt) {
         // The server disagreed that time was up; carry on from what it served.
-        setAttempt(payload.attempt as AttemptView);
+        loadAttempt(payload.attempt as AttemptView);
         timeoutFired.current = false;
       }
     } catch (caught) {
@@ -647,59 +905,60 @@ export function QuizWorkspace({
     }
   }
 
-  const answerComplete =
-    question.type === "fill_blank"
-      ? question.blankIds.every((blankId) => fillSelections[blankId])
-      : question.type === "multiple_choice"
-        ? selectedOptionId !== null
-        : freeResponse.trim().length > 0;
+  const localAnswered = draftHasAnswer(draft);
+  const answeredCount = attempt.questionProgress.filter((item, index) =>
+    index === attempt.currentIndex ? localAnswered : item.answered,
+  ).length;
 
-  /**
-   * Sends the current answer, or a skip. Both lock the question and advance, so they share one
-   * path: the only difference is the payload and that a skip needs no completed answer.
-   */
-  async function submitCurrentAnswer(skip = false) {
-    if (!skip && !answerComplete) return;
+  async function submitAssessment() {
+    const unanswered = attempt.totalQuestions - answeredCount;
+    if (
+      unanswered > 0 &&
+      !window.confirm(
+        `${unanswered} ${unanswered === 1 ? "question is" : "questions are"} unanswered. Submit anyway?`,
+      )
+    ) {
+      return;
+    }
     setSubmitting(true);
     setError("");
     try {
-      const answer = skip
-        ? { type: "skip" }
-        : question.type === "fill_blank"
-          ? { type: "fill_blank", selections: fillSelections }
-          : question.type === "multiple_choice"
-            ? { type: "multiple_choice", optionId: selectedOptionId }
-            : { type: "free_response", response: freeResponse };
-      const response = await fetch(`/api/attempts/${attempt.attemptId}/answers`, {
+      if (autosaveTimer.current !== null) window.clearTimeout(autosaveTimer.current);
+      await persistDraft();
+      const response = await fetch(`/api/attempts/${attempt.attemptId}/submit`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(answer),
       });
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload.error ?? (skip ? "Unable to skip." : "Unable to submit answer."));
+        throw new Error(payload.error ?? "Unable to submit assessment.");
       }
-      if (payload.pendingEvaluation) {
-        setPendingEvaluation(true);
-      } else {
-        setAttempt(payload.attempt as AttemptView);
-        setFillSelections({});
-        setFreeResponse("");
-        setSelectedOptionId(null);
-      }
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      setPendingEvaluation(true);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to submit answer.");
+      setError(caught instanceof Error ? caught.message : "Unable to submit assessment.");
     } finally {
       setSubmitting(false);
     }
   }
 
-  if (result) return <ResultView result={result} onBack={onBack} />;
-  if (pendingEvaluation) return <PendingEvaluationView onBack={onBack} />;
+  if (result) {
+    return <ResultView result={result} collectFeedback={collectFeedback} onBack={onBack} />;
+  }
+  if (pendingEvaluation) {
+    return (
+      <PendingEvaluationView
+        attemptId={attempt.attemptId}
+        onResult={(graded) => {
+          if (onFinish) onFinish(graded);
+          else setResult(graded);
+        }}
+        onBack={onBack}
+      />
+    );
+  }
 
   return (
-    <main className="app-shell">
+    <PdfAssessmentSplit attemptId={attempt.attemptId} pdfLabel={attempt.paperName}>
+      <main className="app-shell">
       <header className="quiz-header sequential-header">
         <div>
           {/* Server-chosen label: the real filename for a standalone attempt, "Paper 1"
@@ -708,36 +967,50 @@ export function QuizWorkspace({
           <h1>{attempt.paperName}</h1>
         </div>
         <div className="sequence-status attempt-status">
-          {/* The clocks sit to the left of the question count, stacked among themselves. */}
-          {showClocks && (
-            <div className="attempt-clocks">
-              {/* Display only: hiding this changes nothing about what the server records. */}
-              {!attempt.countdownHidden && (
-                <QuestionTimer
-                  elapsedMs={elapsedMs}
-                  timeLimitSeconds={question.timeLimitSeconds ?? null}
-                />
-              )}
-              {/*
-                Shown even when the countdown is hidden. Hiding the per-question timer keeps time
-                from being salient on an item whose limit is soft and costs nothing; the overall
-                limit ends the assessment. Cutting someone off with no clock on screen is a
-                different thing entirely, and not one this study should do to a participant.
-              */}
-              {overallClock && (
-                <OverallTimer
-                  elapsedMs={overallElapsedMs}
-                  remainingMs={overallClock.remainingMs}
-                  limitSeconds={overallClock.limitSeconds}
-                />
-              )}
-            </div>
+          {overallClock && (
+            <OverallTimer
+              elapsedMs={overallElapsedMs}
+              remainingMs={overallClock.remainingMs}
+              limitSeconds={overallClock.limitSeconds}
+            />
           )}
           <div className="sequence-progress">
             Question {attempt.currentIndex + 1} of {attempt.totalQuestions}
           </div>
         </div>
       </header>
+
+      <nav className="question-navigator" aria-label="Assessment questions">
+        <div className="question-navigator-heading">
+          <strong>All questions</strong>
+          <span>
+            {answeredCount} of {attempt.totalQuestions} answered
+          </span>
+        </div>
+        <div className="question-navigator-grid">
+          {attempt.questionProgress.map((item, index) => {
+            const answered = index === attempt.currentIndex ? localAnswered : item.answered;
+            const current = index === attempt.currentIndex;
+            return (
+              <button
+                key={item.position}
+                type="button"
+                className={`question-nav-item ${answered ? "answered" : "unanswered"} ${
+                  current ? "current" : ""
+                }`}
+                aria-current={current ? "step" : undefined}
+                aria-label={`Question ${item.position}, ${answered ? "answered" : "unanswered"}${
+                  current ? ", current question" : ""
+                }`}
+                disabled={submitting}
+                onClick={() => void goToQuestion(index)}
+              >
+                {item.position}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
 
       {/*
         No type chip: naming the format tells the participant nothing the question itself does not
@@ -748,19 +1021,19 @@ export function QuizWorkspace({
         {question.type === "fill_blank" ? (
           <FillQuestionEditor
             question={question}
-            selections={fillSelections}
+            selections={draft.type === "fill_blank" ? draft.selections : {}}
             onChange={(next) => {
               reportFirstInteraction();
-              setFillSelections(next);
+              setDraft({ type: "fill_blank", selections: next });
             }}
           />
         ) : question.type === "multiple_choice" ? (
           <MultipleChoiceQuestion
             question={question}
-            selectedOptionId={selectedOptionId}
+            selectedOptionId={draft.type === "multiple_choice" ? draft.optionId : null}
             onSelect={(optionId) => {
               reportFirstInteraction();
-              setSelectedOptionId(optionId);
+              setDraft({ type: "multiple_choice", optionId });
             }}
           />
         ) : (
@@ -772,10 +1045,10 @@ export function QuizWorkspace({
             <textarea
               className="control"
               id="freeResponse"
-              value={freeResponse}
+              value={draft.type === "free_response" ? draft.response : ""}
               onChange={(event) => {
                 reportFirstInteraction();
-                setFreeResponse(event.target.value);
+                setDraft({ type: "free_response", response: event.target.value });
               }}
               placeholder="Write your answer here..."
               maxLength={50_000}
@@ -785,33 +1058,40 @@ export function QuizWorkspace({
       </section>
 
       {error && <p className="error" role="alert">{error}</p>}
-      <div className="quiz-actions sequential-actions">
-        <span className="hint">Submitting locks this answer permanently.</span>
-        {/* A button element for keyboard and screen-reader behaviour, but deliberately styled
-            as plain text: skipping should be available without inviting itself. */}
+      <div className="autosave-status" role="status" aria-live="polite">
+        {saveState === "saving"
+          ? "Saving…"
+          : saveState === "error"
+            ? "Save failed"
+            : "All changes saved"}
+      </div>
+      <div className="quiz-actions navigable-actions">
         <button
-          className="skip-link"
+          className="secondary"
+          type="button"
+          disabled={submitting || attempt.currentIndex === 0}
+          onClick={() => void goToQuestion(attempt.currentIndex - 1)}
+        >
+          Previous
+        </button>
+        <button
+          className="secondary"
+          type="button"
+          disabled={submitting || attempt.currentIndex === attempt.totalQuestions - 1}
+          onClick={() => void goToQuestion(attempt.currentIndex + 1)}
+        >
+          Next
+        </button>
+        <button
+          className="primary submit-assessment"
           type="button"
           disabled={submitting}
-          onClick={() => void submitCurrentAnswer(true)}
+          onClick={() => void submitAssessment()}
         >
-          Skip
-        </button>
-        <button
-          className="primary"
-          type="button"
-          disabled={!answerComplete || submitting}
-          onClick={() => void submitCurrentAnswer()}
-        >
-          {submitting
-            ? attempt.currentIndex === attempt.totalQuestions - 1
-              ? "Submitting assessment…"
-              : "Saving answer…"
-            : attempt.currentIndex === attempt.totalQuestions - 1
-              ? "Submit assessment"
-              : "Submit answer and continue"}
+          {submitting ? "Working…" : "Submit assessment"}
         </button>
       </div>
-    </main>
+      </main>
+    </PdfAssessmentSplit>
   );
 }

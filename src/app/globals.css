@@ -1593,6 +1593,61 @@ textarea.prompt-control {
   background: var(--green);
 }
 
+.question-navigator {
+  margin-bottom: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  background: white;
+}
+
+.question-navigator-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 0.86rem;
+}
+
+.question-navigator-heading span,
+.autosave-status {
+  color: var(--muted);
+}
+
+.question-navigator-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+  gap: 8px;
+}
+
+.question-nav-item {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  background: var(--paper);
+  font-weight: 760;
+}
+
+.question-nav-item.answered {
+  border-color: #9dc6b2;
+  color: var(--green-dark);
+  background: var(--green-soft);
+}
+
+.question-nav-item.current {
+  border-color: var(--green);
+  outline: 3px solid rgba(47, 125, 87, 0.2);
+  color: white;
+  background: var(--green);
+}
+
+.question-nav-item:focus-visible {
+  outline: 3px solid rgba(47, 125, 87, 0.28);
+  outline-offset: 2px;
+}
+
 .question-card {
   min-height: 490px;
   padding: clamp(24px, 5vw, 52px);
@@ -1736,6 +1791,21 @@ textarea.prompt-control {
   justify-content: space-between;
   gap: 12px;
   margin-top: 20px;
+}
+
+.autosave-status {
+  min-height: 20px;
+  margin-top: 12px;
+  text-align: right;
+  font-size: 0.8rem;
+}
+
+.navigable-actions {
+  justify-content: flex-end;
+}
+
+.navigable-actions .submit-assessment {
+  margin-left: auto;
 }
 
 .sequential-actions {
@@ -2073,6 +2143,179 @@ button.option.selected {
   text-transform: uppercase;
 }
 
+.pdf-assessment-shell {
+  --pdf-pane-percent: 50%;
+  display: grid;
+  grid-template-columns: minmax(340px, var(--pdf-pane-percent)) 12px minmax(340px, 1fr);
+  width: 100%;
+  min-height: 100vh;
+}
+
+.pdf-assessment-document {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  min-width: 0;
+  padding: 16px 0 16px 16px;
+}
+
+.pdf-viewer {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #dadee0;
+  box-shadow: var(--shadow);
+}
+
+.pdf-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  border-bottom: 1px solid var(--line);
+  padding: 8px 12px;
+  background: white;
+}
+
+.pdf-toolbar > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pdf-toolbar-controls {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.pdf-toolbar-controls button {
+  min-width: 36px;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 9px;
+  color: var(--ink);
+  background: var(--paper);
+  font-weight: 720;
+}
+
+.pdf-toolbar-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.pdf-scroll-area {
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.pdf-pages {
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  width: max-content;
+  min-width: 100%;
+  padding: 14px;
+}
+
+.pdf-page {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+}
+
+.pdf-page canvas {
+  display: block;
+  max-width: none;
+  box-shadow: 0 4px 16px rgba(28, 45, 37, 0.2);
+}
+
+.pdf-page small {
+  color: #34423b;
+  font-size: 0.72rem;
+  font-weight: 680;
+}
+
+.pdf-message {
+  margin: 24px;
+  text-align: center;
+}
+
+.pdf-assessment-divider {
+  position: relative;
+  z-index: 5;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.pdf-assessment-divider::before {
+  position: absolute;
+  inset: 0 4px;
+  border-radius: 999px;
+  background: var(--line);
+  content: "";
+  transition: background 120ms, transform 120ms;
+}
+
+.pdf-assessment-divider:hover::before,
+.pdf-assessment-divider:focus-visible::before {
+  background: var(--green);
+  transform: scaleX(1.5);
+}
+
+.pdf-assessment-divider:focus-visible {
+  outline: none;
+}
+
+.pdf-assessment-divider > span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 38px;
+  border-radius: 999px;
+  background: white;
+  box-shadow: 0 0 0 1px rgba(20, 65, 48, 0.18);
+  transform: translate(-50%, -50%);
+}
+
+.pdf-assessment-content {
+  min-width: 0;
+  padding: 28px 16px 64px 4px;
+}
+
+.pdf-assessment-content > .app-shell {
+  width: 100%;
+  padding: 0;
+}
+
+@media (max-width: 900px) {
+  .pdf-assessment-shell {
+    display: block;
+  }
+
+  .pdf-assessment-document {
+    position: relative;
+    height: min(65vh, 680px);
+    padding: 12px 12px 0;
+  }
+
+  .pdf-assessment-divider {
+    display: none;
+  }
+
+  .pdf-assessment-content {
+    padding: 24px 16px 64px;
+  }
+}
+
 @media (max-width: 720px) {
   /* `minmax(0, 1fr)`, not `1fr`: a bare `1fr` track has an `auto` minimum, so it cannot shrink
      below its content's min-content width. A select's min-content is its longest option, and the
@@ -2164,5 +2407,14 @@ button.option.selected {
 
   .question-card {
     min-height: 540px;
+  }
+
+  .navigable-actions {
+    flex-wrap: wrap;
+  }
+
+  .navigable-actions .submit-assessment {
+    width: 100%;
+    margin-left: 0;
   }
 }

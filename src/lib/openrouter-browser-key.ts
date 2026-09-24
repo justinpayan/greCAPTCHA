@@ -99,7 +99,7 @@ export async function validateBrowserOpenRouterKey() {
   return inspected;
 }
 
-export async function beginOpenRouterOAuth() {
+export async function beginOpenRouterOAuth(storage: "browser" | "server" = "browser") {
   const sessionResponse = await fetch("/api/session", { cache: "no-store" });
   const session = (await sessionResponse.json()) as { username?: string };
   if (!sessionResponse.ok || !session.username) {
@@ -111,7 +111,7 @@ export async function beginOpenRouterOAuth() {
   const challenge = base64Url(await sha256(verifier));
   sessionStorage.setItem(
     FLOW_STORAGE,
-    JSON.stringify({ verifier, nonce, username: session.username, createdAt: Date.now() }),
+    JSON.stringify({ verifier, nonce, username: session.username, storage, createdAt: Date.now() }),
   );
   const callback = new URL(window.location.origin + window.location.pathname);
   callback.searchParams.set("openrouter_oauth", nonce);
@@ -123,7 +123,9 @@ export async function beginOpenRouterOAuth() {
   window.location.assign(authorize.toString());
 }
 
-export async function completeOpenRouterOAuth(): Promise<BrowserOpenRouterKey | null> {
+export async function completeOpenRouterOAuth(): Promise<
+  BrowserOpenRouterKey | { serverStored: true } | null
+> {
   const url = new URL(window.location.href);
   const nonce = url.searchParams.get("openrouter_oauth");
   const code = url.searchParams.get("code");
@@ -139,6 +141,7 @@ export async function completeOpenRouterOAuth(): Promise<BrowserOpenRouterKey | 
     verifier?: string;
     nonce?: string;
     username?: string;
+    storage?: "browser" | "server";
     createdAt?: number;
   };
   if (
@@ -170,6 +173,19 @@ export async function completeOpenRouterOAuth(): Promise<BrowserOpenRouterKey | 
   const payload = (await response.json()) as { key?: string };
   if (!payload.key) throw new Error("OpenRouter did not return an API key.");
   const inspected = await inspectKey(payload.key, session.username);
+  if (flow.storage === "server") {
+    const stored = await fetch("/api/openrouter/credential", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ openrouterApiKey: inspected.key }),
+    });
+    const storedPayload = (await stored.json()) as { error?: string };
+    if (!stored.ok) {
+      throw new Error(storedPayload.error ?? "Unable to save the professor OpenRouter key.");
+    }
+    window.dispatchEvent(new Event("grecaptcha:openrouter-credential-changed"));
+    return { serverStored: true };
+  }
   localStorage.setItem(KEY_STORAGE, JSON.stringify(inspected));
   return inspected;
 }

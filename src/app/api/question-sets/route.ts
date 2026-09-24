@@ -4,6 +4,7 @@ import { z } from "zod";
 import { listQuestionSets } from "@/lib/catalog";
 import { enqueueGenerationJob } from "@/lib/jobs";
 import { validateOpenRouterKey } from "@/lib/openrouter";
+import { requireOpenRouterCredential } from "@/lib/openrouter-credentials";
 import {
   MAX_PDF_BYTES,
   MAX_UPLOAD_BYTES,
@@ -15,7 +16,9 @@ import { assertSameOrigin } from "@/lib/security";
 import {
   generationConfigSchema,
   pdfEngineSchema,
+  workflowTypeSchema,
 } from "@/lib/quiz";
+import { getTemplate } from "@/lib/templates";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -93,9 +96,22 @@ export async function POST(request: Request) {
     if (file.size > MAX_PDF_BYTES) throw new UploadTooLargeError(pdfTooLargeMessage(file.size));
 
     const contributions = String(form.get("contributions") ?? "").trim();
-    const apiKey = String(form.get("openrouterApiKey") ?? "").trim();
+    const workflowType = workflowTypeSchema.parse(form.get("workflowType") ?? "course");
+    const sourceTemplateId = String(form.get("sourceTemplateId") ?? "").trim() || null;
+    if (sourceTemplateId) {
+      const template = await getTemplate(sourceTemplateId, user.id);
+      if (template.workflowType !== workflowType) {
+        throw new Error("The selected template does not match this workflow.");
+      }
+    }
     const keySource = form.get("keySource") === "oauth" ? "oauth" : "paste";
-    await validateOpenRouterKey(apiKey, { requireSafeguards: keySource === "oauth" });
+    const apiKey =
+      workflowType === "course"
+        ? await requireOpenRouterCredential(user.id)
+        : String(form.get("openrouterApiKey") ?? "").trim();
+    await validateOpenRouterKey(apiKey, {
+      requireSafeguards: workflowType === "course" || keySource === "oauth",
+    });
     const setName = String(form.get("name") ?? "").trim().slice(0, 120);
     const modelId = String(form.get("modelId") ?? "").trim();
     const pdfEngine = pdfEngineSchema.parse(form.get("pdfEngine"));
@@ -122,6 +138,8 @@ export async function POST(request: Request) {
 
     const created = await enqueueGenerationJob(user.id, file, {
       setName,
+      sourceTemplateId,
+      workflowType,
       contributions,
       modelId,
       pdfEngine,

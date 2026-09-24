@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { studyTemplateConfigSchema } from "@/lib/quiz";
+import { studyTemplateConfigSchema, workflowTypeSchema } from "@/lib/quiz";
 import { requireUser } from "@/lib/session";
 import { getDraft, listTemplates, saveDraft, saveTemplate } from "@/lib/templates";
 
@@ -22,9 +22,14 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const user = await requireUser();
-    const body = (await request.json()) as { name?: unknown; config?: unknown };
+    const body = (await request.json()) as {
+      name?: unknown;
+      config?: unknown;
+      workflowType?: unknown;
+    };
     const config = studyTemplateConfigSchema.parse(body.config);
-    const saved = await saveTemplate(user.id, String(body.name ?? ""), config);
+    const workflowType = workflowTypeSchema.parse(body.workflowType ?? "course");
+    const saved = await saveTemplate(user.id, String(body.name ?? ""), config, workflowType);
     return NextResponse.json({ template: saved }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to save the template.";

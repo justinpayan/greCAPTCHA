@@ -11,6 +11,14 @@ export default defineConfig({
       "server-only": path.resolve(root, "tests/server-only.ts"),
     },
   },
+  server: {
+    watch: {
+      // Integration tests intentionally create SQLite files, temporary job uploads, and
+      // manuscript .partial files. Watching runtime data can raise EBUSY on Windows while a
+      // file is being atomically replaced, and none of these files should trigger a test rerun.
+      ignored: ["**/data/**"],
+    },
+  },
   test: {
     environment: "node",
     fileParallelism: false,

@@ -5,9 +5,18 @@ import { and, count, desc, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/db";
 import { questionSetLabel } from "@/lib/catalog";
-import { attemptAnswers, attempts, experiments, questionSets, users } from "@/db/schema";
+import {
+  attemptAnswers,
+  attemptFeedback,
+  attempts,
+  experiments,
+  questionSets,
+  users,
+} from "@/db/schema";
 import {
   isWarmup,
+  draftHasAnswer,
+  parseDraft,
   questionBlockName,
   questionTimeLimit,
   shuffled,
@@ -229,13 +238,16 @@ export async function requireAttemptOwner(attemptId: string, ownerUserId: string
  * currently open contributes the time it has been open so far, so the figure ticks live.
  */
 export function attemptElapsedMs(
-  answers: Array<{ startedAt: string; submittedAt: string | null; durationMs: number | null }>,
+  answers: Array<{ durationMs: number | null }>,
+  activeQuestionStartedAt: string | null,
 ): number {
-  const now = Date.now();
-  return answers.reduce((total, answer) => {
-    if (answer.submittedAt) return total + (answer.durationMs ?? 0);
-    return total + Math.max(0, now - new Date(answer.startedAt).getTime());
-  }, 0);
+  const recorded = answers.reduce((total, answer) => total + (answer.durationMs ?? 0), 0);
+  return (
+    recorded +
+    (activeQuestionStartedAt
+      ? Math.max(0, Date.now() - new Date(activeQuestionStartedAt).getTime())
+      : 0)
+  );
 }
 
 /** Which block an experiment's attempt is, from its condition and the counterbalanced order. */
@@ -301,8 +313,8 @@ export async function getAttemptState(
   const question = questionById.get(questionId);
   if (!question) throw new Error("The attempt references a missing question.");
 
-  // The first serve stamps the clock start and snapshots the soft limit in force at that
-  // moment, so later edits to a question set cannot retroactively change recorded timings.
+  const servedAt = new Date().toISOString();
+  // The first serve stamps the question's first visit and snapshots its configured limit.
   await db
     .insert(attemptAnswers)
     .values({
@@ -311,21 +323,37 @@ export async function getAttemptState(
       questionId,
       questionType: question.type,
       blockName: questionBlockName(question),
-      startedAt: new Date().toISOString(),
+      startedAt: servedAt,
       timeLimitSeconds: questionTimeLimit(question),
     })
     .onConflictDoNothing()
     .run();
 
+  const activeQuestionStartedAt = attempt.activeQuestionStartedAt ?? servedAt;
+  if (!attempt.activeQuestionStartedAt) {
+    await db
+      .update(attempts)
+      .set({ activeQuestionStartedAt })
+      .where(eq(attempts.id, attemptId))
+      .run();
+  }
+
   const answerRow = await getCurrentAnswer(attemptId, questionId);
   const allAnswers = await db
     .select({
-      startedAt: attemptAnswers.startedAt,
-      submittedAt: attemptAnswers.submittedAt,
       durationMs: attemptAnswers.durationMs,
+      questionId: attemptAnswers.questionId,
+      answerJson: attemptAnswers.answerJson,
     })
     .from(attemptAnswers)
     .where(eq(attemptAnswers.attemptId, attemptId));
+
+  const answerByQuestion = new Map(allAnswers.map((answer) => [answer.questionId, answer]));
+  const draft = parseDraft(question, answerRow?.answerJson ?? null);
+  const activeElapsedMs = Math.max(
+    0,
+    Date.now() - new Date(activeQuestionStartedAt).getTime(),
+  );
 
   return {
     attempt: {
@@ -335,15 +363,58 @@ export async function getAttemptState(
       currentIndex: attempt.currentIndex,
       totalQuestions: order.length,
       question: toPublicQuestion(question),
+      draft,
+      questionProgress: order.map((orderedQuestionId, index) => {
+        const orderedQuestion = questionById.get(orderedQuestionId);
+        const saved = answerByQuestion.get(orderedQuestionId);
+        return {
+          position: index + 1,
+          answered: Boolean(
+            orderedQuestion &&
+              draftHasAnswer(parseDraft(orderedQuestion, saved?.answerJson ?? null)),
+          ),
+        };
+      }),
       countdownHidden: attempt.countdownHidden,
-      elapsedMs: answerRow
-        ? Math.max(0, Date.now() - new Date(answerRow.startedAt).getTime())
-        : 0,
+      elapsedMs: (answerRow?.durationMs ?? 0) + activeElapsedMs,
       firstInteractionRecorded: Boolean(answerRow?.firstInteractionAt),
       overallTimeLimitSeconds: attempt.overallTimeLimitSeconds,
-      overallElapsedMs: attemptElapsedMs(allAnswers),
+      overallElapsedMs: attemptElapsedMs(allAnswers, activeQuestionStartedAt),
     },
   };
+}
+
+/** Pause the current question and serve another question from the fixed attempt order. */
+export async function navigateAttempt(attemptId: string, targetIndex: number) {
+  const quiz = await loadAttemptContext(attemptId);
+  if (quiz.attempt.status !== "active") throw new Error("This attempt is already complete.");
+  if (!Number.isInteger(targetIndex) || targetIndex < 0 || targetIndex >= quiz.order.length) {
+    throw new Error("Question position is out of range.");
+  }
+  if (targetIndex === quiz.attempt.currentIndex) return getAttemptState(attemptId);
+
+  const now = new Date();
+  const current = await getCurrentAnswer(attemptId, quiz.currentQuestion.id);
+  if (current && quiz.attempt.activeQuestionStartedAt) {
+    const visitMs = Math.max(
+      0,
+      now.getTime() - new Date(quiz.attempt.activeQuestionStartedAt).getTime(),
+    );
+    await db
+      .update(attemptAnswers)
+      .set({ durationMs: (current.durationMs ?? 0) + visitMs })
+      .where(eq(attemptAnswers.id, current.id))
+      .run();
+  }
+  await db
+    .update(attempts)
+    .set({
+      currentIndex: targetIndex,
+      activeQuestionStartedAt: now.toISOString(),
+    })
+    .where(eq(attempts.id, attemptId))
+    .run();
+  return getAttemptState(attemptId);
 }
 
 /**
@@ -422,6 +493,14 @@ export async function getAttemptOutline(attemptId: string): Promise<AttemptOutli
     .select()
     .from(attemptAnswers)
     .where(eq(attemptAnswers.attemptId, attemptId));
+  const feedback = await db
+    .select({
+      comment: attemptFeedback.comment,
+      submittedAt: attemptFeedback.submittedAt,
+    })
+    .from(attemptFeedback)
+    .where(eq(attemptFeedback.attemptId, attemptId))
+    .get();
   const answeredIds = new Set(
     answers.filter((answer) => answer.submittedAt).map((answer) => answer.questionId),
   );
@@ -450,6 +529,7 @@ export async function getAttemptOutline(attemptId: string): Promise<AttemptOutli
     setLabel: questionSetLabel(quiz.set.name, quiz.set.paperName),
     paperName: quiz.set.paperName,
     modelId: quiz.set.modelId,
+    workflowType: quiz.set.workflowType === "conference" ? "conference" : "course",
     status: quiz.attempt.status,
     linkEnabled: quiz.attempt.linkEnabled,
     experiment: experiment
@@ -467,6 +547,7 @@ export async function getAttemptOutline(attemptId: string): Promise<AttemptOutli
     graded,
     gradable: !graded && answeredCount === items.length && items.length > 0,
     participantBaseUrl: (process.env.PUBLIC_BASE_URL ?? "").trim().replace(/\/+$/, ""),
+    examineeFeedback: feedback ?? null,
     items,
   };
 }

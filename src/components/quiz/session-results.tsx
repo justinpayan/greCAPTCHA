@@ -1,6 +1,7 @@
 "use client";
 
 import { ResultSections } from "@/components/quiz/quiz-workspace";
+import { PdfAssessmentSplit } from "@/components/quiz/pdf-assessment-split";
 import type { AssessmentResult } from "@/lib/quiz";
 
 export type SessionBlock = {
@@ -49,7 +50,15 @@ export function SessionResults({
       </section>
 
       {blocks.map((block) => (
-        <ResultSections key={block.result.attemptId} result={block.result} label={block.label} />
+        <PdfAssessmentSplit
+          key={block.result.attemptId}
+          attemptId={block.result.attemptId}
+          pdfLabel={block.result.paperName}
+        >
+          <div>
+            <ResultSections result={block.result} label={block.label} />
+          </div>
+        </PdfAssessmentSplit>
       ))}
 
       {onDone && (

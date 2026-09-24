@@ -6,14 +6,16 @@ import { randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, inArray, lt } from "drizzle-orm";
 
 import { db, databaseFile } from "@/db";
-import { attempts, jobs, questionSets } from "@/db/schema";
+import { attempts, conferenceSubmissions, jobs, questionSets } from "@/db/schema";
 import { executeGeneration, type GenerationJobPayload } from "@/lib/generation";
+import { deleteManuscript } from "@/lib/manuscripts";
 import {
   deleteJobKey,
   JobKeyUnavailableError,
   registerJobKey,
   requireJobKey,
 } from "@/lib/openrouter-key-store";
+import { requireOpenRouterCredential } from "@/lib/openrouter-credentials";
 import type { AssessmentResult } from "@/lib/quiz";
 
 const ACTIVE_STATUSES = ["queued", "running"];
@@ -38,11 +40,12 @@ export async function enqueueGenerationJob(
   input: Omit<GenerationJobPayload, "questionSetId" | "filePath" | "fileName">,
   apiKey: string,
 ) {
+  const questionSetOwnerUserId = input.questionSetOwnerUserId ?? ownerUserId;
   const setLimit = Math.max(1, Number(process.env.MAX_SETS_PER_ACCOUNT ?? "100"));
   const existingSets = await db
     .select({ total: count() })
     .from(questionSets)
-    .where(eq(questionSets.ownerUserId, ownerUserId))
+    .where(eq(questionSets.ownerUserId, questionSetOwnerUserId))
     .get();
   if ((existingSets?.total ?? 0) >= setLimit) {
     throw new Error(`Your account has reached its limit of ${setLimit} saved sets.`);
@@ -93,7 +96,10 @@ export async function enqueueGenerationJob(
   return { jobId: id };
 }
 
-export async function enqueueGradingJob(attemptId: string, apiKey: string) {
+export async function enqueueGradingJob(
+  attemptId: string,
+  credential: { apiKey?: string; credentialOwnerUserId?: string },
+) {
   const row = await db
     .select({
       ownerUserId: questionSets.ownerUserId,
@@ -127,7 +133,7 @@ export async function enqueueGradingJob(attemptId: string, apiKey: string) {
     )
     .get();
   if (existing) {
-    registerJobKey(existing.id, apiKey);
+    if (credential.apiKey) registerJobKey(existing.id, credential.apiKey);
     return { jobId: existing.id, status: existing.status };
   }
 
@@ -138,7 +144,10 @@ export async function enqueueGradingJob(attemptId: string, apiKey: string) {
       ownerUserId: row.ownerUserId,
       type: "grading",
       status: "queued",
-      payloadJson: JSON.stringify({ attemptId }),
+      payloadJson: JSON.stringify({
+        attemptId,
+        credentialOwnerUserId: credential.credentialOwnerUserId,
+      }),
       attemptId,
       createdAt: new Date().toISOString(),
     });
@@ -160,9 +169,33 @@ export async function enqueueGradingJob(attemptId: string, apiKey: string) {
     if (raced) return { jobId: raced.id, status: raced.status };
     throw error;
   }
-  registerJobKey(id, apiKey);
+  if (credential.apiKey) registerJobKey(id, credential.apiKey);
   void tick();
   return { jobId: id, status: "queued" };
+}
+
+export async function enqueueAutomaticGrading(attemptId: string) {
+  const row = await db
+    .select({
+      workflowType: questionSets.workflowType,
+      ownerUserId: questionSets.ownerUserId,
+    })
+    .from(attempts)
+    .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
+    .where(eq(attempts.id, attemptId))
+    .get();
+  if (!row) throw new Error("Attempt not found.");
+  if (row.workflowType === "conference") {
+    return { pendingEvaluation: true as const, gradingCredentialRequired: true as const };
+  }
+  const grading = await enqueueGradingJob(attemptId, {
+    credentialOwnerUserId: row.ownerUserId,
+  });
+  return {
+    pendingEvaluation: true as const,
+    gradingCredentialRequired: false as const,
+    grading,
+  };
 }
 
 export async function getOwnedJob(id: string, ownerUserId: string) {
@@ -175,7 +208,26 @@ export async function getOwnedJob(id: string, ownerUserId: string) {
   return publicJob(job);
 }
 
-export async function retryOwnedJob(id: string, ownerUserId: string, apiKey: string) {
+export async function getConferenceJob(id: string, takerUserId: string) {
+  const job = await db
+    .select({ job: jobs })
+    .from(jobs)
+    .innerJoin(
+      conferenceSubmissions,
+      eq(conferenceSubmissions.generationJobId, jobs.id),
+    )
+    .where(
+      and(
+        eq(jobs.id, id),
+        eq(conferenceSubmissions.takerUserId, takerUserId),
+      ),
+    )
+    .get();
+  if (!job) throw new Error("Job not found.");
+  return publicJob(job.job);
+}
+
+export async function retryOwnedJob(id: string, ownerUserId: string, apiKey?: string) {
   const job = await db
     .select()
     .from(jobs)
@@ -187,7 +239,11 @@ export async function retryOwnedJob(id: string, ownerUserId: string, apiKey: str
     if (!fs.existsSync(payload.filePath)) {
       throw new Error("The uploaded PDF is no longer available. Start generation again.");
     }
+    if (!apiKey && payload.workflowType === "course") {
+      apiKey = await requireOpenRouterCredential(ownerUserId);
+    }
   }
+  if (!apiKey) throw new Error("Supply an OpenRouter key to retry this job.");
   registerJobKey(id, apiKey);
   await db
     .update(jobs)
@@ -210,8 +266,10 @@ export async function getAttemptGradingJob(attemptId: string) {
       status: attempts.status,
       gradingJson: attempts.gradingJson,
       takerUsername: attempts.takerUsername,
+      workflowType: questionSets.workflowType,
     })
     .from(attempts)
+    .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
     .where(eq(attempts.id, attemptId))
     .get();
   if (!attempt) throw new Error("Attempt not found.");
@@ -231,7 +289,16 @@ export async function getAttemptGradingJob(attemptId: string) {
     .where(and(eq(jobs.attemptId, attemptId), eq(jobs.type, "grading")))
     .orderBy(desc(jobs.createdAt))
     .get();
-  return job ? publicJob(job) : { status: "not_started" };
+  return job
+    ? {
+        ...publicJob(job),
+        gradingCredentialRequired:
+          attempt.workflowType === "conference" && job.status === "failed",
+      }
+    : {
+        status: "not_started",
+        gradingCredentialRequired: attempt.workflowType === "conference",
+      };
 }
 
 function publicJob(job: typeof jobs.$inferSelect) {
@@ -279,9 +346,9 @@ async function executeJob(job: typeof jobs.$inferSelect & { runCount: number }) 
   }, 60_000);
   heartbeat.unref();
   try {
-    const apiKey = requireJobKey(job.id);
     let result: unknown;
     if (job.type === "generation") {
+      const apiKey = requireJobKey(job.id);
       const payload = JSON.parse(job.payloadJson) as GenerationJobPayload;
       result = await executeGeneration(job.ownerUserId, payload, apiKey, async (current, total) => {
         await db
@@ -292,7 +359,13 @@ async function executeJob(job: typeof jobs.$inferSelect & { runCount: number }) 
       });
       fs.rmSync(payload.filePath, { force: true });
     } else if (job.type === "grading") {
-      const { attemptId } = JSON.parse(job.payloadJson) as { attemptId: string };
+      const { attemptId, credentialOwnerUserId } = JSON.parse(job.payloadJson) as {
+        attemptId: string;
+        credentialOwnerUserId?: string;
+      };
+      const apiKey = credentialOwnerUserId
+        ? await requireOpenRouterCredential(credentialOwnerUserId)
+        : requireJobKey(job.id);
       const { ensureGraded } = await import("@/lib/grading");
       result = await ensureGraded(attemptId, apiKey);
     } else {
@@ -317,6 +390,7 @@ async function executeJob(job: typeof jobs.$inferSelect & { runCount: number }) 
     if (!retry && !interrupted && job.type === "generation") {
       const payload = JSON.parse(job.payloadJson) as GenerationJobPayload;
       fs.rmSync(payload.filePath, { force: true });
+      deleteManuscript(payload.questionSetId);
     }
     await db
       .update(jobs)
@@ -359,19 +433,28 @@ async function tick() {
 export async function startJobWorker() {
   if (workerStarted) return;
   workerStarted = true;
-  // Any job already active when this process starts belonged to a previous process. Its API key
-  // intentionally did not survive, so make the required user action explicit instead of leaving
-  // it queued for a worker that can never execute it.
-  await db
-    .update(jobs)
-    .set({
-      status: "failed",
-      error: "This job was interrupted by a server restart. Paste a key and run it again.",
-      leaseUntil: null,
-      completedAt: new Date().toISOString(),
-    })
-    .where(inArray(jobs.status, ACTIVE_STATUSES))
-    .run();
+  // Temporary examinee keys intentionally do not survive restarts. Course grading jobs reference
+  // an encrypted assessor credential and can safely be put back on the queue.
+  const interrupted = await db
+    .select()
+    .from(jobs)
+    .where(inArray(jobs.status, ACTIVE_STATUSES));
+  for (const job of interrupted) {
+    const payload = JSON.parse(job.payloadJson) as { credentialOwnerUserId?: string };
+    const resumable = job.type === "grading" && Boolean(payload.credentialOwnerUserId);
+    await db
+      .update(jobs)
+      .set({
+        status: resumable ? "queued" : "failed",
+        error: resumable
+          ? null
+          : "This job was interrupted by a server restart. Supply a key and run it again.",
+        leaseUntil: null,
+        completedAt: resumable ? null : new Date().toISOString(),
+      })
+      .where(eq(jobs.id, job.id))
+      .run();
+  }
   void tick();
   const timer = setInterval(() => void tick(), 1_000);
   timer.unref();

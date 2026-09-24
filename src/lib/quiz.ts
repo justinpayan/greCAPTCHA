@@ -4,6 +4,10 @@ export const pdfEngines = ["cloudflare-ai", "mistral-ocr", "native"] as const;
 export const pdfEngineSchema = z.enum(pdfEngines);
 export type PdfEngine = z.infer<typeof pdfEngineSchema>;
 
+export const workflowTypes = ["course", "conference"] as const;
+export const workflowTypeSchema = z.enum(workflowTypes);
+export type WorkflowType = z.infer<typeof workflowTypeSchema>;
+
 export const DEFAULT_FILL_PROMPT = `Generate fill-in-the-blank questions that verify how well a claimed author understands the submitted manuscript.
 
 Ask only questions the author should reasonably answer given their stated contributions. Questions should be difficult for someone who does not understand the work but straightforward for someone who does. Require conceptual understanding rather than calculations. Do not make answers discoverable through obvious keyword searches, context clues, common sense, grammar, or whether a word appears in the paper. Every blank must have one objectively correct word or short phrase. Multiple blanks are allowed. Use "a/an" where needed to avoid telegraphing an answer. Distractors must fit grammatically and be plausible but objectively wrong.`;
@@ -229,6 +233,8 @@ export type AttemptListEntry = {
 export type StudyTemplateSummary = {
   id: string;
   name: string;
+  workflowType: WorkflowType;
+  conferenceShareToken: string | null;
   updatedAt: string;
 };
 
@@ -416,6 +422,13 @@ export type AttemptView = {
   currentIndex: number;
   totalQuestions: number;
   question: PublicQuestion;
+  /** Persisted, participant-entered value for the question currently being shown. */
+  draft: DraftAnswer;
+  /** Participant-safe completion state in the attempt's fixed question order. */
+  questionProgress: Array<{
+    position: number;
+    answered: boolean;
+  }>;
   /** Fixed for the whole attempt: suppresses the on-screen timer without affecting recording. */
   countdownHidden: boolean;
   /** Server-measured time already spent on this question, so a refresh resumes the display. */
@@ -455,6 +468,7 @@ export type AttemptOutline = {
   setLabel: string;
   paperName: string;
   modelId: string;
+  workflowType: WorkflowType;
   status: string;
   /**
    * Whether this individual response may currently be opened by its assigned taker.
@@ -479,6 +493,10 @@ export type AttemptOutline = {
    * while participants reach the app through a tunnel.
    */
   participantBaseUrl: string;
+  examineeFeedback: {
+    comment: string;
+    submittedAt: string;
+  } | null;
   items: AttemptOutlineItem[];
 };
 
@@ -500,6 +518,63 @@ export const answerSubmissionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("skip") }),
 ]);
 export type AnswerSubmission = z.infer<typeof answerSubmissionSchema>;
+
+/** Drafts are deliberately permissive: autosave must accept an editor mid-change. */
+export const draftAnswerSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("fill_blank"),
+    selections: z.record(z.string(), z.string().nullable()),
+  }),
+  z.object({
+    type: z.literal("free_response"),
+    response: z.string().max(50_000),
+  }),
+  z.object({
+    type: z.literal("multiple_choice"),
+    optionId: z.string().min(1).nullable(),
+  }),
+]);
+export type DraftAnswer = z.infer<typeof draftAnswerSchema>;
+
+export const draftSubmissionSchema = z.object({
+  questionId: z.string().min(1),
+  answer: draftAnswerSchema,
+});
+
+export function emptyDraft(question: PublicQuestion | StoredQuestion): DraftAnswer {
+  if (question.type === "fill_blank") return { type: "fill_blank", selections: {} };
+  if (question.type === "multiple_choice") {
+    return { type: "multiple_choice", optionId: null };
+  }
+  return { type: "free_response", response: "" };
+}
+
+export function parseDraft(question: PublicQuestion | StoredQuestion, answerJson: string | null) {
+  if (!answerJson) return emptyDraft(question);
+  try {
+    const raw = JSON.parse(answerJson) as Record<string, unknown>;
+    // Attempts begun before draft autosave stored the same payload without a `type` field.
+    const candidate =
+      typeof raw.type === "string"
+        ? raw
+        : question.type === "fill_blank"
+          ? { type: "fill_blank", selections: raw.selections ?? {} }
+          : question.type === "multiple_choice"
+            ? { type: "multiple_choice", optionId: raw.optionId ?? null }
+            : { type: "free_response", response: raw.response ?? "" };
+    const parsed = draftAnswerSchema.parse(candidate);
+    return parsed.type === question.type ? parsed : emptyDraft(question);
+  } catch {
+    return emptyDraft(question);
+  }
+}
+
+/** Whether a draft contains a response worth submitting or showing as answered. */
+export function draftHasAnswer(draft: DraftAnswer) {
+  if (draft.type === "fill_blank") return Object.values(draft.selections).some(Boolean);
+  if (draft.type === "multiple_choice") return draft.optionId !== null;
+  return draft.response.trim().length > 0;
+}
 
 /** Per-item timing telemetry carried into the graded result and the review screen. */
 export type QuestionTiming = {

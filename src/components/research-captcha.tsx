@@ -16,6 +16,7 @@ import {
 } from "@/lib/openrouter-browser-key";
 
 import { OpenRouterKeyPanel } from "@/components/openrouter-key-panel";
+import { ProfessorOpenRouterPanel } from "@/components/professor-openrouter-panel";
 import { ParticipantId } from "@/components/participant-id";
 import { SetOverview } from "@/components/set-overview";
 import {
@@ -46,6 +47,7 @@ import {
   type QuestionBlockConfig,
   type StudyTemplateConfig,
   type StudyTemplateSummary,
+  type WorkflowType,
 } from "@/lib/quiz";
 
 type CatalogModel = {
@@ -290,6 +292,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
   const [templates, setTemplates] = useState<StudyTemplateSummary[]>([]);
   const [templateId, setTemplateId] = useState("");
   const [templateName, setTemplateName] = useState("");
+  const [workflowType, setWorkflowType] = useState<WorkflowType>("course");
   const [templateStatus, setTemplateStatus] = useState("");
   // Blocks autosaving until the stored draft has been applied, so the restore is never
   // overwritten by the component's own initial state.
@@ -358,7 +361,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
       .then(([stored, connected]) => {
         if (!active) return;
         const catalog = FEATURED_MODELS;
-        if (connected) {
+        if (connected && "key" in connected) {
           setOpenrouterApiKey(connected.key);
           setKeySource("oauth");
           void loadModelCatalog(connected.key, "oauth");
@@ -1102,7 +1105,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
       const response = await fetch("/api/templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: templateName, config: currentConfig }),
+        body: JSON.stringify({ name: templateName, config: currentConfig, workflowType }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to save the template.");
@@ -1127,8 +1130,10 @@ export function ResearchCaptcha({ username }: { username: string }) {
       if (!response.ok) throw new Error(payload.error ?? "Unable to load the template.");
       const template = payload.template as {
         name: string;
+        workflowType: WorkflowType;
         config: StudyTemplateConfig;
       };
+      setWorkflowType(template.workflowType);
       const matchedModel = applyConfig(template.config, models);
       setTemplateStatus(
         matchedModel
@@ -1137,6 +1142,45 @@ export function ResearchCaptcha({ username }: { username: string }) {
       );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load the template.");
+    }
+  }
+
+  async function setConferenceSharing(enabled: boolean) {
+    if (!templateId) return;
+    setError("");
+    setTemplateStatus("");
+    try {
+      const response = await fetch(
+        `/api/templates/${encodeURIComponent(templateId)}/conference-share`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled }),
+        },
+      );
+      const payload = (await response.json()) as {
+        error?: string;
+        conferenceShareToken?: string | null;
+        participantPath?: string | null;
+      };
+      if (!response.ok) throw new Error(payload.error ?? "Unable to update sharing.");
+      setTemplates((current) =>
+        current.map((template) =>
+          template.id === templateId
+            ? { ...template, conferenceShareToken: payload.conferenceShareToken ?? null }
+            : template,
+        ),
+      );
+      if (payload.participantPath) {
+        const origin = participantBaseUrl || window.location.origin;
+        const link = `${origin}${payload.participantPath}`;
+        await navigator.clipboard.writeText(link);
+        setTemplateStatus("Conference link published and copied.");
+      } else {
+        setTemplateStatus("Conference link revoked.");
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to update sharing.");
     }
   }
 
@@ -1224,12 +1268,16 @@ export function ResearchCaptcha({ username }: { username: string }) {
         : String(config.overallTimeLimitSeconds),
     );
     form.set("name", setName);
+    form.set("workflowType", workflowType);
+    if (templateId) form.set("sourceTemplateId", templateId);
     let jobId = "";
     try {
-      const keyForJob =
-        keySource === "oauth" ? (await validateBrowserOpenRouterKey()).key : openrouterApiKey;
-      form.set("openrouterApiKey", keyForJob);
-      form.set("keySource", keySource);
+      if (workflowType === "conference") {
+        const keyForJob =
+          keySource === "oauth" ? (await validateBrowserOpenRouterKey()).key : openrouterApiKey;
+        form.set("openrouterApiKey", keyForJob);
+        form.set("keySource", keySource);
+      }
       const response = await fetch("/api/question-sets", { method: "POST", body: form });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to generate questions.");
@@ -1275,12 +1323,19 @@ export function ResearchCaptcha({ username }: { username: string }) {
   }
 
   async function retryGeneration() {
-    if (!failedGenerationJobId || !openrouterApiKey) return;
+    if (
+      !failedGenerationJobId ||
+      (workflowType === "conference" && !openrouterApiKey)
+    ) return;
     setWorking(true);
     setError("");
     try {
       const keyForJob =
-        keySource === "oauth" ? (await validateBrowserOpenRouterKey()).key : openrouterApiKey;
+        workflowType === "conference"
+          ? keySource === "oauth"
+            ? (await validateBrowserOpenRouterKey()).key
+            : openrouterApiKey
+          : "";
       const response = await fetch(
         `/api/jobs/${encodeURIComponent(failedGenerationJobId)}/retry`,
         {
@@ -1541,6 +1596,18 @@ export function ResearchCaptcha({ username }: { username: string }) {
           </div>
           <div className="template-controls">
             <div className="field">
+              <label htmlFor="workflowType">Workflow</label>
+              <select
+                className="control"
+                id="workflowType"
+                value={workflowType}
+                onChange={(event) => setWorkflowType(event.target.value as WorkflowType)}
+              >
+                <option value="course">Course — professor pays and grading is automatic</option>
+                <option value="conference">Conference — examinee supplies the key</option>
+              </select>
+            </div>
+            <div className="field">
               <label htmlFor="templatePicker">Saved templates</label>
               <select
                 className="control"
@@ -1596,6 +1663,23 @@ export function ResearchCaptcha({ username }: { username: string }) {
               >
                 Delete selected
               </button>
+              {workflowType === "conference" && templateId && (
+                <button
+                  className="secondary"
+                  type="button"
+                  onClick={() =>
+                    void setConferenceSharing(
+                      !templates.find((template) => template.id === templateId)
+                        ?.conferenceShareToken,
+                    )
+                  }
+                >
+                  {templates.find((template) => template.id === templateId)
+                    ?.conferenceShareToken
+                    ? "Revoke conference link"
+                    : "Publish and copy conference link"}
+                </button>
+              )}
             </div>
           </div>
           {templateStatus && <p className="template-status">{templateStatus}</p>}
@@ -2155,17 +2239,21 @@ export function ResearchCaptcha({ username }: { username: string }) {
             generateSet(event, mode === "default" ? defaultConfig : currentConfig)
           }
         >
-          <OpenRouterKeyPanel
-            apiKey={openrouterApiKey}
-            source={keySource}
-            onChange={(nextKey, nextSource) => {
-              setOpenrouterApiKey(nextKey);
-              setKeySource(nextSource);
-            }}
-            onReady={(nextKey, nextSource) =>
-              void loadModelCatalog(nextKey, nextSource)
-            }
-          />
+          {workflowType === "course" ? (
+            <ProfessorOpenRouterPanel />
+          ) : (
+            <OpenRouterKeyPanel
+              apiKey={openrouterApiKey}
+              source={keySource}
+              onChange={(nextKey, nextSource) => {
+                setOpenrouterApiKey(nextKey);
+                setKeySource(nextSource);
+              }}
+              onReady={(nextKey, nextSource) =>
+                void loadModelCatalog(nextKey, nextSource)
+              }
+            />
+          )}
           <div className="form-section">
             {mode !== "default" && (
               <div className="section-heading">
@@ -2606,7 +2694,9 @@ export function ResearchCaptcha({ username }: { username: string }) {
               <button
                 className="secondary"
                 type="button"
-                disabled={working || !openrouterApiKey}
+                disabled={
+                  working || (workflowType === "conference" && !openrouterApiKey)
+                }
                 onClick={() => void retryGeneration()}
               >
                 Run interrupted generation again
@@ -2617,7 +2707,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
               type="submit"
               disabled={
                 working ||
-                !openrouterApiKey ||
+                (workflowType === "conference" && !openrouterApiKey) ||
                 (mode === "default"
                   ? !defaultModel
                   : !selectedModel || blocks.length === 0)

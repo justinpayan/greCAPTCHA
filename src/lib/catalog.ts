@@ -4,6 +4,7 @@ import { and, count, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
 
 import { db } from "@/db";
 import { attemptAnswers, attempts, experiments, jobs, questionSets } from "@/db/schema";
+import { deleteManuscript } from "@/lib/manuscripts";
 import {
   isWarmup,
   questionBlockName,
@@ -202,6 +203,7 @@ export async function deleteQuestionSet(id: string, ownerUserId: string) {
   }
   const result = await db.delete(questionSets).where(and(eq(questionSets.id, id), eq(questionSets.ownerUserId, ownerUserId))).run();
   if (result.changes !== 1) throw new Error("Question set not found.");
+  deleteManuscript(id);
 }
 
 /**
@@ -303,6 +305,7 @@ export async function resetAttempt(id: string, ownerUserId: string): Promise<{
     .update(attempts)
     .set({
       currentIndex: 0,
+      activeQuestionStartedAt: null,
       status: "active",
       score: null,
       gradingJson: null,

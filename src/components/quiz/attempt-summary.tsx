@@ -78,7 +78,11 @@ export function AttemptSummary({
           })
         : await (async () => {
             const keyForJob =
-              keySource === "oauth" ? (await validateBrowserOpenRouterKey()).key : apiKey;
+              outline.workflowType === "conference"
+                ? keySource === "oauth"
+                  ? (await validateBrowserOpenRouterKey()).key
+                  : apiKey
+                : "";
             return fetch(`/api/attempts/${outline.attemptId}/outline`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -164,14 +168,33 @@ export function AttemptSummary({
         <button
           className="primary"
           type="button"
-          disabled={working || (outline.gradable && !outline.graded && !apiKey)}
+          disabled={
+            working ||
+            (outline.workflowType === "conference" &&
+              outline.gradable &&
+              !outline.graded &&
+              !apiKey)
+          }
           onClick={complete ? showGrading : beginOrResume}
         >
           {actionLabel}
         </button>
       </section>
 
-      {outline.gradable && !outline.graded && (
+      {outline.examineeFeedback && (
+        <section className="card">
+          <p className="eyebrow">Examinee feedback</p>
+          <h2>
+            Submitted {new Date(outline.examineeFeedback.submittedAt).toLocaleString()}
+          </h2>
+          <p>
+            {outline.examineeFeedback.comment || "The examinee submitted without a comment."}
+          </p>
+          <p className="hint">This feedback is locked and cannot be edited.</p>
+        </section>
+      )}
+
+      {outline.workflowType === "conference" && outline.gradable && !outline.graded && (
         <OpenRouterKeyPanel
           apiKey={apiKey}
           source={keySource}
