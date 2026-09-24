@@ -15,7 +15,8 @@ type CredentialStatus =
 
 export function ProfessorOpenRouterPanel() {
   const [status, setStatus] = useState<CredentialStatus>({ connected: false });
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"save" | "disconnect" | null>(null);
+  const [pastedKey, setPastedKey] = useState("");
   const [error, setError] = useState("");
 
   const refresh = useCallback(async () => {
@@ -35,7 +36,7 @@ export function ProfessorOpenRouterPanel() {
   }, [refresh]);
 
   async function disconnect() {
-    setBusy(true);
+    setBusy("disconnect");
     setError("");
     try {
       const response = await fetch("/api/openrouter/credential", { method: "DELETE" });
@@ -45,7 +46,30 @@ export function ProfessorOpenRouterPanel() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to disconnect OpenRouter.");
     } finally {
-      setBusy(false);
+      setBusy(null);
+    }
+  }
+
+  async function savePastedKey() {
+    const openrouterApiKey = pastedKey.trim();
+    if (!openrouterApiKey) return;
+    setBusy("save");
+    setError("");
+    setPastedKey("");
+    try {
+      const response = await fetch("/api/openrouter/credential", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ openrouterApiKey }),
+      });
+      const payload = (await response.json()) as CredentialStatus & { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Unable to save the OpenRouter key.");
+      setStatus(payload);
+      window.dispatchEvent(new Event("grecaptcha:openrouter-credential-changed"));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to save the OpenRouter key.");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -54,8 +78,9 @@ export function ProfessorOpenRouterPanel() {
       <div className="key-source-main">
         <strong>Course grading credential</strong>
         <p>
-          Connect an app-specific OpenRouter key once. It is encrypted on the server and used
-          automatically when a student submits a course assessment.
+          Connect with PKCE or paste an app-specific OpenRouter key once. Either credential is
+          encrypted on the server and used automatically when a student submits a course
+          assessment.
         </p>
         <p className="key-warning">
           OpenRouter requires a positive spending limit and future expiration date.
@@ -76,17 +101,18 @@ export function ProfessorOpenRouterPanel() {
               <button
                 className="secondary"
                 type="button"
+                disabled={busy !== null}
                 onClick={() => void beginOpenRouterOAuth("server")}
               >
-                Replace key
+                Replace with PKCE
               </button>
               <button
                 className="secondary danger"
                 type="button"
-                disabled={busy}
+                disabled={busy !== null}
                 onClick={() => void disconnect()}
               >
-                {busy ? "Disconnecting…" : "Disconnect"}
+                {busy === "disconnect" ? "Disconnecting…" : "Disconnect"}
               </button>
             </div>
           </>
@@ -94,11 +120,47 @@ export function ProfessorOpenRouterPanel() {
           <button
             className="secondary"
             type="button"
+            disabled={busy !== null}
             onClick={() => void beginOpenRouterOAuth("server")}
           >
-            Connect professor OpenRouter account
+            Connect with PKCE
           </button>
         )}
+        <div className="key-paste-control">
+          <label htmlFor="professorOpenRouterKey">
+            {status.connected ? "Or replace with a pasted key" : "Or paste an API key"}
+          </label>
+          <input
+            id="professorOpenRouterKey"
+            className="control"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={pastedKey}
+            placeholder="sk-or-v1-…"
+            disabled={busy !== null}
+            onChange={(event) => setPastedKey(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void savePastedKey();
+              }
+            }}
+          />
+          <button
+            className="secondary"
+            type="button"
+            disabled={busy !== null || !pastedKey.trim()}
+            onClick={() => void savePastedKey()}
+          >
+            {busy === "save"
+              ? "Saving…"
+              : status.connected
+                ? "Replace with pasted key"
+                : "Save pasted key"}
+          </button>
+          <small>The key value is never shown again after submission.</small>
+        </div>
         {error && <p className="error" role="alert">{error}</p>}
       </aside>
     </section>

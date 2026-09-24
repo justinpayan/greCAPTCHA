@@ -702,6 +702,24 @@ textarea.control {
   gap: 8px;
 }
 
+.key-paste-control {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.key-paste-control label {
+  font-size: 0.8rem;
+  font-weight: 720;
+}
+
+.key-paste-control small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .button-link {
   display: inline-flex;
   align-items: center;

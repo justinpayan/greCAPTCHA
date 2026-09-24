@@ -52,9 +52,10 @@ public demo.
 2. Choose **Course** or **Conference** with the workflow control above the
    dashboard tabs. The selection applies to both the default and custom-template
    creation forms.
-3. For a course, connect the professor's app-specific OAuth PKCE key, upload
-   the course PDF, describe the material to cover, choose a model, and generate
-   the question set.
+3. For a course, connect the professor's app-specific OpenRouter key with OAuth
+   PKCE or paste it directly, upload the course PDF, describe the material to
+   cover, choose a model, and generate the question set. Either connection
+   method stores one encrypted server credential for automatic grading.
 4. For a conference, enter the test-set name and choose the required model and
    question configuration. **Create and copy conference link** saves the
    template and copies its reusable examinee invitation; the assessor does not
@@ -111,10 +112,11 @@ review and export.
 Accounts use scrypt password hashes and revocable, opaque server-side sessions.
 Conference examinee keys are never stored by the server. A pasted or
 browser-managed key is sent over HTTPS only for generation or grading, held in
-process memory for that job, and discarded. Professor OAuth PKCE keys are
-encrypted at rest with `OPENROUTER_CREDENTIAL_ENCRYPTION_KEY` so course
-submissions can be graded immediately even when the professor is offline.
-Every OAuth key must have a positive spending limit and future expiration date.
+process memory for that job, and discarded. Professor keys connected through
+OAuth PKCE or direct paste are encrypted at rest with
+`OPENROUTER_CREDENTIAL_ENCRYPTION_KEY` so course submissions can be graded
+immediately even when the professor is offline. Every stored professor key must
+have a positive spending limit and future expiration date.
 Connected-key screens show only generic status and safeguard metadata, never a
 plaintext or shortened key value.
 Each account can access only its own sets, templates, attempts, and exports.

@@ -56,7 +56,7 @@ import {
   getOwnedJob,
 } from "@/lib/jobs";
 import { clearJobKeys, registerJobKey, requireJobKey } from "@/lib/openrouter-key-store";
-import { credentialStatus, saveOpenRouterCredential } from "@/lib/openrouter-credentials";
+import { credentialStatus } from "@/lib/openrouter-credentials";
 import { setOpenRouterTransportForTests, validateOpenRouterKey } from "@/lib/openrouter";
 import type { QuestionBlockConfig } from "@/lib/quiz";
 import { POST as submitAnswer } from "@/app/api/attempts/[id]/answers/route";
@@ -65,7 +65,10 @@ import { POST as runEvaluation } from "@/app/api/attempts/[id]/outline/route";
 import { POST as submitAttempt } from "@/app/api/attempts/[id]/submit/route";
 import { POST as createConferenceAssessment } from "@/app/api/conference/[token]/route";
 import { POST as gradeConferenceAttempt } from "@/app/api/attempts/[id]/grade/route";
-import { GET as getOpenRouterCredentialStatus } from "@/app/api/openrouter/credential/route";
+import {
+  GET as getOpenRouterCredentialStatus,
+  POST as saveOpenRouterCredential,
+} from "@/app/api/openrouter/credential/route";
 import {
   GET as getExamineeFeedback,
   POST as submitExamineeFeedback,
@@ -336,13 +339,42 @@ describe("public demo account-to-grade flow", () => {
     );
     expect(response.status).toBe(200);
 
-    await saveOpenRouterCredential(alice.id, "sk-or-professor-course-secret");
+    const takerSession = sessionState.token;
+    sessionState.token = await createAccountSession(alice.id);
+    const unsafeCredentialResponse = await saveOpenRouterCredential(
+      new Request("http://localhost/api/openrouter/credential", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ openrouterApiKey: "sk-or-unsafe" }),
+      }),
+    );
+    expect(unsafeCredentialResponse.status).toBe(400);
+    expect(await credentialStatus(alice.id)).toEqual({ connected: false });
+
+    for (const openrouterApiKey of [
+      "sk-or-professor-course-first",
+      "sk-or-professor-course-secret",
+    ]) {
+      const saveCredentialResponse = await saveOpenRouterCredential(
+        new Request("http://localhost/api/openrouter/credential", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ openrouterApiKey }),
+        }),
+      );
+      expect(saveCredentialResponse.status).toBe(200);
+      expect(JSON.stringify(await saveCredentialResponse.json())).not.toContain("sk-or-");
+    }
     const storedCredentialStatus = await credentialStatus(alice.id);
     expect(storedCredentialStatus).toMatchObject({ connected: true });
     expect(storedCredentialStatus).not.toHaveProperty("label");
     expect(JSON.stringify(storedCredentialStatus)).not.toContain("sk-or-");
-    const takerSession = sessionState.token;
-    sessionState.token = await createAccountSession(alice.id);
+    const credentialRows = await db
+      .select()
+      .from(openRouterCredentials)
+      .where(eq(openRouterCredentials.userId, alice.id));
+    expect(credentialRows).toHaveLength(1);
+    expect(JSON.stringify(credentialRows)).not.toContain("sk-or-professor");
     const credentialStatusResponse = await getOpenRouterCredentialStatus();
     expect(credentialStatusResponse.status).toBe(200);
     const publicCredentialStatus = await credentialStatusResponse.json();

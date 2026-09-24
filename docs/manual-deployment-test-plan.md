@@ -50,14 +50,19 @@ Remove the live-test variables afterward. Before deploying:
 1. Sign in as the professor, select **Course** in the workflow control above the dashboard tabs,
    and confirm both question-set creation tabs show course credential controls. Create a template
    with one deterministic question and one free-response question.
-2. Select **Connect professor OpenRouter account**. Complete OAuth/PKCE using a key with a small
-   positive spending limit and near-term expiration.
-3. Try a key without a spending limit, without an expiration, and with exhausted credit.
-   Confirm each is rejected with an actionable message.
-4. Reload and sign out/in. Confirm the server still reports the professor credential as
+2. Select **Connect with PKCE**. Complete OAuth/PKCE using a key with a small positive spending
+   limit and near-term expiration. Disconnect, then paste an app-specific key with the same
+   safeguards and select **Save pasted key**. Confirm both paths report the same metadata-only
+   connected state.
+3. Replace the pasted key once with another pasted key and once through PKCE. Confirm there is
+   still only one stored professor credential and subsequent Course grading uses the replacement.
+4. Try pasted keys without a spending limit, without an expiration, and with exhausted credit.
+   Confirm each is rejected with an actionable message and the password-style input clears
+   without displaying any part of the submitted key.
+5. Reload and sign out/in. Confirm the server still reports the professor credential as
    connected and displays only generic connection, spending-limit, and expiration status. It
    must never display the plaintext key, a shortened `sk-or-...` value, or a credential label.
-5. Inspect SQLite, logs, exports, and backups. `openrouter_credentials` should contain
+6. Inspect SQLite, logs, exports, and backups. `openrouter_credentials` should contain
    ciphertext, IV, and authentication tag, but no `sk-or-...` value. Job payloads/results and
    request logs must also contain no plaintext key.
 
