@@ -8,8 +8,8 @@ export const runtime = "nodejs";
 /**
  * Facts for the landing page that precedes a question set.
  *
- * Participant-facing, and the one attempt endpoint that reads without serving: it stamps no
- * clock, so the first question's timer starts on Start rather than on page load. It carries no
+ * Participant-facing, and the one attempt endpoint that reads without serving: it records no
+ * question-open duration, so timing starts on Start rather than on page load. It carries no
  * card names, descriptions or warm-up flags — `/outline` is the researcher's view and stays
  * behind the password.
  *

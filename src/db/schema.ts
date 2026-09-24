@@ -163,16 +163,10 @@ export const questionSets = sqliteTable(
     contributions: text("contributions").notNull(),
     modelId: text("model_id").notNull(),
     pdfEngine: text("pdf_engine").notNull(),
-    /**
-     * Budget for the whole set, in seconds, or null for no overall limit. Unlike the per-question
-     * soft limits this one is enforced: once it is spent no further question is served.
-     */
+    /** Budget for the whole set, in seconds, or null for no overall limit. */
     overallTimeLimitSeconds: integer("overall_time_limit_seconds"),
     /** Defaults copied onto each attempt created from this reusable question set. */
     randomize: integer("randomize", { mode: "boolean" }).notNull().default(false),
-    countdownHidden: integer("countdown_hidden", { mode: "boolean" })
-      .notNull()
-      .default(false),
     configJson: text("config_json").notNull(),
     questionsJson: text("questions_json").notNull(),
     /** Unguessable capability used by the reusable, login-required assessment URL. */
@@ -203,15 +197,8 @@ export const attempts = sqliteTable(
     // The signed-in account taking this response.
     takerUserId: text("taker_user_id").references(() => users.id),
     takerUsername: text("taker_username"),
-    // Display-only: the participant sees no timer, but every timing is still recorded.
-    // Stored because whether a countdown was visible plausibly changes pacing.
-    countdownHidden: integer("countdown_hidden", { mode: "boolean" })
-      .notNull()
-      .default(false),
     /**
-     * Snapshotted from the question set at creation, for the same reason the per-question limit
-     * is snapshotted onto each answer: editing a set must not change the budget of an attempt
-     * that is already under way.
+     * Snapshotted from the question set so editing a set cannot change an attempt under way.
      */
     overallTimeLimitSeconds: integer("overall_time_limit_seconds"),
     questionOrderJson: text("question_order_json").notNull(),
@@ -326,8 +313,6 @@ export const attemptAnswers = sqliteTable(
     firstInteractionMs: integer("first_interaction_ms"),
     submittedAt: text("submitted_at"),
     durationMs: integer("duration_ms"),
-    timeLimitSeconds: integer("time_limit_seconds"),
-    overrunMs: integer("overrun_ms"),
     score: real("score"),
     feedbackJson: text("feedback_json"),
   },

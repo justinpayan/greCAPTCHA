@@ -192,7 +192,7 @@ Award nothing for fluency, length, hedging, confidence, or restating the questio
 Discard any candidate concept whose definition appears anywhere in the paper, any answerable from the title alone, and any that duplicates a concept an earlier card already covers.
 ```
 
-Use a **free-response** card, count 1–2, soft limit around 120s. Name it `F7 background concept`
+Use a **free-response** card, count 1–2. Name it `F7 background concept`
 so per-family analysis groups it by `block_name` like the rest.
 
 **For definitions only**, delete the two-part paragraph ("Ask for two things…") and change the
@@ -246,7 +246,7 @@ Reasonable people disagree about what matters most, so the rubric must not requi
 Split the points between naming something from the qualifying list and saying what specifically stops holding without it, weighted towards the second. Award nothing for fluency, length, or for restating the paper's framing.
 ```
 
-Use a **free-response** card, count 1, soft limit around 120s. Name it `F8 load-bearing choice`.
+Use a **free-response** card, count 1. Name it `F8 load-bearing choice`.
 
 Two sub-asks, not three. An earlier draft also asked what would change had the choice gone the other
 way, which made both the stem and the expected answer long enough to crowd out the rest of the form.
@@ -308,7 +308,7 @@ Then list the answers that earn nothing: that the sample is small, that the resu
 Weight the mechanism above the condition. Award nothing for fluency, length, hedging, or for restating what the paper already says about its own scope.
 ```
 
-Use a **free-response** card, count 1, soft limit around 120s. Name it `F9 failure mode`.
+Use a **free-response** card, count 1. Name it `F9 failure mode`.
 
 ### The zero-credit list is the point
 
@@ -403,9 +403,7 @@ them as separate passes with a model that is given only the abstract, or no pape
 The filters matter most for F3, where they are the stated mitigation for the field-knowledge
 confound. Treat the in-prompt versions as a first pass, not as the filters the paper claims.
 
-### ✅ Per-family timers
+### Per-family timers
 
-Supported. Each card carries a soft time limit, snapshotted per question at serve time, with
-overrun recorded and never enforced. The §3.3 timer column drops straight in. Note the study
-design assumes hard timers; these are soft by design decision, so either enforce them before
-data collection or state the deviation.
+Not supported. The application records how long each question was open, but only the optional
+overall assessment limit is enforced or displayed as a countdown.

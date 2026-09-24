@@ -34,6 +34,7 @@ deployed("serves course and conference workflows with authentication boundaries"
     "/api/templates",
     "/api/export/answers",
     "/api/openrouter/credential",
+    "/api/openrouter/models",
     "/api/conference/not-a-real-token",
     "/api/attempts/not-a-real-attempt/grade",
     "/api/attempts/not-a-real-attempt/feedback",

@@ -109,10 +109,10 @@ const recommendedPatterns = [
   /deepseek\/deepseek/i,
 ];
 
-export async function getOpenRouterModels(apiKey: string): Promise<OpenRouterModel[]> {
+export async function getOpenRouterModels(apiKey?: string): Promise<OpenRouterModel[]> {
   const response = await logOutgoing("openrouter", "GET /models", () =>
     openRouterTransport(`${OPENROUTER_URL}/models`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
       cache: "no-store",
       signal: AbortSignal.timeout(15_000),
     }),

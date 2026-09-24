@@ -62,7 +62,6 @@ export function createDefaultStudyBlocks(): QuestionBlockConfig[] {
       name: "F1 planted error",
       count: 2,
       optionsPerQuestion: 2,
-      timeLimitSeconds: 45,
       warmup: false,
       prompt: PLANTED_ERROR_PROMPT,
     },
@@ -71,7 +70,6 @@ export function createDefaultStudyBlocks(): QuestionBlockConfig[] {
       type: "free_response",
       name: "F3 unstated rationale",
       count: 2,
-      timeLimitSeconds: 150,
       warmup: false,
       prompt: UNSTATED_RATIONALE_PROMPT,
     },
@@ -80,7 +78,6 @@ export function createDefaultStudyBlocks(): QuestionBlockConfig[] {
       type: "free_response",
       name: "F7 background concept",
       count: 2,
-      timeLimitSeconds: 120,
       warmup: false,
       prompt: BACKGROUND_CONCEPT_PROMPT,
     },
@@ -89,7 +86,6 @@ export function createDefaultStudyBlocks(): QuestionBlockConfig[] {
       type: "free_response",
       name: "F9 failure mode",
       count: 2,
-      timeLimitSeconds: 120,
       warmup: false,
       prompt: FAILURE_MODE_PROMPT,
     },
@@ -102,7 +98,6 @@ export function createDefaultStudyTemplate(modelId: string): StudyTemplateConfig
     pdfEngine: "native",
     blocks: createDefaultStudyBlocks(),
     randomize: false,
-    countdownHidden: false,
     overallTimeLimitSeconds: null,
   };
 }
@@ -112,7 +107,6 @@ export function isLegacyStarterTemplate(config: StudyTemplateConfig) {
   if (
     config.blocks.length !== 1 ||
     config.randomize ||
-    config.countdownHidden ||
     config.overallTimeLimitSeconds !== null
   ) {
     return false;
@@ -125,7 +119,6 @@ export function isLegacyStarterTemplate(config: StudyTemplateConfig) {
     block.name === "" &&
     block.count === 5 &&
     block.distractorsPerBlank === 3 &&
-    block.timeLimitSeconds === null &&
     block.warmup === false &&
     block.prompt === DEFAULT_FILL_PROMPT
   );

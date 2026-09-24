@@ -161,6 +161,10 @@ Test each case with a single Railway instance:
    incompatible saved template selected and confirm the template selection clears; load a saved
    template and confirm the global control changes to its workflow. Confirm the dashboard labels
    owner-side results as **Tests I've Created** and taker-side results as **Tests I've Taken**.
+   Confirm neither creation form nor the participant/review screens show per-question countdown
+   or soft-limit controls. With an overall limit configured, confirm only the overall countdown
+   appears and expires as expected; without one, confirm no countdown appears. In both cases,
+   confirm exported `duration_ms` and first-interaction timing fields are still populated.
 2. Open **Tests I've Created** and confirm each Course question set and each Conference template
    appears once as a top-level test, including tests with no attempts. Confirm Conference
    examinee-generated question sets do not appear as separate tests. Search by test name,

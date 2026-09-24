@@ -978,23 +978,11 @@ textarea.control {
   overflow-y: hidden;
 }
 
-/* The set-level countdown. Enforced, unlike the per-question one, so it is given a heavier
-   weight and turns amber in its last minute. */
-/* The set's two clocks, stacked under the per-question one. Right-aligned by the status column
-   they sit in; tabular numerals come from `.question-timer`, so the digits do not jitter. */
+/* The set-level elapsed and remaining clocks. */
 .overall-timer {
   display: grid;
   justify-items: end;
   gap: 2px;
-}
-
-/* Separated from the per-question timer only when there is one to separate from: with the
-   per-question countdown hidden these clocks stand alone, and a rule above nothing reads as a
-   stray line. */
-.question-timer + .overall-timer {
-  margin-top: 2px;
-  padding-top: 6px;
-  border-top: 1px solid var(--line);
 }
 
 /* The remainder is the one being counted down to zero, so it carries the weight. */
@@ -1770,7 +1758,7 @@ textarea.prompt-control {
   font-variant-numeric: tabular-nums;
 }
 
-/* The soft limit has passed. Marked, never enforced. */
+/* The overall assessment is close to its enforced limit. */
 .question-timer.over {
   color: var(--danger);
 }

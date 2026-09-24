@@ -91,7 +91,6 @@ export async function POST(
         modelId: template.config.modelId,
         pdfEngine: template.config.pdfEngine,
         randomize: template.config.randomize,
-        countdownHidden: template.config.countdownHidden,
         overallTimeLimitSeconds: template.config.overallTimeLimitSeconds,
         blocks: template.config.blocks,
       },

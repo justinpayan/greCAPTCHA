@@ -93,7 +93,9 @@ review and export.
 
 - A landing page appears before each question set. Timing starts only when the
   participant presses **Start**.
-- The taking screen shows only the optional overall set timer. It is enforced
+- The taking screen has no per-question countdowns or soft limits. Question-open
+  durations and first-interaction timings are still recorded for analysis.
+- The optional overall set timer is enforced
   server-side; when it expires, all autosaved drafts are submitted as-is and
   genuinely unanswered questions are marked timed out.
 - **Previous**, **Next**, and the numbered overview can open any question.

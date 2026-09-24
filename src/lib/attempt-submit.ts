@@ -12,7 +12,6 @@ import {
   draftHasAnswer,
   parseDraft,
   questionBlockName,
-  questionTimeLimit,
   type AssessmentResult,
   type FillReview,
   type StoredQuestion,
@@ -104,9 +103,6 @@ export async function submitAttempt(attemptId: string, reason: SubmissionReason)
           )
         : 0;
     const durationMs = (row?.durationMs ?? 0) + activeVisitMs;
-    const timeLimitSeconds = row?.timeLimitSeconds ?? questionTimeLimit(question);
-    const overrunMs =
-      timeLimitSeconds === null ? null : Math.max(0, durationMs - timeLimitSeconds * 1000);
     const graded = gradeDraft(question, row?.answerJson ?? null);
     const unansweredMessage =
       reason === "timeout"
@@ -133,7 +129,6 @@ export async function submitAttempt(attemptId: string, reason: SubmissionReason)
           ...values,
           submittedAt: closedAt.toISOString(),
           durationMs,
-          overrunMs,
         })
         .where(eq(attemptAnswers.id, row.id))
         .run();
@@ -147,8 +142,6 @@ export async function submitAttempt(attemptId: string, reason: SubmissionReason)
         startedAt: closedAt.toISOString(),
         submittedAt: closedAt.toISOString(),
         durationMs: 0,
-        timeLimitSeconds,
-        overrunMs: timeLimitSeconds === null ? null : 0,
         ...values,
       });
     }

@@ -275,13 +275,6 @@ function ReviewTiming({
   if (timing.firstInteractionMs !== null) {
     parts.push(`first input after ${formatDuration(timing.firstInteractionMs)}`);
   }
-  if (timing.timeLimitSeconds !== null) {
-    parts.push(
-      timing.overrunMs
-        ? `${formatDuration(timing.overrunMs)} over the ${formatDuration(timing.timeLimitSeconds * 1000)} soft limit`
-        : `within the ${formatDuration(timing.timeLimitSeconds * 1000)} soft limit`,
-    );
-  }
   return <p className="review-timing">{parts.join(" · ")}</p>;
 }
 
@@ -826,9 +819,7 @@ export function QuizWorkspace({
     setOverallElapsedMs(attempt.overallElapsedMs);
     interactionReported.current = attempt.firstInteractionRecorded;
     timeoutFired.current = false;
-    // The overall limit is enforced, so its clock has to run even when the display is hidden —
-    // otherwise hiding the countdown would quietly disable the limit.
-    if (attempt.countdownHidden && attempt.overallTimeLimitSeconds === null) return;
+    if (attempt.overallTimeLimitSeconds === null) return;
     const ticker = window.setInterval(() => {
       setOverallElapsedMs(overallBase + Date.now() - servedAt);
     }, 1000);

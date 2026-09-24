@@ -79,6 +79,11 @@ const FEATURED_MODELS: CatalogModel[] = [
   },
 ];
 
+function withFeaturedModels(catalog: CatalogModel[]) {
+  const featuredIds = new Set(FEATURED_MODELS.map((model) => model.id));
+  return [...FEATURED_MODELS, ...catalog.filter((model) => !featuredIds.has(model.id))];
+}
+
 function preferredModel(catalog: CatalogModel[]) {
   return (
     catalog.find((model) => model.id === DEFAULT_MODEL_ID) ??
@@ -104,7 +109,6 @@ function newBlock(type: QuestionBlockConfig["type"]): QuestionBlockConfig {
       name: "",
       count: 5,
       distractorsPerBlank: 3,
-      timeLimitSeconds: null,
       warmup: false,
       prompt: DEFAULT_FILL_PROMPT,
     };
@@ -116,7 +120,6 @@ function newBlock(type: QuestionBlockConfig["type"]): QuestionBlockConfig {
       name: "",
       count: 5,
       optionsPerQuestion: 4,
-      timeLimitSeconds: null,
       warmup: false,
       prompt: DEFAULT_MULTIPLE_CHOICE_PROMPT,
     };
@@ -126,7 +129,6 @@ function newBlock(type: QuestionBlockConfig["type"]): QuestionBlockConfig {
     type,
     name: "",
     count: 2,
-    timeLimitSeconds: null,
     warmup: false,
     prompt: DEFAULT_FREE_RESPONSE_PROMPT,
   };
@@ -149,35 +151,6 @@ function FieldHint({ text }: { text: string }) {
   );
 }
 
-/**
- * Suppresses the **per-question** timer in the test-taking interface. Soft limits still apply to
- * the attempt and every duration is still recorded server-side; only the display changes. Fixed
- * for the whole attempt so all of its questions are answered under one condition.
- *
- * A set's overall limit keeps its clock either way. That limit is enforced — it ends the assessment
- * — so hiding it would mean cutting a participant off with nothing on screen to warn them.
- */
-function CountdownToggle({
-  className,
-  hidden,
-  onChange,
-}: {
-  className?: string;
-  hidden: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  return (
-    <label className={`toggle-row ${className ?? ""}`.trim()}>
-      <input
-        type="checkbox"
-        checked={hidden}
-        onChange={(event) => onChange(event.target.checked)}
-      />
-      Hide the per-question countdown — every timing is still recorded
-    </label>
-  );
-}
-
 export function ResearchCaptcha({ username }: { username: string }) {
   const [mode, setMode] = useState<"default" | "custom" | "load" | "resume" | "mine">(
     "default",
@@ -192,7 +165,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
   const [pdfEngine, setPdfEngine] = useState<PdfEngine>("native");
   const [blocks, setBlocks] = useState<QuestionBlockConfig[]>(createDefaultStudyBlocks);
   const [randomize, setRandomize] = useState(false);
-  const [countdownHidden, setCountdownHidden] = useState(false);
   /** Whole minutes in the form, seconds in the data. Empty means no overall limit. */
   const [overallLimitMinutes, setOverallLimitMinutes] = useState("");
   const [loadingModels, setLoadingModels] = useState(false);
@@ -253,12 +225,11 @@ export function ResearchCaptcha({ username }: { username: string }) {
       pdfEngine,
       blocks,
       randomize,
-      countdownHidden,
       overallTimeLimitSeconds: overallLimitMinutes
         ? Number(overallLimitMinutes) * 60
         : null,
     }),
-    [selectedModel, pdfEngine, blocks, randomize, countdownHidden, overallLimitMinutes],
+    [selectedModel, pdfEngine, blocks, randomize, overallLimitMinutes],
   );
   const defaultConfig = useMemo(
     () => ({
@@ -275,7 +246,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
     setPdfEngine(config.pdfEngine);
     setBlocks(config.blocks);
     setRandomize(config.randomize);
-    setCountdownHidden(config.countdownHidden);
     setOverallLimitMinutes(
       config.overallTimeLimitSeconds ? String(Math.round(config.overallTimeLimitSeconds / 60)) : "",
     );
@@ -306,10 +276,20 @@ export function ResearchCaptcha({ username }: { username: string }) {
         }
         return null;
       }),
+      fetch("/api/openrouter/models")
+        .then(async (response) => {
+          const payload = (await response.json()) as {
+            models?: CatalogModel[];
+            error?: string;
+          };
+          if (!response.ok) throw new Error(payload.error ?? "Unable to load models.");
+          return withFeaturedModels(payload.models ?? []);
+        })
+        .catch(() => FEATURED_MODELS),
     ])
-      .then(([stored, connected]) => {
+      .then(([stored, connected, catalog]) => {
         if (!active) return;
-        const catalog = FEATURED_MODELS;
+        setModels(catalog);
         if (connected && "key" in connected) {
           void loadModelCatalog(connected.key, "oauth");
         } else {
@@ -443,7 +423,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to load models.");
-      const catalog = payload.models as CatalogModel[];
+      const catalog = withFeaturedModels(payload.models as CatalogModel[]);
       setModels(catalog);
       if (!defaultModel) {
         const preferred = preferredModel(catalog);
@@ -675,7 +655,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ randomize, countdownHidden }),
+          body: JSON.stringify({ randomize }),
         },
       );
       const payload = await response.json();
@@ -1180,7 +1160,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
     form.set("pdfEngine", config.pdfEngine);
     form.set("blocks", JSON.stringify(config.blocks));
     form.set("randomize", String(config.randomize));
-    form.set("countdownHidden", String(config.countdownHidden));
     form.set(
       "overallTimeLimitSeconds",
       config.overallTimeLimitSeconds === null
@@ -1293,7 +1272,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
       const response = await fetch(`/api/question-sets/${encodeURIComponent(id)}/attempts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ randomize, countdownHidden }),
+        body: JSON.stringify({ randomize }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to load question set.");
@@ -1674,7 +1653,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
                   />
                   Randomize question order for this attempt
                 </label>
-                <CountdownToggle hidden={countdownHidden} onChange={setCountdownHidden} />
               </div>
               {error && (
                 <p className="error" role="alert">
@@ -2133,7 +2111,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
               <label htmlFor="overallLimit">
                 Overall time limit
                 <span className="label-note">minutes</span>
-                <FieldHint text="Enforced, unlike the per-card soft limits: once the budget is spent no further question is served and the attempt is graded. Counts the time questions were actually open, so pausing a session costs nothing. Leave blank for no limit." />
+                <FieldHint text="Once the budget is spent no further question is served and the attempt is graded. Counts the time questions were actually open, so pausing a session costs nothing. Leave blank for no limit." />
               </label>
               <input
                 className="control"
@@ -2157,7 +2135,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
                 />
                 Randomize question order for the first attempt
               </label>
-              <CountdownToggle hidden={countdownHidden} onChange={setCountdownHidden} />
             </div>
 
             <div className="full">
@@ -2305,29 +2282,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
                           />
                         </div>
                       )}
-                      <div className="field">
-                        <label htmlFor={`${block.id}-time-limit`}>
-                          Soft time limit (seconds)
-                          <FieldHint text="Shown as a countdown and recorded as an overrun. Answers are never cut off or penalised." />
-                        </label>
-                        <input
-                          className="control"
-                          id={`${block.id}-time-limit`}
-                          type="number"
-                          min={5}
-                          max={3600}
-                          value={block.timeLimitSeconds ?? ""}
-                          placeholder="Leave blank for untimed"
-                          onChange={(event) =>
-                            updateBlock(block.id, {
-                              timeLimitSeconds:
-                                event.target.value === ""
-                                  ? null
-                                  : Number(event.target.value),
-                            })
-                          }
-                        />
-                      </div>
                       <label className="toggle-row full">
                         <input
                           type="checkbox"

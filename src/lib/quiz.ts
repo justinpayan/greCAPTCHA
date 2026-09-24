@@ -27,9 +27,6 @@ const blockBase = {
   name: z.string().max(80).default(""),
   count: z.number().int().min(1).max(30),
   prompt: z.string().min(20).max(20_000),
-  // Soft timer: displayed to the participant and used to flag overruns, never enforced.
-  // null means the questions from this card are untimed.
-  timeLimitSeconds: z.number().int().min(5).max(3_600).nullable().default(null),
   // Warm-up items are graded and reviewed but excluded from the overall score, and they
   // always lead the attempt in card order even when the rest is randomized.
   warmup: z.boolean().default(false),
@@ -68,11 +65,9 @@ export const studyTemplateConfigSchema = z.object({
   pdfEngine: pdfEngineSchema.default("native"),
   blocks: z.array(questionBlockSchema).max(20).default([]),
   randomize: z.boolean().default(false),
-  countdownHidden: z.boolean().default(false),
   /**
-   * Budget for the whole set in seconds, or null for none. Enforced, unlike the per-question soft
-   * limits: once it is spent no further question is served. Stored in seconds like every other
-   * limit here, though the form collects whole minutes.
+   * Budget for the whole set in seconds, or null for none. Once it is spent no further question
+   * is served. The form collects whole minutes.
    */
   overallTimeLimitSeconds: z.number().int().min(30).max(21_600).nullable().default(null),
 });
@@ -103,7 +98,6 @@ export type QuestionSetOverviewItem = {
   type: StoredQuestion["type"];
   blockName: string;
   description: string;
-  timeLimitSeconds: number | null;
   warmup: boolean;
   /**
    * The whole stored question, answer key included, for the expanded view.
@@ -247,8 +241,6 @@ export type StoredFillQuestion = {
   type: "fill_blank";
   id: string;
   blockId: string;
-  // Optional because question sets generated before soft timers existed have no limit stored.
-  timeLimitSeconds?: number | null;
   warmup?: boolean;
   blockName?: string;
   description?: string;
@@ -266,7 +258,6 @@ export type StoredFreeResponseQuestion = {
   type: "free_response";
   id: string;
   blockId: string;
-  timeLimitSeconds?: number | null;
   warmup?: boolean;
   blockName?: string;
   description?: string;
@@ -278,7 +269,6 @@ export type StoredMultipleChoiceQuestion = {
   type: "multiple_choice";
   id: string;
   blockId: string;
-  timeLimitSeconds?: number | null;
   warmup?: boolean;
   blockName?: string;
   description?: string;
@@ -325,14 +315,11 @@ export type PublicQuestion =
 export type AttemptIntro = {
   attemptId: string;
   totalQuestions: number;
-  /** How many carry a soft limit, so the page can say whether the set is timed at all. */
-  timedQuestionCount: number;
   /** Budget for the whole set in seconds, or null. Enforced once spent. */
   overallTimeLimitSeconds: number | null;
   /** True once a question has been served, meaning the clock is already running. */
   started: boolean;
   status: string;
-  countdownHidden: boolean;
 };
 
 export type AttemptView = {
@@ -351,10 +338,6 @@ export type AttemptView = {
     position: number;
     answered: boolean;
   }>;
-  /** Fixed for the whole attempt: suppresses the on-screen timer without affecting recording. */
-  countdownHidden: boolean;
-  /** Server-measured time already spent on this question, so a refresh resumes the display. */
-  elapsedMs: number;
   /** Budget for the whole set in seconds, or null when the set is unlimited. */
   overallTimeLimitSeconds: number | null;
   /**
@@ -376,7 +359,6 @@ export type AttemptOutlineItem = {
   type: StoredQuestion["type"];
   blockName: string;
   description: string;
-  timeLimitSeconds: number | null;
   warmup: boolean;
   answered: boolean;
 };
@@ -498,10 +480,6 @@ export type QuestionTiming = {
   durationMs: number;
   /** Time from the question first being served to the first answer interaction. */
   firstInteractionMs: number | null;
-  /** The soft limit in force when the question was served, or null if untimed. */
-  timeLimitSeconds: number | null;
-  /** Milliseconds spent beyond the soft limit; 0 within the limit, null if untimed. */
-  overrunMs: number | null;
 };
 
 type ReviewBase = QuestionTiming & {
@@ -628,7 +606,6 @@ export function prepareFillQuestions(
       type: "fill_blank" as const,
       id: globalThis.crypto.randomUUID(),
       blockId: block.id,
-      timeLimitSeconds: block.timeLimitSeconds,
       warmup: block.warmup,
       blockName: block.name,
       description: question.description.trim(),
@@ -647,7 +624,6 @@ export function prepareFreeResponseQuestions(
     type: "free_response",
     id: globalThis.crypto.randomUUID(),
     blockId: block.id,
-    timeLimitSeconds: block.timeLimitSeconds,
     warmup: block.warmup,
     blockName: block.name,
     description: question.description.trim(),
@@ -696,7 +672,6 @@ export function prepareMultipleChoiceQuestions(
       type: "multiple_choice" as const,
       id: globalThis.crypto.randomUUID(),
       blockId: block.id,
-      timeLimitSeconds: block.timeLimitSeconds,
       warmup: block.warmup,
       blockName: block.name,
       description: question.description.trim(),
@@ -706,11 +681,6 @@ export function prepareMultipleChoiceQuestions(
       rationale: question.rationale.trim(),
     };
   });
-}
-
-/** Normalizes the limit for question sets stored before soft timers existed. */
-export function questionTimeLimit(question: StoredQuestion): number | null {
-  return question.timeLimitSeconds ?? null;
 }
 
 /** Researcher-facing card label, blank for questions generated before names existed. */
@@ -724,11 +694,10 @@ export function isWarmup(question: StoredQuestion): boolean {
 }
 
 export function toPublicQuestion(question: StoredQuestion): PublicQuestion {
-  const timeLimitSeconds = questionTimeLimit(question);
   if (question.type === "free_response") {
     const { rubric: _r, warmup: _w, blockName: _b, description: _d, ...publicQuestion } =
       question;
-    return { ...publicQuestion, timeLimitSeconds };
+    return publicQuestion;
   }
   if (question.type === "multiple_choice") {
     const {
@@ -739,13 +708,12 @@ export function toPublicQuestion(question: StoredQuestion): PublicQuestion {
       description: _description,
       ...publicQuestion
     } = question;
-    return { ...publicQuestion, timeLimitSeconds };
+    return publicQuestion;
   }
   const { blanks, warmup: _w, blockName: _b, description: _d, ...publicQuestion } =
     question;
   return {
     ...publicQuestion,
-    timeLimitSeconds,
     blankIds: blanks.map((blank) => blank.id),
   };
 }

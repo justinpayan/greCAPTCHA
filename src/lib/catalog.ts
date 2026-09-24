@@ -8,7 +8,6 @@ import { deleteManuscript } from "@/lib/manuscripts";
 import {
   isWarmup,
   questionBlockName,
-  questionTimeLimit,
   type AttemptListEntry,
   type CreatedTestEntry,
   type QuestionSetListEntry,
@@ -83,7 +82,6 @@ export async function getQuestionSetOverview(id: string, ownerUserId: string): P
       type: question.type,
       blockName: questionBlockName(question),
       description: question.description?.trim() ?? "",
-      timeLimitSeconds: questionTimeLimit(question),
       warmup: isWarmup(question),
       question,
     })),

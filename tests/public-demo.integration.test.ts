@@ -14,6 +14,7 @@ vi.mock("next/headers", () => ({
 
 import { db } from "@/db";
 import {
+  attemptAnswers,
   attempts,
   conferenceSubmissions,
   jobs,
@@ -38,6 +39,7 @@ import {
   loadAttemptContext,
 } from "@/lib/attempts";
 import { requireOpenAttempt } from "@/lib/attempt-access";
+import { closeForTimeout } from "@/lib/attempt-close";
 import {
   deleteAttempt,
   deleteQuestionSet,
@@ -182,7 +184,6 @@ const blocks: QuestionBlockConfig[] = [
     name: "Facts",
     count: 1,
     optionsPerQuestion: 4,
-    timeLimitSeconds: null,
     warmup: false,
     prompt: "Ask one factual question.",
   },
@@ -191,7 +192,6 @@ const blocks: QuestionBlockConfig[] = [
     type: "free_response",
     name: "Explanation",
     count: 1,
-    timeLimitSeconds: null,
     warmup: false,
     prompt: "Ask one explanatory question.",
   },
@@ -209,7 +209,6 @@ async function enqueueSet(userId: string, suffix: string) {
       modelId: "test/model",
       pdfEngine: "native",
       randomize: false,
-      countdownHidden: false,
       overallTimeLimitSeconds: null,
       blocks,
     },
@@ -270,7 +269,6 @@ describe("public demo account-to-grade flow", () => {
       .where(eq(questionSets.id, generatedSetId))
       .get();
     expect(generatedSet?.randomize).toBe(false);
-    expect(generatedSet?.countdownHidden).toBe(false);
     const shared = await createQuestionSetShareLink(generatedSetId, alice.id);
     const bob = await db
       .select()
@@ -295,7 +293,9 @@ describe("public demo account-to-grade flow", () => {
 
     await getAttemptState(attemptId);
     let context = await loadAttemptContext(attemptId);
-    if (context.currentQuestion.type !== "multiple_choice") throw new Error("Expected MC first.");
+    if (context.currentQuestion.type !== "multiple_choice") {
+      throw new Error("Expected a multiple-choice question.");
+    }
     let response: Response = await submitAnswer(
       new Request("http://localhost/api/answer", {
         method: "POST",
@@ -406,10 +406,10 @@ describe("public demo account-to-grade flow", () => {
     expect(exportHeader).toEqual([
       "attempt_id", "question_set_id", "set_name", "paper_name", "model_id",
       "workflow_type", "attempt_status", "attempt_score", "randomize",
-      "countdown_hidden", "attempt_created_at", "attempt_completed_at", "position",
-      "question_id", "block_name", "question_type", "warmup", "time_limit_seconds",
+      "attempt_created_at", "attempt_completed_at", "position",
+      "question_id", "block_name", "question_type", "warmup",
       "started_at", "first_interaction_at", "first_interaction_ms", "submitted_at",
-      "duration_ms", "overrun_ms", "score", "skipped", "timed_out", "response",
+      "duration_ms", "score", "skipped", "timed_out", "response",
       "correct_answer", "correct", "grader_feedback", "examinee_feedback",
       "examinee_feedback_submitted_at",
     ]);
@@ -447,7 +447,6 @@ describe("public demo account-to-grade flow", () => {
         pdfEngine: "native",
         blocks: [],
         randomize: false,
-        countdownHidden: false,
         overallTimeLimitSeconds: null,
       },
       "conference",
@@ -464,7 +463,6 @@ describe("public demo account-to-grade flow", () => {
         pdfEngine: "native",
         blocks,
         randomize: false,
-        countdownHidden: false,
         overallTimeLimitSeconds: null,
       },
       "conference",
@@ -478,7 +476,6 @@ describe("public demo account-to-grade flow", () => {
           pdfEngine: "native",
           blocks,
           randomize: false,
-          countdownHidden: false,
           overallTimeLimitSeconds: null,
         },
         "conference",
@@ -493,7 +490,6 @@ describe("public demo account-to-grade flow", () => {
           pdfEngine: "native",
           blocks,
           randomize: true,
-          countdownHidden: false,
           overallTimeLimitSeconds: null,
         },
         "conference",
@@ -533,9 +529,31 @@ describe("public demo account-to-grade flow", () => {
 
     await getAttemptState(attemptId);
     let context = await loadAttemptContext(attemptId);
+    const multipleChoiceIndex = context.order.findIndex(
+      (questionId) => context.questionById.get(questionId)?.type === "multiple_choice",
+    );
+    const freeResponseIndex = context.order.findIndex(
+      (questionId) => context.questionById.get(questionId)?.type === "free_response",
+    );
+    if (multipleChoiceIndex < 0 || freeResponseIndex < 0) {
+      throw new Error("Expected one multiple-choice and one free-response question.");
+    }
+    let response: Response;
+    if (context.attempt.currentIndex !== multipleChoiceIndex) {
+      response = await navigateAttempt(
+        new Request("http://localhost/api/navigate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ index: multipleChoiceIndex }),
+        }),
+        { params: Promise.resolve({ id: attemptId }) },
+      );
+      expect(response.status).toBe(200);
+      context = await loadAttemptContext(attemptId);
+    }
     if (context.currentQuestion.type !== "multiple_choice") throw new Error("Expected MC first.");
     const multipleChoiceQuestionId = context.currentQuestion.id;
-    let response: Response = await submitAnswer(
+    response = await submitAnswer(
       new Request("http://localhost/api/answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -554,7 +572,7 @@ describe("public demo account-to-grade flow", () => {
       new Request("http://localhost/api/navigate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ index: 1 }),
+        body: JSON.stringify({ index: freeResponseIndex }),
       }),
       { params: Promise.resolve({ id: attemptId }) },
     );
@@ -739,6 +757,46 @@ describe("public demo account-to-grade flow", () => {
       eq(jobs.attemptId, aliceAttemptId),
       eq(jobs.type, "grading"),
     ))).length).toBe(1);
+  });
+
+  it("keeps duration telemetry while the overall limit marks unanswered items timed out", async () => {
+    const [alice, bob] = await Promise.all([
+      db.select().from(users).where(eq(users.usernameNormalized, "alice.test")).get(),
+      db.select().from(users).where(eq(users.usernameNormalized, "bob.test")).get(),
+    ]);
+    if (!alice || !bob) throw new Error("Account fixtures missing.");
+
+    const queued = await enqueueSet(alice.id, "overall-timeout");
+    const completed = await waitForJob(queued.jobId, alice.id);
+    const questionSetId = String(
+      (completed.result as { questionSetId?: string })?.questionSetId ?? "",
+    );
+    await db
+      .update(questionSets)
+      .set({ overallTimeLimitSeconds: 30 })
+      .where(eq(questionSets.id, questionSetId))
+      .run();
+    const shared = await createQuestionSetShareLink(questionSetId, alice.id);
+    const token = shared.participantPath.split("/").pop();
+    if (!token) throw new Error("Share token missing.");
+    const { attemptId } = await getOrCreateTakerAttempt(token, bob);
+    await getAttemptState(attemptId);
+    await db
+      .update(attempts)
+      .set({ activeQuestionStartedAt: new Date(Date.now() - 31_000).toISOString() })
+      .where(eq(attempts.id, attemptId))
+      .run();
+
+    await closeForTimeout(attemptId);
+    const answers = await db
+      .select()
+      .from(attemptAnswers)
+      .where(eq(attemptAnswers.attemptId, attemptId));
+    expect(answers).toHaveLength(blocks.length);
+    expect(answers.every((answer) => answer.timedOut)).toBe(true);
+    expect(Math.max(...answers.map((answer) => answer.durationMs ?? 0))).toBeGreaterThanOrEqual(
+      30_000,
+    );
   });
 
   it("groups created tests and distinguishes attempt deletion from whole-test deletion", async () => {

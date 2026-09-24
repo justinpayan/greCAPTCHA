@@ -17,14 +17,6 @@ const TYPE_LABELS = {
   free_response: "Free response",
 } as const;
 
-function formatLimit(seconds: number | null) {
-  if (seconds === null) return "untimed";
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  const rest = seconds % 60;
-  return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
-}
-
 /** Public-demo overview shown before an account owner opens or resumes an attempt. */
 export function AttemptSummary({
   outline,
@@ -225,7 +217,6 @@ export function AttemptSummary({
               <span className={`type-chip type-${item.type}`}>{TYPE_LABELS[item.type]}</span>
               {item.blockName && <span className="summary-block">{item.blockName}</span>}
               {item.warmup && <span className="pill">Warm-up</span>}
-              <span className="summary-limit">{formatLimit(item.timeLimitSeconds)}</span>
               <span className={`summary-state ${item.answered ? "done" : ""}`}>
                 {item.answered ? "Answered" : "Pending"}
               </span>

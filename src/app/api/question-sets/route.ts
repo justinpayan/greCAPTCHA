@@ -144,7 +144,6 @@ export async function POST(request: Request) {
     const modelId = String(form.get("modelId") ?? "").trim();
     const pdfEngine = pdfEngineSchema.parse(form.get("pdfEngine"));
     const randomize = form.get("randomize") === "true";
-    const countdownHidden = form.get("countdownHidden") === "true";
     const overallRaw = String(form.get("overallTimeLimitSeconds") ?? "").trim();
     const overallTimeLimitSeconds = overallRaw
       ? z.number().int().min(30).max(21_600).parse(Number(overallRaw))
@@ -172,7 +171,6 @@ export async function POST(request: Request) {
       modelId,
       pdfEngine,
       randomize,
-      countdownHidden,
       overallTimeLimitSeconds,
       blocks,
     }, apiKey);

@@ -18,7 +18,6 @@ import {
   draftHasAnswer,
   parseDraft,
   questionBlockName,
-  questionTimeLimit,
   shuffled,
   toPublicQuestion,
   type AssessmentResult,
@@ -47,7 +46,6 @@ export async function createAttempt(input: {
   questionSetId: string;
   ownerUserId?: string;
   randomize: boolean;
-  countdownHidden: boolean;
   taker?: { id: string; username: string };
 }): Promise<{ attemptId: string }> {
   if (input.ownerUserId) {
@@ -95,7 +93,6 @@ export async function createAttempt(input: {
     questionSetId: input.questionSetId,
     overallTimeLimitSeconds: set.overallTimeLimitSeconds,
     randomize: input.randomize,
-    countdownHidden: input.countdownHidden,
     linkEnabled: Boolean(input.taker),
     takerUserId: input.taker?.id ?? null,
     takerUsername: input.taker?.username ?? null,
@@ -182,7 +179,6 @@ async function createTakerAttemptIfNeeded(
     questionSetId: set.id,
     ownerUserId: set.ownerUserId,
     randomize: set.randomize,
-    countdownHidden: set.countdownHidden,
     taker,
   });
 }
@@ -264,7 +260,7 @@ export async function getAttemptState(
   if (!question) throw new Error("The attempt references a missing question.");
 
   const servedAt = new Date().toISOString();
-  // The first serve stamps the question's first visit and snapshots its configured limit.
+  // The first serve stamps the question's first visit.
   await db
     .insert(attemptAnswers)
     .values({
@@ -274,7 +270,6 @@ export async function getAttemptState(
       questionType: question.type,
       blockName: questionBlockName(question),
       startedAt: servedAt,
-      timeLimitSeconds: questionTimeLimit(question),
     })
     .onConflictDoNothing()
     .run();
@@ -300,11 +295,6 @@ export async function getAttemptState(
 
   const answerByQuestion = new Map(allAnswers.map((answer) => [answer.questionId, answer]));
   const draft = parseDraft(question, answerRow?.answerJson ?? null);
-  const activeElapsedMs = Math.max(
-    0,
-    Date.now() - new Date(activeQuestionStartedAt).getTime(),
-  );
-
   return {
     attempt: {
       attemptId,
@@ -325,8 +315,6 @@ export async function getAttemptState(
           ),
         };
       }),
-      countdownHidden: attempt.countdownHidden,
-      elapsedMs: (answerRow?.durationMs ?? 0) + activeElapsedMs,
       firstInteractionRecorded: Boolean(answerRow?.firstInteractionAt),
       overallTimeLimitSeconds: attempt.overallTimeLimitSeconds,
       overallElapsedMs: attemptElapsedMs(allAnswers, activeQuestionStartedAt),
@@ -371,8 +359,7 @@ export async function navigateAttempt(attemptId: string, targetIndex: number) {
  * Facts for the landing page that precedes a question set.
  *
  * Reads only. Unlike `getAttemptState` it serves nothing and stamps no `startedAt`, so a
- * participant can sit on the landing page for as long as they like without the first question's
- * clock running.
+ * participant can sit on the landing page for as long as they like without starting the attempt.
  */
 export async function getAttemptIntro(attemptId: string): Promise<AttemptIntro> {
   const quiz = await loadAttemptContextLoose(attemptId);
@@ -385,18 +372,12 @@ export async function getAttemptIntro(attemptId: string): Promise<AttemptIntro> 
     .from(attemptAnswers)
     .where(eq(attemptAnswers.attemptId, attemptId));
 
-  const inOrder = quiz.order
-    .map((questionId) => quiz.questionById.get(questionId))
-    .filter((question): question is StoredQuestion => Boolean(question));
-
   return {
     attemptId,
     totalQuestions: quiz.order.length,
-    timedQuestionCount: inOrder.filter((question) => questionTimeLimit(question) !== null).length,
     overallTimeLimitSeconds: quiz.attempt.overallTimeLimitSeconds,
     started: served.length > 0,
     status: quiz.attempt.status,
-    countdownHidden: quiz.attempt.countdownHidden,
   };
 }
 
@@ -465,7 +446,6 @@ export async function getAttemptOutline(attemptId: string): Promise<AttemptOutli
       type: question.type,
       blockName: questionBlockName(question),
       description: question.description?.trim() ?? "",
-      timeLimitSeconds: questionTimeLimit(question),
       warmup: isWarmup(question),
       answered: answeredIds.has(questionId),
     };
@@ -539,8 +519,6 @@ export function buildResult(input: {
     } = {
       durationMs: answer.durationMs ?? 0,
       firstInteractionMs: answer.firstInteractionMs ?? null,
-      timeLimitSeconds: answer.timeLimitSeconds ?? null,
-      overrunMs: answer.overrunMs ?? null,
       warmup: isWarmup(question),
       skipped: answer.skipped,
       timedOut: answer.timedOut,

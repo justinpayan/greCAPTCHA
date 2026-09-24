@@ -347,7 +347,6 @@ export function SetOverview({
                 <span className={`type-chip type-${item.type}`}>{TYPE_LABELS[item.type]}</span>
                 {item.blockName && <span className="summary-block">{item.blockName}</span>}
                 {item.warmup && <span className="pill">Warm-up</span>}
-                <span className="summary-limit">{formatLimit(item.timeLimitSeconds)}</span>
                 <span className="item-caret" aria-hidden="true">
                   {open ? "−" : "+"}
                 </span>

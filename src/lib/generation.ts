@@ -34,7 +34,6 @@ export type GenerationJobPayload = {
   modelId: string;
   pdfEngine: PdfEngine;
   randomize: boolean;
-  countdownHidden: boolean;
   overallTimeLimitSeconds: number | null;
   blocks: QuestionBlockConfig[];
 };
@@ -69,7 +68,6 @@ export async function executeGeneration(
         questionSetId: payload.questionSetId,
         ownerUserId,
         randomize: payload.randomize,
-        countdownHidden: payload.countdownHidden,
         taker: payload.taker,
       }));
     if (payload.conferenceSubmissionId) {
@@ -134,7 +132,6 @@ export async function executeGeneration(
     pdfEngine: payload.pdfEngine,
     overallTimeLimitSeconds: payload.overallTimeLimitSeconds,
     randomize: payload.randomize,
-    countdownHidden: payload.countdownHidden,
     configJson: JSON.stringify(payload.blocks),
     questionsJson: JSON.stringify(questions),
     createdAt: new Date().toISOString(),
@@ -144,7 +141,6 @@ export async function executeGeneration(
     questionSetId: payload.questionSetId,
     ownerUserId,
     randomize: payload.randomize,
-    countdownHidden: payload.countdownHidden,
     taker: payload.taker,
   });
   if (payload.conferenceSubmissionId) {

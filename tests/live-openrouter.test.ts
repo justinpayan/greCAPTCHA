@@ -54,7 +54,6 @@ live("uses a real OpenRouter model only when explicitly enabled", async () => {
     name: "Live generation",
     count: 1,
     optionsPerQuestion: 2,
-    timeLimitSeconds: null,
     warmup: false,
     prompt: "Create one simple question whose answer is explicitly stated in the document.",
   };
@@ -77,7 +76,6 @@ live("uses a real OpenRouter model only when explicitly enabled", async () => {
     prompt: "What number is two plus two?",
     description: "Minimal live grading check.",
     warmup: false,
-    timeLimitSeconds: null,
     rubric: {
       summary: "The response says four.",
       criteria: [{ criterion: "Correct value", points: 100, guidance: "Award full credit for 4." }],
