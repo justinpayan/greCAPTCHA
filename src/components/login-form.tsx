@@ -33,8 +33,8 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
   }
 
   return (
-    <main className="app-shell">
-      <Brand />
+    <main className="app-shell auth-shell">
+      <Brand href="/" />
       <section>
         <p className="eyebrow">Public demo</p>
         <h1>{signup ? "Create your account." : "Welcome back."}</h1>

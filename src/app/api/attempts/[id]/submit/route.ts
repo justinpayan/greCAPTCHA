@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { AttemptClosedError, requireOpenAttempt } from "@/lib/attempt-access";
 import { closeForTimeout, overallBudget } from "@/lib/attempt-close";
 import { submitAttempt } from "@/lib/attempt-submit";
+import { errorResponseBody } from "@/lib/openrouter-errors";
 
 export const runtime = "nodejs";
 
@@ -24,7 +25,8 @@ export async function POST(
         { status: 403 },
       );
     }
-    const message = error instanceof Error ? error.message : "Unable to submit assessment.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json(errorResponseBody(error, "Unable to submit assessment."), {
+      status: 400,
+    });
   }
 }

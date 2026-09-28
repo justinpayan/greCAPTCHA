@@ -7,6 +7,7 @@ const SESSION_COOKIE = "rc_session";
 const ALWAYS_OPEN = new Set([
   // The landing page; it renders the dashboard itself once there is a valid session.
   "/",
+  "/about",
   "/login",
   "/signup",
   "/api/session",

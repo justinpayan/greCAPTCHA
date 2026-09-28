@@ -13,7 +13,11 @@ type CredentialStatus =
       expiresAt: string;
     };
 
-export function ProfessorOpenRouterPanel() {
+/**
+ * `error` is an OpenRouter problem the page ran into elsewhere (generating, grading, finishing the
+ * OpenRouter sign-in); it is shown here, under the key controls, alongside the panel's own errors.
+ */
+export function ProfessorOpenRouterPanel({ error: pageError = "" }: { error?: string }) {
   const [status, setStatus] = useState<CredentialStatus>({ connected: false });
   const [busy, setBusy] = useState<"save" | "disconnect" | null>(null);
   const [pastedKey, setPastedKey] = useState("");
@@ -34,6 +38,15 @@ export function ProfessorOpenRouterPanel() {
     window.addEventListener("grecaptcha:openrouter-credential-changed", listener);
     return () => window.removeEventListener("grecaptcha:openrouter-credential-changed", listener);
   }, [refresh]);
+
+  async function connect() {
+    setError("");
+    try {
+      await beginOpenRouterOAuth("server");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to start OpenRouter sign-in.");
+    }
+  }
 
   async function disconnect() {
     setBusy("disconnect");
@@ -76,14 +89,15 @@ export function ProfessorOpenRouterPanel() {
   return (
     <section className="key-source-panel">
       <div className="key-source-main">
-        <strong>Course grading credential</strong>
+        <strong>API Access</strong>
         <p>
-          Connect with PKCE or paste an app-specific OpenRouter key once. Either credential is
+          Connect with OpenRouter or paste an app-specific OpenRouter key once. Either credential is
           encrypted on the server and used automatically when a student submits a course
           assessment.
         </p>
         <p className="key-warning">
-          OpenRouter requires a positive spending limit and future expiration date.
+          OpenRouter requires a <strong>positive spending limit</strong> and{" "}
+          <strong>future expiration date</strong>.
         </p>
       </div>
       <aside className="key-source-oauth">
@@ -102,9 +116,9 @@ export function ProfessorOpenRouterPanel() {
                 className="secondary"
                 type="button"
                 disabled={busy !== null}
-                onClick={() => void beginOpenRouterOAuth("server")}
+                onClick={() => void connect()}
               >
-                Replace with PKCE
+                Replace with OpenRouter
               </button>
               <button
                 className="secondary danger"
@@ -121,9 +135,9 @@ export function ProfessorOpenRouterPanel() {
             className="secondary"
             type="button"
             disabled={busy !== null}
-            onClick={() => void beginOpenRouterOAuth("server")}
+            onClick={() => void connect()}
           >
-            Connect with PKCE
+            Connect with OpenRouter
           </button>
         )}
         <div className="key-paste-control">
@@ -161,7 +175,13 @@ export function ProfessorOpenRouterPanel() {
           </button>
           <small>The key value is never shown again after submission.</small>
         </div>
-        {error && <p className="error" role="alert">{error}</p>}
+        {[error, pageError]
+          .filter((message, index, all) => message && all.indexOf(message) === index)
+          .map((message) => (
+            <p className="error" role="alert" key={message}>
+              {message}
+            </p>
+          ))}
       </aside>
     </section>
   );

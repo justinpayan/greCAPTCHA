@@ -19,6 +19,7 @@ import {
   validateBrowserOpenRouterKey,
   type KeySource,
 } from "@/lib/openrouter-browser-key";
+import { errorFromPayload, isOpenRouterError, OpenRouterError } from "@/lib/openrouter-errors";
 import {
   draftHasAnswer,
   type AssessmentResult,
@@ -293,6 +294,21 @@ function ResultSections({
     onChange: (questionId: string, comment: string) => void;
   };
 }) {
+  // Review cards folded down to their header. Only the view changes; comments typed into a
+  // folded card are kept, since they live with the caller.
+  const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const allCollapsed =
+    result.questions.length > 0 &&
+    result.questions.every((review) => collapsedIds.has(review.questionId));
+
+  function toggleCollapsed(questionId: string) {
+    setCollapsedIds((current) => {
+      const next = new Set(current);
+      if (!next.delete(questionId)) next.add(questionId);
+      return next;
+    });
+  }
+
   return (
     <>
       <section className="card result neutral-result">
@@ -316,7 +332,28 @@ function ResultSections({
             <p className="eyebrow">Read-only review</p>
             <h2>Answers and feedback</h2>
           </div>
-          <p>All submitted answers are locked.</p>
+          <div className="review-heading-side">
+            <p>All submitted answers are locked.</p>
+            <button
+              className="collapse-button"
+              type="button"
+              disabled={result.questions.length === 0}
+              aria-expanded={!allCollapsed}
+              aria-controls={result.questions
+                .map((review) => `review-body-${review.questionId}`)
+                .join(" ")}
+              onClick={() =>
+                setCollapsedIds(
+                  allCollapsed
+                    ? new Set()
+                    : new Set(result.questions.map((review) => review.questionId)),
+                )
+              }
+            >
+              <span className="collapse-chevron" aria-hidden="true" />
+              {allCollapsed ? "Expand all" : "Collapse all"}
+            </button>
+          </div>
         </div>
         {result.questions.map((review, index) => (
           <article className="card review-card" key={review.questionId}>
@@ -330,162 +367,181 @@ function ResultSections({
                 {review.skipped && <span className="pill skipped">Skipped</span>}
                 {review.timedOut && <span className="pill skipped">Out of time</span>}
               </span>
-              <span>{Math.round(review.score * 10) / 10}%</span>
-            </header>
-            <ReviewTiming timing={review} />
-            {review.type === "fill_blank" ? (
-              <div className="review-question-copy">
-                {review.segments.map((segment, segmentIndex) => {
-                  if (segment.type === "text") {
-                    return (
-                      <span key={`${segmentIndex}-${segment.value}`}>
-                        <MathText text={segment.value} />
-                      </span>
-                    );
-                  }
-                  const blank = review.blanks.find(
-                    (candidate) => candidate.blankId === segment.blankId,
-                  );
-                  return (
-                    <span className="review-blank" key={segment.blankId}>
-                      <span className="review-answer-row">
-                        <small>Your answer</small>
-                        <strong>
-                          {blank?.selectedAnswer ? (
-                            <MathText text={blank.selectedAnswer} />
-                          ) : review.skipped ? (
-                            "Skipped"
-                          ) : review.timedOut ? (
-                            "Out of time"
-                          ) : (
-                            "No answer"
-                          )}
-                        </strong>
-                      </span>
-                      <span className="review-answer-row">
-                        <small>Correct answer</small>
-                        <strong>
-                          {blank?.correctAnswer ? (
-                            <MathText text={blank.correctAnswer} />
-                          ) : (
-                            "Unavailable"
-                          )}
-                        </strong>
-                      </span>
-                    </span>
-                  );
-                })}
-              </div>
-            ) : review.type === "multiple_choice" ? (
-              <div className="free-review">
-                <h3>
-                  <MathText text={review.prompt} />
-                </h3>
-                <div className="option-list review-option-list">
-                  {review.options.map((option) => {
-                    const isCorrect = option.id === review.correctOptionId;
-                    const isSelected = option.id === review.selectedOptionId;
-                    return (
-                      <div
-                        className={`option review-option ${isCorrect ? "correct" : ""} ${
-                          isSelected && !isCorrect ? "incorrect" : ""
-                        }`}
-                        key={option.id}
-                      >
-                        <span>
-                          <MathText text={option.label} />
-                        </span>
-                        <small>
-                          {isCorrect && isSelected
-                            ? "Correct answer · your answer"
-                            : isCorrect
-                              ? "Correct answer"
-                              : isSelected
-                                ? "Your answer"
-                                : ""}
-                        </small>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div>
-                  <span className="review-label">Why</span>
-                  <p>
-                    <MathText text={review.rationale} />
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="free-review">
-                <h3>
-                  <MathText text={review.prompt} />
-                </h3>
-                <div>
-                  <span className="review-label">Your response</span>
-                  <p>
-                    {review.skipped ? (
-                      "Skipped — no response was submitted."
-                    ) : review.timedOut ? (
-                      "Not answered — the overall time limit ran out."
-                    ) : (
-                      <MathText text={review.response} />
-                    )}
-                  </p>
-                </div>
-                <div>
-                  <span className="review-label">Rubric</span>
-                  <p>
-                    <MathText text={review.rubric.summary} />
-                  </p>
-                  <ul>
-                    {review.rubric.criteria.map((criterion) => (
-                      <li key={criterion.criterion}>
-                        <strong>
-                          <MathText text={criterion.criterion} /> ({criterion.points} points)
-                        </strong>
-                        <span>
-                          <MathText text={criterion.guidance} />
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
-                  <span className="review-label">Grading feedback</span>
-                  <p>
-                    <MathText text={review.feedback} />
-                  </p>
-                </div>
-              </div>
-            )}
-            {examineeFeedback &&
-              (examineeFeedback.showEmpty ||
-                Boolean(examineeFeedback.commentsByQuestionId[review.questionId])) && (
-              <div className="question-examinee-feedback">
-                <label
-                  className="review-label"
-                  htmlFor={`examinee-feedback-${review.questionId}`}
+              <span className="review-card-actions">
+                <span>{Math.round(review.score * 10) / 10}%</span>
+                <button
+                  className="collapse-button"
+                  type="button"
+                  aria-expanded={!collapsedIds.has(review.questionId)}
+                  aria-controls={`review-body-${review.questionId}`}
+                  aria-label={`${
+                    collapsedIds.has(review.questionId) ? "Expand" : "Collapse"
+                  } question ${index + 1}`}
+                  onClick={() => toggleCollapsed(review.questionId)}
                 >
-                  {examineeFeedback.label ?? "Your feedback on this question"}
-                </label>
-                <textarea
-                  className="control"
-                  id={`examinee-feedback-${review.questionId}`}
-                  value={examineeFeedback.commentsByQuestionId[review.questionId] ?? ""}
-                  maxLength={10_000}
-                  readOnly={examineeFeedback.submitted}
-                  disabled={examineeFeedback.loading}
-                  placeholder={
-                    examineeFeedback.loading
-                      ? "Loading feedback…"
-                      : examineeFeedback.submitted
-                        ? "No comment was submitted for this question."
-                        : "Optional feedback about this question or its grading"
-                  }
-                  onChange={(event) =>
-                    examineeFeedback.onChange(review.questionId, event.target.value)
-                  }
-                />
+                  <span className="collapse-chevron" aria-hidden="true" />
+                  {collapsedIds.has(review.questionId) ? "Expand" : "Collapse"}
+                </button>
+              </span>
+            </header>
+            {!collapsedIds.has(review.questionId) && (
+              <div className="review-card-body" id={`review-body-${review.questionId}`}>
+                <ReviewTiming timing={review} />
+                {review.type === "fill_blank" ? (
+                  <div className="review-question-copy">
+                    {review.segments.map((segment, segmentIndex) => {
+                      if (segment.type === "text") {
+                        return (
+                          <span key={`${segmentIndex}-${segment.value}`}>
+                            <MathText text={segment.value} />
+                          </span>
+                        );
+                      }
+                      const blank = review.blanks.find(
+                        (candidate) => candidate.blankId === segment.blankId,
+                      );
+                      return (
+                        <span className="review-blank" key={segment.blankId}>
+                          <span className="review-answer-row">
+                            <small>Your answer</small>
+                            <strong>
+                              {blank?.selectedAnswer ? (
+                                <MathText text={blank.selectedAnswer} />
+                              ) : review.skipped ? (
+                                "Skipped"
+                              ) : review.timedOut ? (
+                                "Out of time"
+                              ) : (
+                                "No answer"
+                              )}
+                            </strong>
+                          </span>
+                          <span className="review-answer-row">
+                            <small>Correct answer</small>
+                            <strong>
+                              {blank?.correctAnswer ? (
+                                <MathText text={blank.correctAnswer} />
+                              ) : (
+                                "Unavailable"
+                              )}
+                            </strong>
+                          </span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                ) : review.type === "multiple_choice" ? (
+                  <div className="free-review">
+                    <h3>
+                      <MathText text={review.prompt} />
+                    </h3>
+                    <div className="option-list review-option-list">
+                      {review.options.map((option) => {
+                        const isCorrect = option.id === review.correctOptionId;
+                        const isSelected = option.id === review.selectedOptionId;
+                        return (
+                          <div
+                            className={`option review-option ${isCorrect ? "correct" : ""} ${
+                              isSelected && !isCorrect ? "incorrect" : ""
+                            }`}
+                            key={option.id}
+                          >
+                            <span>
+                              <MathText text={option.label} />
+                            </span>
+                            <small>
+                              {isCorrect && isSelected
+                                ? "Correct answer · your answer"
+                                : isCorrect
+                                  ? "Correct answer"
+                                  : isSelected
+                                    ? "Your answer"
+                                    : ""}
+                            </small>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div>
+                      <span className="review-label">Why</span>
+                      <p>
+                        <MathText text={review.rationale} />
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="free-review">
+                    <h3>
+                      <MathText text={review.prompt} />
+                    </h3>
+                    <div>
+                      <span className="review-label">Your response</span>
+                      <p>
+                        {review.skipped ? (
+                          "Skipped — no response was submitted."
+                        ) : review.timedOut ? (
+                          "Not answered — the overall time limit ran out."
+                        ) : (
+                          <MathText text={review.response} />
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="review-label">Rubric</span>
+                      <p>
+                        <MathText text={review.rubric.summary} />
+                      </p>
+                      <ul>
+                        {review.rubric.criteria.map((criterion) => (
+                          <li key={criterion.criterion}>
+                            <strong>
+                              <MathText text={criterion.criterion} /> ({criterion.points} points)
+                            </strong>
+                            <span>
+                              <MathText text={criterion.guidance} />
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <span className="review-label">Grading feedback</span>
+                      <p>
+                        <MathText text={review.feedback} />
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {examineeFeedback &&
+                  (examineeFeedback.showEmpty ||
+                    Boolean(examineeFeedback.commentsByQuestionId[review.questionId])) && (
+                  <div className="question-examinee-feedback">
+                    <label
+                      className="review-label"
+                      htmlFor={`examinee-feedback-${review.questionId}`}
+                    >
+                      {examineeFeedback.label ?? "Your feedback on this question"}
+                    </label>
+                    <textarea
+                      className="control"
+                      id={`examinee-feedback-${review.questionId}`}
+                      value={examineeFeedback.commentsByQuestionId[review.questionId] ?? ""}
+                      maxLength={10_000}
+                      readOnly={examineeFeedback.submitted}
+                      disabled={examineeFeedback.loading}
+                      placeholder={
+                        examineeFeedback.loading
+                          ? "Loading feedback…"
+                          : examineeFeedback.submitted
+                            ? "No comment was submitted for this question."
+                            : "Optional feedback about this question or its grading"
+                      }
+                      onChange={(event) =>
+                        examineeFeedback.onChange(review.questionId, event.target.value)
+                      }
+                    />
+                  </div>
+                )}
               </div>
             )}
           </article>
@@ -578,7 +634,7 @@ function ExamineeFeedbackReview({ result }: { result: AssessmentResult }) {
           {submitted ? "Feedback submitted" : "Examinee feedback"}
         </p>
         <h2>
-          {submitted ? "Thank you for your feedback." : "Share feedback with the assessor"}
+          {submitted ? "Thank you for your feedback." : "Share feedback with the administrator"}
         </h2>
         <p className="hint">
           {submitted
@@ -663,6 +719,8 @@ export function PendingEvaluationView({
   const [credentialRequired, setCredentialRequired] = useState(false);
   const [status, setStatus] = useState("Waiting for the evaluator…");
   const [error, setError] = useState("");
+  // OpenRouter problems, shown under the key controls rather than below the grading button.
+  const [keyError, setKeyError] = useState("");
   const [submittingKey, setSubmittingKey] = useState(false);
 
   useEffect(() => {
@@ -676,6 +734,7 @@ export function PendingEvaluationView({
         const payload = (await response.json()) as {
           status?: string;
           error?: string;
+          errorSource?: string;
           gradingCredentialRequired?: boolean;
           result?: AssessmentResult;
         };
@@ -695,7 +754,15 @@ export function PendingEvaluationView({
                 ? "Grading was interrupted. Supply your key again to retry."
                 : "Supply your OpenRouter key to grade this conference assessment.",
         );
-        if (payload.status === "failed" && payload.error) setError(payload.error);
+        if (payload.status === "failed" && payload.error) {
+          // The key panel is on screen exactly when a key is required, so a key problem goes there.
+          const failure = errorFromPayload(payload, "Grading failed.");
+          if (isOpenRouterError(failure) && payload.gradingCredentialRequired) {
+            setKeyError(failure.message);
+          } else {
+            setError(failure.message);
+          }
+        }
       } catch (caught) {
         if (active) {
           setError(caught instanceof Error ? caught.message : "Unable to check grading.");
@@ -713,10 +780,11 @@ export function PendingEvaluationView({
   async function submitGradingKey() {
     setSubmittingKey(true);
     setError("");
+    setKeyError("");
     try {
       const key =
         keySource === "oauth" ? (await validateBrowserOpenRouterKey()).key : apiKey.trim();
-      if (!key) throw new Error("Enter or connect an OpenRouter API key.");
+      if (!key) throw new OpenRouterError("Enter or connect an OpenRouter API key.");
       const response = await fetch(`/api/attempts/${encodeURIComponent(attemptId)}/grade`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -724,15 +792,18 @@ export function PendingEvaluationView({
       });
       const payload = (await response.json()) as {
         error?: string;
+        errorSource?: string;
         result?: AssessmentResult;
       };
-      if (!response.ok) throw new Error(payload.error ?? "Unable to start grading.");
+      if (!response.ok) throw errorFromPayload(payload, "Unable to start grading.");
       if (keySource === "paste") setApiKey("");
       setCredentialRequired(false);
       setStatus("Your assessment is queued for grading…");
       if (payload.result) onResult(payload.result);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to start grading.");
+      const message = caught instanceof Error ? caught.message : "Unable to start grading.";
+      if (isOpenRouterError(caught)) setKeyError(message);
+      else setError(message);
     } finally {
       setSubmittingKey(false);
     }
@@ -752,9 +823,11 @@ export function PendingEvaluationView({
             <OpenRouterKeyPanel
               apiKey={apiKey}
               source={keySource}
+              error={keyError}
               onChange={(key, source) => {
                 setApiKey(key);
                 setKeySource(source);
+                setKeyError("");
               }}
             />
             <button
@@ -1002,23 +1075,21 @@ export function QuizWorkspace({
 
   return (
     <PdfAssessmentSplit attemptId={attempt.attemptId} pdfLabel={attempt.paperName}>
-      <main className="app-shell">
+      <main className="app-shell assessment-layout">
       <header className="quiz-header sequential-header">
         <div>
-          <h1>{attempt.paperName}</h1>
+          {/* The PDF's own title when it declares one; its file name otherwise. */}
+          <h1 className="attempt-title">{attempt.paperTitle || attempt.paperName}</h1>
         </div>
-        <div className="sequence-status attempt-status">
-          {overallClock && (
+        {overallClock && (
+          <div className="sequence-status attempt-status">
             <OverallTimer
               elapsedMs={overallElapsedMs}
               remainingMs={overallClock.remainingMs}
               limitSeconds={overallClock.limitSeconds}
             />
-          )}
-          <div className="sequence-progress">
-            Question {attempt.currentIndex + 1} of {attempt.totalQuestions}
           </div>
-        </div>
+        )}
       </header>
 
       <nav className="question-navigator" aria-label="Assessment questions">
@@ -1059,6 +1130,9 @@ export function QuizWorkspace({
         plan page and the set overview, which are researcher-facing.
       */}
       <section className="card question-card">
+        <p className="question-position">
+          Question {attempt.currentIndex + 1} of {attempt.totalQuestions}
+        </p>
         {question.type === "fill_blank" ? (
           <FillQuestionEditor
             question={question}
@@ -1096,19 +1170,28 @@ export function QuizWorkspace({
             />
           </div>
         )}
+        {/* Under the answer, where the participant is looking when it changes. */}
+        <div className="autosave-status" role="status" aria-live="polite">
+          {saveState === "saving"
+            ? "Saving…"
+            : saveState === "error"
+              ? "Save failed"
+              : "All changes saved"}
+        </div>
       </section>
 
       {error && <p className="error" role="alert">{error}</p>}
-      <div className="autosave-status" role="status" aria-live="polite">
-        {saveState === "saving"
-          ? "Saving…"
-          : saveState === "error"
-            ? "Save failed"
-            : "All changes saved"}
-      </div>
       <div className="quiz-actions navigable-actions">
         <button
-          className="secondary"
+          className="primary submit-assessment"
+          type="button"
+          disabled={submitting}
+          onClick={() => void submitAssessment()}
+        >
+          {submitting ? "Working…" : "Submit assessment"}
+        </button>
+        <button
+          className="secondary previous-question"
           type="button"
           disabled={submitting || attempt.currentIndex === 0}
           onClick={() => void goToQuestion(attempt.currentIndex - 1)}
@@ -1122,14 +1205,6 @@ export function QuizWorkspace({
           onClick={() => void goToQuestion(attempt.currentIndex + 1)}
         >
           Next
-        </button>
-        <button
-          className="primary submit-assessment"
-          type="button"
-          disabled={submitting}
-          onClick={() => void submitAssessment()}
-        >
-          {submitting ? "Working…" : "Submit assessment"}
         </button>
       </div>
       </main>

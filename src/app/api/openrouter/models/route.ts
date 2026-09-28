@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getOpenRouterModels, validateOpenRouterKey } from "@/lib/openrouter";
+import { errorResponseBody } from "@/lib/openrouter-errors";
 import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
 
@@ -12,8 +13,7 @@ export async function GET() {
     await requireUser();
     return NextResponse.json({ models: await getOpenRouterModels() });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load models.";
-    return NextResponse.json({ error: message }, { status: 502 });
+    return NextResponse.json(errorResponseBody(error, "Unable to load models."), { status: 502 });
   }
 }
 
@@ -30,7 +30,6 @@ export async function POST(request: Request) {
     const models = await getOpenRouterModels(apiKey);
     return NextResponse.json({ models });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load models.";
-    return NextResponse.json({ error: message }, { status: 502 });
+    return NextResponse.json(errorResponseBody(error, "Unable to load models."), { status: 502 });
   }
 }

@@ -6,10 +6,11 @@ import { db } from "@/db";
 import { conferenceSubmissions } from "@/db/schema";
 import { enqueueGenerationJob } from "@/lib/jobs";
 import { validateOpenRouterKey } from "@/lib/openrouter";
+import { errorResponseBody } from "@/lib/openrouter-errors";
 import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
 import { getConferenceTemplateByToken } from "@/lib/templates";
-import { MAX_PDF_BYTES, pdfTooLargeMessage } from "@/lib/uploads";
+import { loadManuscript, readManuscriptSource } from "@/lib/manuscript-input";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -51,25 +52,20 @@ export async function POST(
     }
 
     const form = await request.formData();
-    const file = form.get("paper");
-    if (!(file instanceof File) || file.size === 0) throw new Error("Choose a PDF manuscript.");
-    if (file.size > MAX_PDF_BYTES) throw new Error(pdfTooLargeMessage(file.size));
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      throw new Error("Only PDF files are supported.");
-    }
-    const signature = Buffer.from(await file.slice(0, 5).arrayBuffer()).toString("ascii");
-    if (signature !== "%PDF-") throw new Error("The selected file is not a valid PDF.");
+    const manuscript = readManuscriptSource(form);
 
     const contributions = String(form.get("contributions") ?? "").trim();
     const apiKey = String(form.get("openrouterApiKey") ?? "").trim();
     const keySource = form.get("keySource") === "oauth" ? "oauth" : "paste";
     await validateOpenRouterKey(apiKey, { requireSafeguards: keySource === "oauth" });
+    // Downloaded (for a link) only after the key has been accepted.
+    const file = await loadManuscript(manuscript);
 
     const now = new Date().toISOString();
     await db.insert(conferenceSubmissions).values({
       id: submissionId,
       templateId: template.id,
-      assessorUserId: template.ownerUserId,
+      administratorUserId: template.ownerUserId,
       takerUserId: user.id,
       paperName: file.name,
       contributions,
@@ -114,7 +110,8 @@ export async function POST(
     } catch {
       // Preserve the original generation error if cleanup itself fails.
     }
-    const message = error instanceof Error ? error.message : "Unable to generate the assessment.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json(errorResponseBody(error, "Unable to generate the assessment."), {
+      status: 400,
+    });
   }
 }

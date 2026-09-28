@@ -232,7 +232,7 @@ export async function deleteTemplate(id: string, ownerUserId: string) {
       .where(
         and(
           eq(conferenceSubmissions.templateId, id),
-          eq(conferenceSubmissions.assessorUserId, ownerUserId),
+          eq(conferenceSubmissions.administratorUserId, ownerUserId),
         ),
       )
       .all();
@@ -244,7 +244,7 @@ export async function deleteTemplate(id: string, ownerUserId: string) {
       .where(
         and(
           eq(conferenceSubmissions.templateId, id),
-          eq(conferenceSubmissions.assessorUserId, ownerUserId),
+          eq(conferenceSubmissions.administratorUserId, ownerUserId),
         ),
       )
       .run();

@@ -9,11 +9,12 @@ import { enqueueGenerationJob } from "@/lib/jobs";
 import { validateOpenRouterKey } from "@/lib/openrouter";
 import { requireOpenRouterCredential } from "@/lib/openrouter-credentials";
 import {
-  MAX_PDF_BYTES,
-  MAX_UPLOAD_BYTES,
-  pdfTooLargeMessage,
-  uploadTooLargeMessage,
-} from "@/lib/uploads";
+  loadManuscript,
+  ManuscriptTooLargeError,
+  readManuscriptSource,
+} from "@/lib/manuscript-input";
+import { errorResponseBody } from "@/lib/openrouter-errors";
+import { MAX_UPLOAD_BYTES, uploadTooLargeMessage } from "@/lib/uploads";
 import { requireUser } from "@/lib/session";
 import { assertSameOrigin } from "@/lib/security";
 import {
@@ -88,15 +89,9 @@ export async function POST(request: Request) {
 
     // The PDF is checked first, ahead of every other field. A manuscript that is too big is the
     // one problem the researcher has already spent an upload on, and hearing about a mis-set
-    // block count instead would send them looking in the wrong place.
-    const file = form.get("paper");
-    if (!(file instanceof File) || file.size === 0) throw new Error("Choose a PDF manuscript.");
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      throw new Error("Only PDF files are supported.");
-    }
-    // Reachable only in the narrow band where the whole body fits the budget but the PDF alone is
-    // over its share of it. The browser applies the same ceiling before uploading.
-    if (file.size > MAX_PDF_BYTES) throw new UploadTooLargeError(pdfTooLargeMessage(file.size));
+    // block count instead would send them looking in the wrong place. A linked PDF is only
+    // checked for shape here; it is downloaded once everything else has been validated.
+    const manuscript = readManuscriptSource(form);
 
     const contributions = String(form.get("contributions") ?? "").trim();
     const workflowType = workflowTypeSchema.parse(form.get("workflowType") ?? "course");
@@ -160,8 +155,7 @@ export async function POST(request: Request) {
       throw new Error("A question set may contain at most 50 questions.");
     }
 
-    const signature = Buffer.from(await file.slice(0, 5).arrayBuffer()).toString("ascii");
-    if (signature !== "%PDF-") throw new Error("The selected file is not a valid PDF.");
+    const file = await loadManuscript(manuscript);
 
     const created = await enqueueGenerationJob(user.id, file, {
       setName,
@@ -176,10 +170,10 @@ export async function POST(request: Request) {
     }, apiKey);
     return NextResponse.json(created, { status: 202 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Question generation failed.";
     // 413 for a size refusal, so a caller that is not this app's own form can tell an upload
     // that was too big apart from a form that was filled in wrongly.
-    const status = error instanceof UploadTooLargeError ? 413 : 400;
-    return NextResponse.json({ error: message }, { status });
+    const status =
+      error instanceof UploadTooLargeError || error instanceof ManuscriptTooLargeError ? 413 : 400;
+    return NextResponse.json(errorResponseBody(error, "Question generation failed."), { status });
   }
 }

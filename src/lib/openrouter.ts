@@ -1,5 +1,6 @@
 import "server-only";
 
+import { OpenRouterError } from "@/lib/openrouter-errors";
 import { logOutgoing } from "@/lib/request-log";
 
 import {
@@ -34,20 +35,41 @@ export type OpenRouterKeyMetadata = {
   label: string | null;
 };
 
+/**
+ * One request to OpenRouter. A failure to reach it at all (DNS, refused connection, timeout) is
+ * reported as an OpenRouter problem, so it is shown beside the key controls like its other errors.
+ */
+async function contactOpenRouter(
+  detail: string,
+  run: () => Promise<Response>,
+): Promise<Response> {
+  try {
+    return await logOutgoing("openrouter", detail, run);
+  } catch (error) {
+    if (error instanceof OpenRouterError) throw error;
+    const timedOut = error instanceof Error && error.name === "TimeoutError";
+    throw new OpenRouterError(
+      timedOut
+        ? "OpenRouter did not respond in time. Try again in a moment."
+        : "OpenRouter could not be reached. Try again in a moment.",
+    );
+  }
+}
+
 export async function validateOpenRouterKey(
   apiKey: string,
   options: { requireSafeguards?: boolean } = {},
 ): Promise<OpenRouterKeyMetadata> {
   const trimmed = apiKey.trim();
-  if (!trimmed || trimmed.length > 512) throw new Error("Enter a valid OpenRouter API key.");
-  const response = await logOutgoing("openrouter", "GET /key", () =>
+  if (!trimmed || trimmed.length > 512) throw new OpenRouterError("Enter a valid OpenRouter API key.");
+  const response = await contactOpenRouter("GET /key", () =>
     openRouterTransport(`${OPENROUTER_URL}/key`, {
       headers: { Authorization: `Bearer ${trimmed}` },
       cache: "no-store",
       signal: AbortSignal.timeout(15_000),
     }),
   );
-  if (!response.ok) throw new Error("OpenRouter rejected that API key.");
+  if (!response.ok) throw new OpenRouterError("OpenRouter rejected that API key.");
   const payload = (await response.json()) as {
     data?: {
       limit?: number | null;
@@ -64,14 +86,14 @@ export async function validateOpenRouterKey(
   };
   if (options.requireSafeguards) {
     if (metadata.limit === null || !Number.isFinite(metadata.limit) || metadata.limit <= 0) {
-      throw new Error("Browser-managed keys must have a positive OpenRouter spending limit.");
+      throw new OpenRouterError("Browser-managed keys must have a positive OpenRouter spending limit.");
     }
     const expiration = metadata.expiresAt ? new Date(metadata.expiresAt).getTime() : Number.NaN;
     if (!Number.isFinite(expiration) || expiration <= Date.now()) {
-      throw new Error("Browser-managed keys must have a future expiration date.");
+      throw new OpenRouterError("Browser-managed keys must have a future expiration date.");
     }
     if (metadata.limitRemaining !== null && metadata.limitRemaining <= 0) {
-      throw new Error("This browser-managed key has exhausted its spending limit.");
+      throw new OpenRouterError("This browser-managed key has exhausted its spending limit.");
     }
   }
   return metadata;
@@ -110,7 +132,7 @@ const recommendedPatterns = [
 ];
 
 export async function getOpenRouterModels(apiKey?: string): Promise<OpenRouterModel[]> {
-  const response = await logOutgoing("openrouter", "GET /models", () =>
+  const response = await contactOpenRouter("GET /models", () =>
     openRouterTransport(`${OPENROUTER_URL}/models`, {
       headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
       cache: "no-store",
@@ -119,7 +141,7 @@ export async function getOpenRouterModels(apiKey?: string): Promise<OpenRouterMo
   );
 
   if (!response.ok) {
-    throw new Error(`OpenRouter model catalog returned ${response.status}.`);
+    throw new OpenRouterError(`OpenRouter model catalog returned ${response.status}.`);
   }
 
   const payload = (await response.json()) as { data?: RawModel[] };
@@ -334,8 +356,7 @@ async function callOpenRouter(input: {
     });
   }
 
-  const response = await logOutgoing(
-    "openrouter",
+  const response = await contactOpenRouter(
     `POST /chat/completions model=${input.modelId}${input.file ? " with pdf" : ""}`,
     () =>
       openRouterTransport(`${OPENROUTER_URL}/chat/completions`, {
@@ -374,7 +395,7 @@ async function callOpenRouter(input: {
     choices?: Array<{ message?: { content?: unknown } }>;
   };
   if (!response.ok) {
-    throw new Error(
+    throw new OpenRouterError(
       payload.error?.message ?? `OpenRouter returned ${response.status}.`,
     );
   }

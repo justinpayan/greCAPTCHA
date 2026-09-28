@@ -16,6 +16,7 @@ import {
   requireJobKey,
 } from "@/lib/openrouter-key-store";
 import { requireOpenRouterCredential } from "@/lib/openrouter-credentials";
+import { decodeJobError, encodeJobError } from "@/lib/openrouter-errors";
 import type { AssessmentResult } from "@/lib/quiz";
 
 const ACTIVE_STATUSES = ["queued", "running"];
@@ -308,7 +309,7 @@ function publicJob(job: typeof jobs.$inferSelect) {
     status: job.status,
     progressCurrent: job.progressCurrent,
     progressTotal: job.progressTotal,
-    error: job.status === "failed" ? job.error : null,
+    ...decodeJobError(job.status === "failed" ? job.error : null),
     result: job.resultJson ? JSON.parse(job.resultJson) : null,
   };
 }
@@ -396,7 +397,7 @@ async function executeJob(job: typeof jobs.$inferSelect & { runCount: number }) 
       .update(jobs)
       .set({
         status: retry ? "queued" : "failed",
-        error: message.slice(0, 1000),
+        error: encodeJobError(error, message.slice(0, 1000)),
         leaseUntil: null,
         completedAt: retry ? null : new Date().toISOString(),
       })
@@ -434,7 +435,7 @@ export async function startJobWorker() {
   if (workerStarted) return;
   workerStarted = true;
   // Temporary examinee keys intentionally do not survive restarts. Course grading jobs reference
-  // an encrypted assessor credential and can safely be put back on the queue.
+  // an encrypted administrator credential and can safely be put back on the queue.
   const interrupted = await db
     .select()
     .from(jobs)
@@ -448,7 +449,10 @@ export async function startJobWorker() {
         status: resumable ? "queued" : "failed",
         error: resumable
           ? null
-          : "This job was interrupted by a server restart. Supply a key and run it again.",
+          : encodeJobError(
+              new JobKeyUnavailableError(),
+              "This job was interrupted by a server restart. Supply a key and run it again.",
+            ),
         leaseUntil: null,
         completedAt: resumable ? null : new Date().toISOString(),
       })

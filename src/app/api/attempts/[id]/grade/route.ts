@@ -6,6 +6,7 @@ import { attempts, questionSets } from "@/db/schema";
 import { requireOpenAttempt } from "@/lib/attempt-access";
 import { enqueueGradingJob } from "@/lib/jobs";
 import { validateOpenRouterKey } from "@/lib/openrouter";
+import { errorResponseBody } from "@/lib/openrouter-errors";
 import { assertSameOrigin, enforceRateLimit } from "@/lib/security";
 import { requireUser } from "@/lib/session";
 
@@ -49,7 +50,8 @@ export async function POST(
     const grading = await enqueueGradingJob(id, { apiKey });
     return NextResponse.json(grading, { status: "result" in grading ? 200 : 202 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to grade the assessment.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json(errorResponseBody(error, "Unable to grade the assessment."), {
+      status: 400,
+    });
   }
 }

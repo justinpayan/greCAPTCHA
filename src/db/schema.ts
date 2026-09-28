@@ -160,6 +160,8 @@ export const questionSets = sqliteTable(
     /** Human-chosen label for the set. Falls back to the PDF filename when left blank. */
     name: text("name"),
     paperName: text("paper_name").notNull(),
+    /** The title the PDF declares in its metadata, when it has a usable one. */
+    paperTitle: text("paper_title"),
     contributions: text("contributions").notNull(),
     modelId: text("model_id").notNull(),
     pdfEngine: text("pdf_engine").notNull(),
@@ -225,7 +227,8 @@ export const conferenceSubmissions = sqliteTable(
     templateId: text("template_id")
       .notNull()
       .references(() => studyTemplates.id, { onDelete: "restrict" }),
-    assessorUserId: text("assessor_user_id")
+    // Stored under its original column name; renaming the column would need a migration.
+    administratorUserId: text("assessor_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     takerUserId: text("taker_user_id")
@@ -247,7 +250,7 @@ export const conferenceSubmissions = sqliteTable(
   },
   (table) => [
     index("conference_submissions_template_idx").on(table.templateId),
-    index("conference_submissions_assessor_idx").on(table.assessorUserId),
+    index("conference_submissions_assessor_idx").on(table.administratorUserId),
     index("conference_submissions_taker_idx").on(table.takerUserId),
     uniqueIndex("conference_submissions_job_unique").on(table.generationJobId),
     uniqueIndex("conference_submissions_attempt_unique").on(table.attemptId),

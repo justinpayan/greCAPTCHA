@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { retryOwnedJob } from "@/lib/jobs";
 import { validateOpenRouterKey } from "@/lib/openrouter";
+import { errorResponseBody } from "@/lib/openrouter-errors";
 import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
 
@@ -27,7 +28,8 @@ export async function POST(
       status: 202,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to retry the job.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json(errorResponseBody(error, "Unable to retry the job."), {
+      status: 400,
+    });
   }
 }

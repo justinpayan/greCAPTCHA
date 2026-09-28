@@ -1,13 +1,15 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 
 import {
   createDefaultStudyBlocks,
   createDefaultStudyTemplate,
   isLegacyStarterTemplate,
 } from "@/lib/default-study-template";
-import { MAX_PDF_BYTES, MAX_PDF_LABEL, pdfTooLargeMessage } from "@/lib/uploads";
+import { errorFromPayload, isOpenRouterError } from "@/lib/openrouter-errors";
+import { MAX_PDF_BYTES, pdfTooLargeMessage } from "@/lib/uploads";
 import {
   completeOpenRouterOAuth,
   readBrowserOpenRouterKey,
@@ -15,6 +17,7 @@ import {
   type KeySource,
 } from "@/lib/openrouter-browser-key";
 
+import { ManuscriptField } from "@/components/manuscript-field";
 import { ProfessorOpenRouterPanel } from "@/components/professor-openrouter-panel";
 import { SetOverview } from "@/components/set-overview";
 import {
@@ -173,7 +176,10 @@ export function ResearchCaptcha({ username }: { username: string }) {
   const [generationNotice, setGenerationNotice] = useState("");
   const [error, setError] = useState("");
   const [failedGenerationJobId, setFailedGenerationJobId] = useState("");
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  // Which subtab of *New question set* was last open, so returning to the tab restores it.
+  const [newSetView, setNewSetView] = useState<"default" | "custom">("default");
+  // Question family cards on the Advanced subtab that are folded down to their header.
+  const [collapsedBlocks, setCollapsedBlocks] = useState<ReadonlySet<string>>(() => new Set());
   const [sharingSetId, setSharingSetId] = useState("");
   const [copiedSetId, setCopiedSetId] = useState("");
   const [shareError, setShareError] = useState("");
@@ -196,6 +202,15 @@ export function ResearchCaptcha({ username }: { username: string }) {
   const [resettingId, setResettingId] = useState("");
   const [expandedTestIds, setExpandedTestIds] = useState<Set<string>>(new Set());
   const [paperError, setPaperError] = useState("");
+  // OpenRouter problems, shown under the key controls in the API Access panel rather than at the
+  // bottom of the form.
+  const [keyError, setKeyError] = useState("");
+  // A newly saved or connected key answers the last complaint about the old one.
+  useEffect(() => {
+    const clear = () => setKeyError("");
+    window.addEventListener("grecaptcha:openrouter-credential-changed", clear);
+    return () => window.removeEventListener("grecaptcha:openrouter-credential-changed", clear);
+  }, []);
   /** The set whose overview is open. Replaces the old inline rename in the list. */
   const [setOverview, setSetOverview] = useState<QuestionSetOverview | null>(null);
   /**
@@ -269,11 +284,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
         };
       }),
       completeOpenRouterOAuth().catch((caught) => {
-        if (active) {
-          setError(
-            caught instanceof Error ? caught.message : "Unable to connect the OpenRouter key.",
-          );
-        }
+        if (active) reportError(caught, "Unable to connect the OpenRouter key.");
         return null;
       }),
       fetch("/api/openrouter/models")
@@ -976,7 +987,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
     event.preventDefault();
     if (!setName.trim()) return setError("Give the test set a name.");
     if (!config.modelId) return setError("Choose an OpenRouter model.");
-    if (config.blocks.length === 0) return setError("Add at least one question type.");
+    if (config.blocks.length === 0) return setError("Add at least one question family.");
     setWorking(true);
     setError("");
     setTemplateStatus("");
@@ -1062,12 +1073,30 @@ export function ResearchCaptcha({ username }: { username: string }) {
     const plural = blocks.length === 1 ? "card" : "cards";
     if (
       !window.confirm(
-        `Remove all ${blocks.length} question type ${plural}?\n\nTheir prompts, counts, limits and warm-up flags are lost, and the autosaved draft updates immediately. Reload a saved study set template to get a configuration back.\n\nThis cannot be undone.`,
+        `Remove all ${blocks.length} question family ${plural}?\n\nTheir prompts, counts, limits and warm-up flags are lost, and the autosaved draft updates immediately. Reload a saved study set template to get a configuration back.\n\nThis cannot be undone.`,
       )
     ) {
       return;
     }
     setBlocks([]);
+  }
+
+  // Every card folded: the shared control then offers to open them all again.
+  const allBlocksCollapsed =
+    blocks.length > 0 && blocks.every((block) => collapsedBlocks.has(block.id));
+
+  function toggleAllBlocksCollapsed() {
+    setCollapsedBlocks(
+      allBlocksCollapsed ? new Set() : new Set(blocks.map((block) => block.id)),
+    );
+  }
+
+  function toggleBlockCollapsed(id: string) {
+    setCollapsedBlocks((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
   }
 
   function updateBlock(id: string, patch: Partial<QuestionBlockConfig>) {
@@ -1078,13 +1107,23 @@ export function ResearchCaptcha({ username }: { username: string }) {
     );
   }
 
+  /**
+   * Shows a failure where it belongs: OpenRouter problems in the API Access panel (on the course
+   * workflow, the only one that has it on this page), everything else below the form.
+   */
+  function reportError(caught: unknown, fallback: string) {
+    const message = caught instanceof Error ? caught.message : fallback;
+    if (isOpenRouterError(caught) && workflowType === "course") setKeyError(message);
+    else setError(message);
+  }
+
   async function generateSet(
     event: FormEvent<HTMLFormElement>,
     config: StudyTemplateConfig,
   ) {
     event.preventDefault();
     if (!config.modelId) return setError("No compatible OpenRouter model is available.");
-    if (config.blocks.length === 0) return setError("Add at least one question type.");
+    if (config.blocks.length === 0) return setError("Add at least one question family.");
     const form = new FormData(event.currentTarget);
     // Checked before the upload starts, not after: the server can only refuse an oversized PDF
     // once it has arrived, and over a tunnel that is minutes of waiting for a no.
@@ -1095,9 +1134,13 @@ export function ResearchCaptcha({ username }: { username: string }) {
     }
     setPaperError("");
     setWorking(true);
-    setGenerationStatus("Queued for generation…");
+    // A linked PDF is downloaded by the server before the job is queued, which can take a moment.
+    setGenerationStatus(
+      form.get("paperUrl") ? "Fetching the linked PDF…" : "Queued for generation…",
+    );
     setGenerationNotice("");
     setError("");
+    setKeyError("");
     form.set("modelId", config.modelId);
     form.set("pdfEngine", config.pdfEngine);
     form.set("blocks", JSON.stringify(config.blocks));
@@ -1115,7 +1158,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
     try {
       const response = await fetch("/api/question-sets", { method: "POST", body: form });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "Unable to generate questions.");
+      if (!response.ok) throw errorFromPayload(payload, "Unable to generate questions.");
       jobId = String(payload.jobId ?? "");
       if (!jobId) throw new Error("The generation job was not created.");
       let generationCompleted = false;
@@ -1123,12 +1166,13 @@ export function ResearchCaptcha({ username }: { username: string }) {
         await new Promise((resolve) => window.setTimeout(resolve, 1_000));
         const jobResponse = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);
         const jobPayload = await jobResponse.json();
-        if (!jobResponse.ok) throw new Error(jobPayload.error ?? "Unable to check generation.");
+        if (!jobResponse.ok) throw errorFromPayload(jobPayload, "Unable to check generation.");
         const job = jobPayload.job as {
           status: string;
           progressCurrent: number;
           progressTotal: number;
           error?: string;
+          errorSource?: string;
           result?: { questionSetId?: string };
         };
         setGenerationStatus(
@@ -1136,7 +1180,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
             ? `Generating block ${Math.min(job.progressCurrent + 1, job.progressTotal)} of ${job.progressTotal}…`
             : "Waiting for a generation worker…",
         );
-        if (job.status === "failed") throw new Error(job.error ?? "Question generation failed.");
+        if (job.status === "failed") throw errorFromPayload(job, "Question generation failed.");
         if (job.status === "completed") {
           if (!job.result?.questionSetId) {
             throw new Error("Generation completed without a question set.");
@@ -1151,7 +1195,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
       );
     } catch (caught) {
       if (jobId) setFailedGenerationJobId(jobId);
-      setError(caught instanceof Error ? caught.message : "Question generation failed.");
+      reportError(caught, "Question generation failed.");
     } finally {
       setWorking(false);
       setGenerationStatus("");
@@ -1162,6 +1206,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
     if (!failedGenerationJobId) return;
     setWorking(true);
     setError("");
+    setKeyError("");
     try {
       const response = await fetch(
         `/api/jobs/${encodeURIComponent(failedGenerationJobId)}/retry`,
@@ -1172,7 +1217,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
         },
       );
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "Unable to retry generation.");
+      if (!response.ok) throw errorFromPayload(payload, "Unable to retry generation.");
       let generationCompleted = false;
       while (!generationCompleted) {
         await new Promise((resolve) => window.setTimeout(resolve, 1_000));
@@ -1180,13 +1225,14 @@ export function ResearchCaptcha({ username }: { username: string }) {
           `/api/jobs/${encodeURIComponent(failedGenerationJobId)}`,
         );
         const jobPayload = await jobResponse.json();
-        if (!jobResponse.ok) throw new Error(jobPayload.error ?? "Unable to check generation.");
+        if (!jobResponse.ok) throw errorFromPayload(jobPayload, "Unable to check generation.");
         const job = jobPayload.job as {
           status: string;
           error?: string;
+          errorSource?: string;
           result?: { questionSetId?: string };
         };
-        if (job.status === "failed") throw new Error(job.error ?? "Question generation failed.");
+        if (job.status === "failed") throw errorFromPayload(job, "Question generation failed.");
         if (job.status === "completed") {
           if (!job.result?.questionSetId) {
             throw new Error("Generation completed without a question set.");
@@ -1198,7 +1244,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
       setGenerationNotice("Question set generated. Its sharing link is available on the right.");
       setFailedGenerationJobId("");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to retry generation.");
+      reportError(caught, "Unable to retry generation.");
     } finally {
       setWorking(false);
     }
@@ -1293,11 +1339,16 @@ export function ResearchCaptcha({ username }: { username: string }) {
   }
 
   return (
-    <main className="app-shell">
+    <main className="app-shell dashboard-shell">
       <div className="brand">
         <span className="brand-mark">G</span>
         greCAPTCHA
+        <span className="demo-badge">Public demo</span>
         <span className="account-name">Signed in as {username}</span>
+        {/* The landing page, at an address that stays reachable while signed in. */}
+        <Link className="sign-out account-action account-link" href="/about">
+          About
+        </Link>
         <button
           className="sign-out account-action"
           type="button"
@@ -1309,117 +1360,115 @@ export function ResearchCaptcha({ username }: { username: string }) {
           Sign out
         </button>
       </div>
-      <section>
-        <p className="eyebrow">Authorship understanding assessment</p>
-        <h1>greCAPTCHA Demo</h1>
-        <p className="lede">
-          You can generate a question set from a paper in the &lsquo;New question set&rsquo; tab.
-          Once you have generated a question set, copy the link on the right to share the exam
-          with someone. To see attempts completed on your exams, open the &lsquo;Tests I&apos;ve
-          Created&rsquo; tab.
-        </p>
-        <p className="lede">
-          The &lsquo;Tests I&apos;ve Taken&rsquo; tab shows assessments you have taken. Return
-          there to continue an assessment, check whether it has been graded, or review your
-          grades and feedback once they are available.
+      <section className="card get-started" aria-labelledby="get-started-title">
+        <h2 id="get-started-title">Get started</h2>
+        <ol className="get-started-steps">
+          <li>
+            <strong>Create.</strong> Generate a question set from a paper in the{" "}
+            <em>New question set</em> tab.
+          </li>
+          <li>
+            <strong>Share.</strong> Copy the link on the right to share the exam with someone.
+          </li>
+          <li>
+            <strong>Review.</strong> Open <em>Tests I&apos;ve Created</em> to see attempts
+            completed on your exams.
+          </li>
+        </ol>
+        <p className="get-started-taken">
+          <strong>Taking an exam?</strong> The <em>Tests I&apos;ve Taken</em> tab shows assessments
+          you have taken. Return there to continue an assessment, check whether it has been graded,
+          or review your grades and feedback once they are available.
         </p>
       </section>
+      <hr className="dashboard-divider" />
 
       <div className="dashboard-layout">
       <div className="dashboard-main">
-      <section className="dashboard-workflow" aria-labelledby="workflow-heading">
-        <div>
-          <span className="field-label" id="workflow-heading">Workflow</span>
-          <p className="hint">Choose who supplies the OpenRouter key for generation and grading.</p>
-        </div>
-        <div className="workflow-toggle" role="radiogroup" aria-label="Assessment workflow">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={workflowType === "course"}
-            className={workflowType === "course" ? "active" : ""}
-            onClick={() => changeWorkflow("course")}
-          >
-            Course
-            <small>Professor key · automatic grading</small>
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={workflowType === "conference"}
-            className={workflowType === "conference" ? "active" : ""}
-            onClick={() => changeWorkflow("conference")}
-          >
-            Conference
-            <small>Examinee supplies the key</small>
-          </button>
-        </div>
-      </section>
       <div className="dashboard-navigation">
         <div className="mode-tabs" role="tablist" aria-label="Dashboard section">
           <button
             type="button"
-            className={mode === "default" ? "active" : ""}
-            onClick={() => {
-              setMode("default");
-              setAdvancedOpen(false);
-            }}
+            className={mode === "default" || mode === "custom" ? "active" : ""}
+            onClick={() => setMode(newSetView)}
           >
             New question set
           </button>
           <button
             type="button"
             className={mode === "resume" ? "active" : ""}
-            onClick={() => {
-              setMode("resume");
-              setAdvancedOpen(false);
-            }}
+            onClick={() => setMode("resume")}
           >
             Tests I&apos;ve Created
           </button>
           <button
             type="button"
             className={mode === "mine" ? "active" : ""}
-            onClick={() => {
-              setMode("mine");
-              setAdvancedOpen(false);
-            }}
+            onClick={() => setMode("mine")}
           >
             Tests I&apos;ve Taken
           </button>
         </div>
-        <div className="advanced-navigation">
-          <button
-            className={`secondary advanced-button ${mode === "custom" ? "active" : ""}`}
-            type="button"
-            aria-expanded={advancedOpen}
-            aria-haspopup="menu"
-            onClick={() => setAdvancedOpen((open) => !open)}
-          >
-            Advanced
-          </button>
-          {advancedOpen && (
-            <div className="advanced-menu" role="menu">
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMode("custom");
-                  setAdvancedOpen(false);
-                }}
-              >
-                New question set from new template
-              </button>
-            </div>
-          )}
-        </div>
       </div>
-
-      {generationNotice && (
-        <p className="template-status dashboard-notice" role="status">
-          {generationNotice}
-        </p>
+      {(mode === "default" || mode === "custom") && (
+        // Only question-set creation depends on the workflow; created and taken tests carry
+        // their own.
+        <section className="dashboard-workflow" aria-labelledby="workflow-heading">
+          <div>
+            <span className="field-label" id="workflow-heading">Workflow</span>
+            <p className="hint">
+              Set who provides the OpenRouter API key for generation and grading.
+            </p>
+          </div>
+          <div className="workflow-toggle" role="radiogroup" aria-label="Assessment workflow">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={workflowType === "course"}
+              className={workflowType === "course" ? "active" : ""}
+              onClick={() => changeWorkflow("course")}
+            >
+              Course
+              <small>Professor key · automatic grading</small>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={workflowType === "conference"}
+              className={workflowType === "conference" ? "active" : ""}
+              onClick={() => changeWorkflow("conference")}
+            >
+              Conference
+              <small>Examinee supplies the key</small>
+            </button>
+          </div>
+        </section>
       )}
+      {(mode === "default" || mode === "custom") && (
+        <div className="sub-tabs" role="tablist" aria-label="New question set">
+          {(
+            [
+              ["default", "Default"],
+              ["custom", "Advanced"],
+            ] as const
+          ).map(([view, label]) => (
+            <button
+              key={view}
+              type="button"
+              role="tab"
+              aria-selected={mode === view}
+              className={mode === view ? "active" : ""}
+              onClick={() => {
+                setNewSetView(view);
+                setMode(view);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {mode !== "custom" && templateStatus && (
         <p className="template-status dashboard-notice" role="status">
           {templateStatus}
@@ -1681,13 +1730,6 @@ export function ResearchCaptcha({ username }: { username: string }) {
                             </button>
                           )}
                           <button
-                            className="secondary danger"
-                            type="button"
-                            onClick={() => void deleteCreatedTest(test)}
-                          >
-                            Delete test
-                          </button>
-                          <button
                             className="secondary"
                             type="button"
                             aria-expanded={expanded}
@@ -1701,6 +1743,13 @@ export function ResearchCaptcha({ username }: { username: string }) {
                             }
                           >
                             {expanded ? "Hide attempts" : "Show attempts"}
+                          </button>
+                          <button
+                            className="secondary danger"
+                            type="button"
+                            onClick={() => void deleteCreatedTest(test)}
+                          >
+                            Delete test
                           </button>
                         </div>
                       </div>
@@ -1791,7 +1840,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
               : generateSet(event, config);
           }}
         >
-          {workflowType === "course" && <ProfessorOpenRouterPanel />}
+          {workflowType === "course" && <ProfessorOpenRouterPanel error={keyError} />}
           <div className="form-section">
             {mode !== "default" && workflowType === "course" && (
               <div className="section-heading">
@@ -1827,33 +1876,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
               </div>
               {workflowType === "course" && (
                 <>
-                  <div className="field full">
-                    <label htmlFor="paper">Manuscript PDF</label>
-                    <input
-                      className="control file-control"
-                      id="paper"
-                      name="paper"
-                      type="file"
-                      accept="application/pdf,.pdf"
-                      required
-                      // Judged the moment a file is picked, so the size is known before the
-                      // configuration below is filled in rather than after pressing Generate.
-                      onChange={(event) => {
-                        const picked = event.target.files?.[0];
-                        setPaperError(
-                          picked && picked.size > MAX_PDF_BYTES
-                            ? pdfTooLargeMessage(picked.size)
-                            : "",
-                        );
-                      }}
-                    />
-                    <small>PDF only, up to {MAX_PDF_LABEL}.</small>
-                    {paperError && (
-                      <p className="error" role="alert">
-                        {paperError}
-                      </p>
-                    )}
-                  </div>
+                  <ManuscriptField id="paper" error={paperError} onError={setPaperError} />
                   <div className="field full">
                     <label htmlFor="contributions">
                       What material are we testing the student on?
@@ -1979,10 +2002,10 @@ export function ResearchCaptcha({ username }: { username: string }) {
             </div>
 
             <div className="full">
-              <div className="section-heading">
+              <div className="section-heading section-heading-stacked">
                 <div>
-                  <span className="field-label">Question types</span>
-                  <p className="hint">Each card makes one generation request.</p>
+                  <span className="field-label">Question families</span>
+                  <p className="hint">Each card will make one generation request.</p>
                 </div>
                 <div className="add-buttons">
                   <button
@@ -2019,6 +2042,17 @@ export function ResearchCaptcha({ username }: { username: string }) {
                   >
                     Clear all
                   </button>
+                  <button
+                    className="collapse-button collapse-all-button"
+                    type="button"
+                    disabled={blocks.length === 0}
+                    aria-expanded={!allBlocksCollapsed}
+                    aria-controls={blocks.map((block) => `${block.id}-body`).join(" ")}
+                    onClick={toggleAllBlocksCollapsed}
+                  >
+                    <span className="collapse-chevron" aria-hidden="true" />
+                    {allBlocksCollapsed ? "Expand all" : "Collapse all"}
+                  </button>
                 </div>
               </div>
 
@@ -2031,123 +2065,142 @@ export function ResearchCaptcha({ username }: { username: string }) {
                     <header>
                       <div>
                         <div className="card-title-row">
-                          <span className="question-number">Type {index + 1}</span>
+                          <span className="question-number">Family {index + 1}</span>
                           <span className={`type-chip type-${block.type}`}>
                             {BLOCK_LABELS[block.type]}
                           </span>
                           {block.warmup && <span className="pill">Warm-up</span>}
+                          {collapsedBlocks.has(block.id) && (
+                            <span className="collapsed-summary">
+                              {block.count} {block.count === 1 ? "question" : "questions"}
+                            </span>
+                          )}
                         </div>
                         <h3>{block.name.trim() || BLOCK_LABELS[block.type]}</h3>
                       </div>
-                      <button
-                        className="remove-button"
-                        type="button"
-                        onClick={() =>
-                          setBlocks((current) =>
-                            current.filter((candidate) => candidate.id !== block.id),
-                          )
-                        }
-                      >
-                        Remove
-                      </button>
+                      <div className="question-config-actions">
+                        <button
+                          className="remove-button"
+                          type="button"
+                          onClick={() =>
+                            setBlocks((current) =>
+                              current.filter((candidate) => candidate.id !== block.id),
+                            )
+                          }
+                        >
+                          Remove
+                        </button>
+                        <button
+                          className="collapse-button"
+                          type="button"
+                          aria-expanded={!collapsedBlocks.has(block.id)}
+                          aria-controls={`${block.id}-body`}
+                          onClick={() => toggleBlockCollapsed(block.id)}
+                        >
+                          <span className="collapse-chevron" aria-hidden="true" />
+                          {collapsedBlocks.has(block.id) ? "Expand" : "Collapse"}
+                        </button>
+                      </div>
                     </header>
-                    <div className="config-grid">
-                      <div className="field">
-                        <label htmlFor={`${block.id}-name`}>
-                          Card name
-                          <FieldHint text="Researcher-facing only. Stored with every question this card generates so answers can be grouped by family. Never shown to the participant." />
-                        </label>
-                        <input
-                          className="control"
-                          id={`${block.id}-name`}
-                          value={block.name}
-                          maxLength={80}
-                          placeholder={`e.g. F1 planted error`}
-                          onChange={(event) =>
-                            updateBlock(block.id, { name: event.target.value })
-                          }
-                        />
-                      </div>
-                      <div className="field">
-                        <label htmlFor={`${block.id}-count`}>Number of questions</label>
-                        <input
-                          className="control"
-                          id={`${block.id}-count`}
-                          type="number"
-                          min={1}
-                          max={30}
-                          value={block.count}
-                          onChange={(event) =>
-                            updateBlock(block.id, { count: Number(event.target.value) })
-                          }
-                        />
-                      </div>
-                      {block.type === "fill_blank" && (
+                    {!collapsedBlocks.has(block.id) && (
+                      <div className="config-grid" id={`${block.id}-body`}>
                         <div className="field">
-                          <label htmlFor={`${block.id}-distractors`}>
-                            Distractors per blank
+                          <label htmlFor={`${block.id}-name`}>
+                            Card name
+                            <FieldHint text="Researcher-facing only. Stored with every question this card generates so answers can be grouped by family. Never shown to the participant." />
                           </label>
                           <input
                             className="control"
-                            id={`${block.id}-distractors`}
-                            type="number"
-                            min={0}
-                            max={10}
-                            value={block.distractorsPerBlank}
+                            id={`${block.id}-name`}
+                            value={block.name}
+                            maxLength={80}
+                            placeholder={`e.g. F1 planted error`}
                             onChange={(event) =>
-                              updateBlock(block.id, {
-                                distractorsPerBlank: Number(event.target.value),
-                              })
+                              updateBlock(block.id, { name: event.target.value })
                             }
                           />
                         </div>
-                      )}
-                      {block.type === "multiple_choice" && (
                         <div className="field">
-                          <label htmlFor={`${block.id}-options`}>
-                            Options per question
-                            <FieldHint text="Set 2 for true/false items." />
-                          </label>
+                          <label htmlFor={`${block.id}-count`}>Number of questions</label>
                           <input
                             className="control"
-                            id={`${block.id}-options`}
+                            id={`${block.id}-count`}
                             type="number"
-                            min={2}
-                            max={10}
-                            value={block.optionsPerQuestion}
+                            min={1}
+                            max={30}
+                            value={block.count}
                             onChange={(event) =>
-                              updateBlock(block.id, {
-                                optionsPerQuestion: Number(event.target.value),
-                              })
+                              updateBlock(block.id, { count: Number(event.target.value) })
                             }
                           />
                         </div>
-                      )}
-                      <label className="toggle-row full">
-                        <input
-                          type="checkbox"
-                          checked={block.warmup}
-                          onChange={(event) =>
-                            updateBlock(block.id, { warmup: event.target.checked })
-                          }
-                        />
-                        Warm-up card — asked first and excluded from the overall score
-                      </label>
-                      <div className="field full">
-                        <label htmlFor={`${block.id}-prompt`}>
-                          Question {block.type === "free_response" ? "and rubric " : ""}
-                          generation prompt
+                        {block.type === "fill_blank" && (
+                          <div className="field">
+                            <label htmlFor={`${block.id}-distractors`}>
+                              Distractors per blank
+                            </label>
+                            <input
+                              className="control"
+                              id={`${block.id}-distractors`}
+                              type="number"
+                              min={0}
+                              max={10}
+                              value={block.distractorsPerBlank}
+                              onChange={(event) =>
+                                updateBlock(block.id, {
+                                  distractorsPerBlank: Number(event.target.value),
+                                })
+                              }
+                            />
+                          </div>
+                        )}
+                        {block.type === "multiple_choice" && (
+                          <div className="field">
+                            <label htmlFor={`${block.id}-options`}>
+                              Options per question
+                              <FieldHint text="Set 2 for true/false items." />
+                            </label>
+                            <input
+                              className="control"
+                              id={`${block.id}-options`}
+                              type="number"
+                              min={2}
+                              max={10}
+                              value={block.optionsPerQuestion}
+                              onChange={(event) =>
+                                updateBlock(block.id, {
+                                  optionsPerQuestion: Number(event.target.value),
+                                })
+                              }
+                            />
+                          </div>
+                        )}
+                        <label className="toggle-row full">
+                          <input
+                            type="checkbox"
+                            checked={block.warmup}
+                            onChange={(event) =>
+                              updateBlock(block.id, { warmup: event.target.checked })
+                            }
+                          />
+                          Warm-up card — asked first and excluded from the overall score
                         </label>
-                        <textarea
-                          className="control prompt-control"
-                          id={`${block.id}-prompt`}
-                          value={block.prompt}
-                          onChange={(event) =>
-                            updateBlock(block.id, { prompt: event.target.value })
-                          }
-                        />
+                        <div className="field full">
+                          <label htmlFor={`${block.id}-prompt`}>
+                            Question {block.type === "free_response" ? "and rubric " : ""}
+                            generation prompt
+                          </label>
+                          <textarea
+                            className="control prompt-control"
+                            id={`${block.id}-prompt`}
+                            value={block.prompt}
+                            onChange={(event) =>
+                              updateBlock(block.id, { prompt: event.target.value })
+                            }
+                          />
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </article>
                 ))}
               </div>
@@ -2246,6 +2299,12 @@ export function ResearchCaptcha({ username }: { username: string }) {
                   : "Generate question set"}
             </button>
           </div>
+          {/* Beneath the button that produced it, so the result appears where the eye already is. */}
+          {generationNotice && (
+            <p className="template-status dashboard-notice submit-notice" role="status">
+              {generationNotice}
+            </p>
+          )}
         </form>
       )}
       </div>

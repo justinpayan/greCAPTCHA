@@ -9,6 +9,7 @@ import {
   validateBrowserOpenRouterKey,
   type KeySource,
 } from "@/lib/openrouter-browser-key";
+import { errorFromPayload, isOpenRouterError } from "@/lib/openrouter-errors";
 import type { AssessmentResult, AttemptOutline } from "@/lib/quiz";
 
 const TYPE_LABELS = {
@@ -31,6 +32,9 @@ export function AttemptSummary({
 }) {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
+  // OpenRouter problems, shown under the key controls when this attempt is graded with the
+  // examinee's own key.
+  const [keyError, setKeyError] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [keySource, setKeySource] = useState<KeySource>("paste");
 
@@ -66,6 +70,7 @@ export function AttemptSummary({
   async function showGrading() {
     setWorking(true);
     setError("");
+    setKeyError("");
     try {
       const response = outline.graded
         ? await fetch(`/api/attempts/${outline.attemptId}/grading`, {
@@ -85,7 +90,7 @@ export function AttemptSummary({
             });
           })();
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "Unable to grade the attempt.");
+      if (!response.ok) throw errorFromPayload(payload, "Unable to grade the attempt.");
       if (!outline.graded && keySource === "paste") setApiKey("");
       if (payload.result) {
         onResult(payload.result as AssessmentResult);
@@ -97,15 +102,20 @@ export function AttemptSummary({
           cache: "no-store",
         });
         const status = await poll.json();
-        if (!poll.ok) throw new Error(status.error ?? "Unable to check grading.");
-        if (status.status === "failed") throw new Error(status.error ?? "Grading failed.");
+        if (!poll.ok) throw errorFromPayload(status, "Unable to check grading.");
+        if (status.status === "failed") throw errorFromPayload(status, "Grading failed.");
         if (status.result) {
           onResult(status.result as AssessmentResult);
           return;
         }
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to grade the attempt.");
+      const message = caught instanceof Error ? caught.message : "Unable to grade the attempt.";
+      // The key panel is only on screen for a conference attempt that still needs grading.
+      const panelShown =
+        outline.workflowType === "conference" && outline.gradable && !outline.graded;
+      if (isOpenRouterError(caught) && panelShown) setKeyError(message);
+      else setError(message);
     } finally {
       setWorking(false);
     }
@@ -197,9 +207,11 @@ export function AttemptSummary({
         <OpenRouterKeyPanel
           apiKey={apiKey}
           source={keySource}
+          error={keyError}
           onChange={(nextKey, nextSource) => {
             setApiKey(nextKey);
             setKeySource(nextSource);
+            setKeyError("");
           }}
         />
       )}

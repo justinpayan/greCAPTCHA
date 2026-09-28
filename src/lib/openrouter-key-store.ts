@@ -1,8 +1,10 @@
 import "server-only";
 
+import { OpenRouterError } from "@/lib/openrouter-errors";
+
 const jobKeys = new Map<string, string>();
 
-export class JobKeyUnavailableError extends Error {
+export class JobKeyUnavailableError extends OpenRouterError {
   constructor() {
     super("This job was interrupted and its temporary API key is no longer available. Paste a key and run it again.");
     this.name = "JobKeyUnavailableError";

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getAttemptOutline, requireAttemptOwner } from "@/lib/attempts";
 import { enqueueGradingJob } from "@/lib/jobs";
 import { validateOpenRouterKey } from "@/lib/openrouter";
+import { errorResponseBody } from "@/lib/openrouter-errors";
 import {
   assertSameOrigin,
   enforceRateLimit,
@@ -15,11 +16,8 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 function errorResponse(error: unknown, fallback: string) {
-  const message = error instanceof Error ? error.message : fallback;
-  return NextResponse.json(
-    { error: message },
-    { status: message === "Attempt not found." ? 404 : 400 },
-  );
+  const body = errorResponseBody(error, fallback);
+  return NextResponse.json(body, { status: body.error === "Attempt not found." ? 404 : 400 });
 }
 
 /** The researcher-facing plan of an attempt. Never requested by the test-taking screens. */

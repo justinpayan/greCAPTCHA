@@ -1,5 +1,7 @@
 "use client";
 
+import { OpenRouterError } from "@/lib/openrouter-errors";
+
 export type KeySource = "paste" | "oauth";
 
 export type BrowserOpenRouterKey = {
@@ -51,7 +53,7 @@ async function inspectKey(key: string, ownerUsername: string): Promise<BrowserOp
     headers: { Authorization: `Bearer ${key}` },
     cache: "no-store",
   });
-  if (!response.ok) throw new Error("OpenRouter rejected the browser-managed key.");
+  if (!response.ok) throw new OpenRouterError("OpenRouter rejected the browser-managed key.");
   const payload = (await response.json()) as {
     data?: {
       label?: string | null;
@@ -64,18 +66,18 @@ async function inspectKey(key: string, ownerUsername: string): Promise<BrowserOp
   const expiresAt = payload.data?.expires_at;
   const settingsUrl = `https://openrouter.ai/keys/${await sha256Hex(key)}`;
   if (limit === null || limit === undefined || !Number.isFinite(limit) || limit <= 0) {
-    throw new Error(`Set a positive spending limit before using this key. Open its settings: ${settingsUrl}`);
+    throw new OpenRouterError(`Set a positive spending limit before using this key. Open its settings: ${settingsUrl}`);
   }
   if (!expiresAt) {
-    throw new Error(`Set a future expiration date before using this key. Open its settings: ${settingsUrl}`);
+    throw new OpenRouterError(`Set a future expiration date before using this key. Open its settings: ${settingsUrl}`);
   }
   const expiration = new Date(expiresAt).getTime();
   if (!Number.isFinite(expiration) || expiration <= Date.now()) {
-    throw new Error(`Set a future expiration date before using this key. Open its settings: ${settingsUrl}`);
+    throw new OpenRouterError(`Set a future expiration date before using this key. Open its settings: ${settingsUrl}`);
   }
   const limitRemaining = payload.data?.limit_remaining ?? null;
   if (limitRemaining !== null && limitRemaining <= 0) {
-    throw new Error(`This key has exhausted its spending limit. Open its settings: ${settingsUrl}`);
+    throw new OpenRouterError(`This key has exhausted its spending limit. Open its settings: ${settingsUrl}`);
   }
   return {
     ownerUsername,
@@ -91,9 +93,9 @@ async function inspectKey(key: string, ownerUsername: string): Promise<BrowserOp
 export async function validateBrowserOpenRouterKey() {
   const sessionResponse = await fetch("/api/session", { cache: "no-store" });
   const session = (await sessionResponse.json()) as { username?: string };
-  if (!sessionResponse.ok || !session.username) throw new Error("Sign in to use this key.");
+  if (!sessionResponse.ok || !session.username) throw new OpenRouterError("Sign in to use this key.");
   const stored = readBrowserOpenRouterKey(session.username);
-  if (!stored) throw new Error("Connect a browser-managed OpenRouter key first.");
+  if (!stored) throw new OpenRouterError("Connect a browser-managed OpenRouter key first.");
   const inspected = await inspectKey(stored.key, session.username);
   localStorage.setItem(KEY_STORAGE, JSON.stringify(inspected));
   return inspected;
@@ -103,7 +105,7 @@ export async function beginOpenRouterOAuth(storage: "browser" | "server" = "brow
   const sessionResponse = await fetch("/api/session", { cache: "no-store" });
   const session = (await sessionResponse.json()) as { username?: string };
   if (!sessionResponse.ok || !session.username) {
-    throw new Error("Sign in before connecting an OpenRouter key.");
+    throw new OpenRouterError("Sign in before connecting an OpenRouter key.");
   }
   const verifierBytes = crypto.getRandomValues(new Uint8Array(48));
   const verifier = base64Url(verifierBytes);
@@ -136,7 +138,7 @@ export async function completeOpenRouterOAuth(): Promise<
 
   const flowRaw = sessionStorage.getItem(FLOW_STORAGE);
   sessionStorage.removeItem(FLOW_STORAGE);
-  if (!flowRaw || !code) throw new Error("The OpenRouter connection could not be verified.");
+  if (!flowRaw || !code) throw new OpenRouterError("The OpenRouter connection could not be verified.");
   const flow = JSON.parse(flowRaw) as {
     verifier?: string;
     nonce?: string;
@@ -153,12 +155,12 @@ export async function completeOpenRouterOAuth(): Promise<
     !flow.createdAt ||
     Date.now() - flow.createdAt > 10 * 60 * 1000
   ) {
-    throw new Error("The OpenRouter connection expired or did not match this browser.");
+    throw new OpenRouterError("The OpenRouter connection expired or did not match this browser.");
   }
   const sessionResponse = await fetch("/api/session", { cache: "no-store" });
   const session = (await sessionResponse.json()) as { username?: string };
   if (!sessionResponse.ok || !flow.username || session.username !== flow.username) {
-    throw new Error("The OpenRouter connection belongs to a different greCAPTCHA account.");
+    throw new OpenRouterError("The OpenRouter connection belongs to a different greCAPTCHA account.");
   }
   const response = await fetch("https://openrouter.ai/api/v1/auth/keys", {
     method: "POST",
@@ -169,9 +171,9 @@ export async function completeOpenRouterOAuth(): Promise<
       code_challenge_method: "S256",
     }),
   });
-  if (!response.ok) throw new Error("OpenRouter could not create the browser-managed key.");
+  if (!response.ok) throw new OpenRouterError("OpenRouter could not create the browser-managed key.");
   const payload = (await response.json()) as { key?: string };
-  if (!payload.key) throw new Error("OpenRouter did not return an API key.");
+  if (!payload.key) throw new OpenRouterError("OpenRouter did not return an API key.");
   const inspected = await inspectKey(payload.key, session.username);
   if (flow.storage === "server") {
     const stored = await fetch("/api/openrouter/credential", {
@@ -181,7 +183,7 @@ export async function completeOpenRouterOAuth(): Promise<
     });
     const storedPayload = (await stored.json()) as { error?: string };
     if (!stored.ok) {
-      throw new Error(storedPayload.error ?? "Unable to save the professor OpenRouter key.");
+      throw new OpenRouterError(storedPayload.error ?? "Unable to save the professor OpenRouter key.");
     }
     window.dispatchEvent(new Event("grecaptcha:openrouter-credential-changed"));
     return { serverStored: true };

@@ -2,13 +2,15 @@
 
 import { FormEvent, useEffect, useState } from "react";
 
+import { ManuscriptField } from "@/components/manuscript-field";
 import { OpenRouterKeyPanel } from "@/components/openrouter-key-panel";
 import {
   completeOpenRouterOAuth,
   validateBrowserOpenRouterKey,
   type KeySource,
 } from "@/lib/openrouter-browser-key";
-import { MAX_PDF_BYTES, MAX_PDF_LABEL, pdfTooLargeMessage } from "@/lib/uploads";
+import { errorFromPayload, isOpenRouterError, OpenRouterError } from "@/lib/openrouter-errors";
+import { MAX_PDF_BYTES, pdfTooLargeMessage } from "@/lib/uploads";
 
 export function ConferenceInvitation({
   token,
@@ -27,6 +29,14 @@ export function ConferenceInvitation({
   const [working, setWorking] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  // OpenRouter problems, shown under the key controls rather than at the bottom of the form.
+  const [keyError, setKeyError] = useState("");
+
+  function reportError(caught: unknown, fallback: string) {
+    const message = caught instanceof Error ? caught.message : fallback;
+    if (isOpenRouterError(caught)) setKeyError(message);
+    else setError(message);
+  }
 
   useEffect(() => {
     void completeOpenRouterOAuth()
@@ -36,9 +46,7 @@ export function ConferenceInvitation({
           setKeySource("oauth");
         }
       })
-      .catch((caught) =>
-        setError(caught instanceof Error ? caught.message : "Unable to connect OpenRouter."),
-      );
+      .catch((caught) => reportError(caught, "Unable to connect OpenRouter."));
   }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -51,20 +59,25 @@ export function ConferenceInvitation({
     }
     setWorking(true);
     setError("");
-    setStatus("Uploading manuscript…");
+    setKeyError("");
+    setStatus(form.get("paperUrl") ? "Fetching manuscript…" : "Uploading manuscript…");
     try {
       const key =
         keySource === "oauth" ? (await validateBrowserOpenRouterKey()).key : apiKey.trim();
-      if (!key) throw new Error("Enter or connect an OpenRouter API key.");
+      if (!key) throw new OpenRouterError("Enter or connect an OpenRouter API key.");
       form.set("openrouterApiKey", key);
       form.set("keySource", keySource);
       const response = await fetch(`/api/conference/${encodeURIComponent(token)}`, {
         method: "POST",
         body: form,
       });
-      const payload = (await response.json()) as { jobId?: string; error?: string };
+      const payload = (await response.json()) as {
+        jobId?: string;
+        error?: string;
+        errorSource?: string;
+      };
       if (!response.ok || !payload.jobId) {
-        throw new Error(payload.error ?? "Unable to start assessment generation.");
+        throw errorFromPayload(payload, "Unable to start assessment generation.");
       }
       if (keySource === "paste") setApiKey("");
       for (;;) {
@@ -75,16 +88,18 @@ export function ConferenceInvitation({
         );
         const jobPayload = (await jobResponse.json()) as {
           error?: string;
+          errorSource?: string;
           job?: {
             status: string;
             progressCurrent: number;
             progressTotal: number;
             error?: string;
+            errorSource?: string;
             result?: { attemptId?: string };
           };
         };
         if (!jobResponse.ok || !jobPayload.job) {
-          throw new Error(jobPayload.error ?? "Unable to check generation.");
+          throw errorFromPayload(jobPayload, "Unable to check generation.");
         }
         const job = jobPayload.job;
         setStatus(
@@ -92,7 +107,7 @@ export function ConferenceInvitation({
             ? `Generating section ${Math.min(job.progressCurrent + 1, job.progressTotal)} of ${job.progressTotal}…`
             : "Waiting for a generation worker…",
         );
-        if (job.status === "failed") throw new Error(job.error ?? "Question generation failed.");
+        if (job.status === "failed") throw errorFromPayload(job, "Question generation failed.");
         if (job.status === "completed") {
           const attemptId = job.result?.attemptId;
           if (!attemptId) throw new Error("Generation completed without an assessment.");
@@ -101,7 +116,7 @@ export function ConferenceInvitation({
         }
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to generate the assessment.");
+      reportError(caught, "Unable to generate the assessment.");
     } finally {
       setWorking(false);
       setStatus("");
@@ -120,32 +135,23 @@ export function ConferenceInvitation({
             <span className="eyebrow">Conference assessment</span>
             <h1>{template.name}</h1>
             <p className="hint">
-              Upload your manuscript and contribution statement. Your key generates this
-              assessment and is not saved by greCAPTCHA.
+              Upload or link to your manuscript and add your contribution statement. Your key
+              generates this assessment and is not saved by greCAPTCHA.
             </p>
           </div>
         </div>
         <OpenRouterKeyPanel
           apiKey={apiKey}
           source={keySource}
+          error={keyError}
           onChange={(key, source) => {
             setApiKey(key);
             setKeySource(source);
+            setKeyError("");
           }}
         />
         <div className="form-grid">
-          <div className="field full">
-            <label htmlFor="conference-paper">Manuscript PDF</label>
-            <input
-              className="control file-control"
-              id="conference-paper"
-              name="paper"
-              type="file"
-              accept="application/pdf,.pdf"
-              required
-            />
-            <small>PDF only, up to {MAX_PDF_LABEL}.</small>
-          </div>
+          <ManuscriptField id="conference-paper" />
           <div className="field full">
             <label htmlFor="conference-contributions">Your contribution statement</label>
             <textarea
@@ -157,7 +163,7 @@ export function ConferenceInvitation({
           </div>
         </div>
         <p className="hint">
-          {template.questionCount} questions · model selected by the conference assessor
+          {template.questionCount} questions · model selected by the conference administrator
         </p>
         {status && <p className="status-note">{status}</p>}
         {error && <p className="error" role="alert">{error}</p>}

@@ -211,7 +211,7 @@ export function SetOverview({
   }
 
   return (
-    <main className="app-shell">
+    <main className="app-shell dashboard-shell">
       <Brand onHome={onBack} />
 
       <header className="quiz-header sequential-header">
@@ -219,7 +219,8 @@ export function SetOverview({
           <p className="eyebrow">Question set</p>
           <h1>{name.trim() || overview.paperName}</h1>
           <div className="quiz-meta">
-            {overview.paperName} · {overview.modelId} · {overview.pdfEngine}
+            {overview.paperName} · {overview.modelId} ·{" "}
+            {overview.pdfEngine === "native" ? "native parsing" : overview.pdfEngine}
           </div>
         </div>
         <div className="summary-header-side">
@@ -234,11 +235,6 @@ export function SetOverview({
           </div>
         </div>
       </header>
-
-      <p className="lede summary-notice">
-        Review the generated questions below. To answer them, return to the dashboard and open
-        the <strong>Attempts</strong> tab.
-      </p>
 
       <section className="card participant-link">
         <div className="form-grid">

@@ -74,15 +74,20 @@ function ExternalLink(props: React.ComponentProps<"a">) {
   return <a {...props} target="_blank" rel="noopener noreferrer" />;
 }
 
-function TryIt({ large = false }: { large?: boolean }) {
+// Signed-in visitors (who reach this page at /about) go straight to their dashboard instead.
+function TryIt({ large = false, signedIn }: { large?: boolean; signedIn: boolean }) {
   return (
-    <Link className={`primary button-link landing-try${large ? " landing-try-large" : ""}`} href="/signup">
+    <Link
+      className={`primary button-link landing-try${large ? " landing-try-large" : ""}`}
+      href={signedIn ? "/" : "/signup"}
+    >
       Try it
     </Link>
   );
 }
 
-export function LandingPage() {
+export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
+  const account = signedIn ? { href: "/", label: "Dashboard" } : { href: "/login", label: "Sign in" };
   return (
     <>
       <div className="landing-screen">
@@ -90,13 +95,13 @@ export function LandingPage() {
           <header className="landing-header">
             <div className="landing-brand">
               <Brand />
-              <span className="landing-badge">Public demo</span>
+              <span className="demo-badge">Public demo</span>
             </div>
             <nav className="landing-nav" aria-label="Site">
               <ExternalLink href={PAPER_URL}>Paper</ExternalLink>
               <ExternalLink href={CODE_URL}>Code &amp; data</ExternalLink>
-              <Link href="/login">Sign in</Link>
-              <TryIt />
+              <Link href={account.href}>{account.label}</Link>
+              <TryIt signedIn={signedIn} />
             </nav>
           </header>
 
@@ -109,7 +114,7 @@ export function LandingPage() {
               report based on their answers.
             </p>
             <div className="landing-actions">
-              <TryIt large />
+              <TryIt large signedIn={signedIn} />
               <ExternalLink className="secondary button-link" href={PAPER_URL}>
                 Read the paper
               </ExternalLink>
@@ -240,6 +245,9 @@ export function LandingPage() {
               </article>
             ))}
           </div>
+          <p className="landing-caption">
+            You can also customize and create your own question families to best suit your needs.
+          </p>
         </section>
 
         <section className="landing-section">
@@ -318,14 +326,6 @@ export function LandingPage() {
               role.
             </li>
             <li>
-              A low score does not by itself show a lack of capacity to verify, and should not be used
-              on its own to decide that a submission policy was violated.
-            </li>
-            <li>
-              It cannot authenticate data or establish reproducibility. A knowledgeable author can
-              still fabricate evidence.
-            </li>
-            <li>
               The prototype&apos;s best false-positive rate was around 20%, mainly because of rigid
               grading rubrics rather than question quality. Consequential use would need human
               oversight, accommodations, and meaningful ways to contest questions, grades, and
@@ -354,11 +354,16 @@ export function LandingPage() {
                 key.
               </li>
             </ul>
+            <p>
+              Both start from the four question families used in the study. You can also customize
+              them or create your own, each with its own generation prompt, question format, and
+              number of questions.
+            </p>
           </div>
           <div className="landing-cta-actions">
-            <TryIt large />
-            <Link className="secondary button-link" href="/login">
-              Sign in
+            <TryIt large signedIn={signedIn} />
+            <Link className="secondary button-link" href={account.href}>
+              {account.label}
             </Link>
           </div>
         </section>
@@ -372,7 +377,7 @@ export function LandingPage() {
         <footer className="landing-footer">
           <ExternalLink href={PAPER_URL}>Paper (arXiv:2609.20481)</ExternalLink>
           <ExternalLink href={CODE_URL}>Code and anonymized study data</ExternalLink>
-          <Link href="/login">Sign in</Link>
+          <Link href={account.href}>{account.label}</Link>
         </footer>
       </main>
     </>

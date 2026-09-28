@@ -1,7 +1,7 @@
 # Manual deployment test plan
 
 Use restricted, short-lived OpenRouter keys and a low-cost file-capable model. Create three
-greCAPTCHA accounts: one assessor/professor and two examinees. Keep each account in a separate
+greCAPTCHA accounts: one administrator/professor and two examinees. Keep each account in a separate
 browser profile so browser storage and sessions cannot leak between roles.
 
 ## Pre-deployment checks
@@ -50,7 +50,7 @@ Remove the live-test variables afterward. Before deploying:
 1. Sign in as the professor, select **Course** in the workflow control above the dashboard tabs,
    and confirm both question-set creation tabs show course credential controls. Create a template
    with one deterministic question and one free-response question.
-2. Select **Connect with PKCE**. Complete OAuth/PKCE using a key with a small positive spending
+2. Select **Connect with OpenRouter**. Complete OAuth/PKCE using a key with a small positive spending
    limit and near-term expiration. Disconnect, then paste an app-specific key with the same
    safeguards and select **Save pasted key**. Confirm both paths report the same metadata-only
    connected state.
@@ -98,14 +98,14 @@ Remove the live-test variables afterward. Before deploying:
 
 ### Reusable template link and examinee-funded generation
 
-1. As the assessor, select **Conference** in the workflow control above the dashboard tabs and
+1. As the administrator, select **Conference** in the workflow control above the dashboard tabs and
    confirm both the default and Advanced creation pages omit the manuscript upload,
    contribution statement, and OpenRouter key/PKCE controls.
 2. On the default page, enter a test-set name, choose the required model, and select **Create
    and copy conference link**. Confirm the template is saved and the copied URL begins
    `/conference/`.
 3. Repeat from Advanced with a custom question configuration. Load the saved template and
-   confirm its test-set name, model, and configuration are restored. Confirm no assessor PDF,
+   confirm its test-set name, model, and configuration are restored. Confirm no administrator PDF,
    contribution statement, or API key is requested.
 4. Try to create a second template using the same name with different capitalization. Confirm it
    is rejected, while updating the currently selected template under its own name still succeeds.
@@ -115,7 +115,7 @@ Remove the live-test variables afterward. Before deploying:
    absent from SQLite, job JSON, logs, exports, and backups.
 7. Repeat with examinee B using browser OAuth/PKCE. Confirm browser storage is scoped to
    examinee B's greCAPTCHA account and cannot be used by another account in that profile.
-8. Confirm each upload creates a distinct question set/attempt owned by the assessor but bound
+8. Confirm each upload creates a distinct question set/attempt owned by the administrator but bound
    to the uploading examinee. One examinee must not be able to poll or open the other's job.
 9. Revoke the conference link and confirm new visits fail while already-created attempts remain.
 
@@ -124,19 +124,19 @@ Remove the live-test variables afterward. Before deploying:
 1. Finish examinee A's conference assessment.
 2. Confirm submission does not start grading until the examinee supplies a key again.
 3. Submit a pasted key on the completion screen. Confirm the field clears, grading begins
-   immediately, and the result appears without assessor action.
+   immediately, and the result appears without administrator action.
 4. Finish examinee B's assessment and select the connected browser PKCE key at grading.
 5. Confirm no generation or grading key appears in the database, logs, or report.
-6. Attempt to call the conference grading endpoint as the assessor, examinee A for examinee B,
+6. Attempt to call the conference grading endpoint as the administrator, examinee A for examinee B,
    and an unrelated account. Confirm all are denied.
-7. Submit feedback and verify the same immutability and assessor-report behavior as Track A.
+7. Submit feedback and verify the same immutability and administrator-report behavior as Track A.
 
 ## Authorization and isolation
 
-1. Attempt to read another assessor's template, publish/revoke its conference link, inspect its
+1. Attempt to read another administrator's template, publish/revoke its conference link, inspect its
    encrypted credential status, open its outline, or poll its jobs. Confirm denial.
-2. Confirm a taker cannot access assessor-only outlines or exports.
-3. Confirm an assessor cannot use the examinee feedback endpoint unless that account is also the
+2. Confirm a taker cannot access administrator-only outlines or exports.
+3. Confirm an administrator cannot use the examinee feedback endpoint unless that account is also the
    attempt's recorded taker.
 4. Disconnect the professor credential. Confirm course generation/grading fails clearly rather
    than falling back to another account's key.
@@ -162,7 +162,7 @@ Test each case with a single Railway instance:
 
 1. Test desktop and narrow mobile layouts for the global workflow control above the dashboard
    tabs, both creation forms, the Course credential panel, `/take/` and `/conference/` pages,
-   grading progress, results, feedback, and assessor reports. Switch workflows with an
+   grading progress, results, feedback, and administrator reports. Switch workflows with an
    incompatible saved template selected and confirm the template selection clears; load a saved
    template and confirm the global control changes to its workflow. Confirm the dashboard labels
    owner-side results as **Tests I've Created** and taker-side results as **Tests I've Taken**.
@@ -184,7 +184,7 @@ Test each case with a single Railway instance:
    be lost, then confirm the set and every child attempt disappear. Delete a Conference test and
    confirm its template, invitation, submissions, generated manuscript sets, attempts, reports,
    feedback, and files all disappear. Confirm another creator's tests are unchanged.
-6. Export assessor attempts. Confirm expected usernames, answers, `workflow_type`,
+6. Export administrator attempts. Confirm expected usernames, answers, `workflow_type`,
    `examinee_feedback`, and `examinee_feedback_submitted_at` are present, and that each answer row
    contains only the comment submitted for that question.
 7. Confirm a second feedback POST returns 409 and no update endpoint exists.

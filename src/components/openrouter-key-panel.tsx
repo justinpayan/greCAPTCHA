@@ -16,11 +16,14 @@ export function OpenRouterKeyPanel({
   source,
   onChange,
   onReady,
+  error: pageError = "",
 }: {
   apiKey: string;
   source: KeySource;
   onChange: (apiKey: string, source: KeySource) => void;
   onReady?: (apiKey: string, source: KeySource) => void;
+  /** An OpenRouter problem the page ran into elsewhere, shown under the key controls. */
+  error?: string;
 }) {
   const [browserKey, setBrowserKey] = useState<BrowserOpenRouterKey | null>(null);
   const [checking, setChecking] = useState(false);
@@ -138,7 +141,13 @@ export function OpenRouterKeyPanel({
             Connect with OpenRouter
           </button>
         )}
-        {error && <p className="error" role="alert">{error}</p>}
+        {[error, pageError]
+          .filter((message, index, all) => message && all.indexOf(message) === index)
+          .map((message) => (
+            <p className="error" role="alert" key={message}>
+              {message}
+            </p>
+          ))}
       </aside>
     </section>
   );

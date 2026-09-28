@@ -65,6 +65,41 @@ button {
   padding: 28px 0 64px;
 }
 
+/* The researcher dashboard and set overview: wider side margins that grow with the screen,
+   capped so lines of form fields do not stretch across very wide monitors. */
+.dashboard-shell {
+  width: min(calc(100% - 2 * clamp(16px, 6vw, 96px)), 1400px);
+  padding-top: 36px;
+}
+
+/* A page with a single piece of content (a loading message, the pre-assessment instructions)
+   that sits in the middle of the viewport. */
+.centered-shell {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  padding: 28px 0;
+  text-align: center;
+}
+
+.centered-shell > .lede {
+  margin: 0;
+}
+
+.centered-shell > .intro-card {
+  width: 100%;
+}
+
+/* With the wordmark, it keeps its usual top-left place and the content centres in the rest. */
+.centered-shell:has(> .brand) {
+  grid-template-rows: auto 1fr;
+}
+
+.centered-shell > .brand {
+  justify-self: start;
+  margin-bottom: 0;
+}
+
 .brand {
   display: flex;
   flex-wrap: wrap;
@@ -78,6 +113,7 @@ button {
 /* The wordmark as a button: reset the chrome so it still reads as a wordmark, and let the mark
    itself carry the hover so the target is obvious without underlining the product name. */
 .brand-link {
+  text-decoration: none;
   border: 0;
   padding: 0;
   background: none;
@@ -95,6 +131,18 @@ button {
 .brand-link:focus-visible .brand-mark {
   background: var(--green-dark);
   transform: translateY(-1px);
+}
+
+/* "Public demo" beside the wordmark; the landing page's green screen recolours it white. */
+.demo-badge {
+  border: 1px solid var(--green);
+  border-radius: 999px;
+  padding: 4px 11px;
+  color: var(--green);
+  font-size: 0.74rem;
+  font-weight: 760;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .brand-mark {
@@ -309,6 +357,43 @@ textarea.control {
   line-height: 1.55;
 }
 
+/* The manuscript field's label, with the upload/link switch on the same line. */
+.manuscript-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.manuscript-source {
+  display: inline-flex;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 3px;
+  background: white;
+}
+
+.manuscript-source button {
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 11px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.8rem;
+  font-weight: 720;
+}
+
+.manuscript-source button:hover {
+  color: var(--ink);
+}
+
+.manuscript-source button.active {
+  color: white;
+  background: var(--green);
+}
+
 .file-control {
   padding: 10px;
   border-style: dashed;
@@ -507,6 +592,89 @@ textarea.control {
   border-top: 1px solid var(--line);
 }
 
+/* The main action always sits at the right, even when it is alone in the row. */
+.submit-row > .primary {
+  margin-left: auto;
+}
+
+/* The dashboard's introduction: three numbered steps for creating an exam, then a note for takers. */
+.get-started {
+  margin-bottom: 0;
+  padding: clamp(20px, 3vw, 30px);
+  border-color: var(--green);
+  box-shadow: none;
+}
+
+/* Separates the introduction from the working area of the dashboard. */
+.dashboard-divider {
+  margin: 32px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.get-started h2 {
+  margin-bottom: 18px;
+  font-size: 1.35rem;
+}
+
+.get-started-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.get-started-steps li {
+  position: relative;
+  padding-left: 42px;
+  color: var(--muted);
+  line-height: 1.55;
+  counter-increment: step;
+}
+
+.get-started-steps li::before {
+  position: absolute;
+  top: -2px;
+  left: 0;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--green);
+  background: var(--green-soft);
+  content: counter(step);
+  font-family: var(--font-geist-mono);
+  font-weight: 760;
+}
+
+.get-started strong,
+.get-started em {
+  color: var(--ink);
+}
+
+.get-started em {
+  font-style: normal;
+  font-weight: 720;
+}
+
+.get-started-taken {
+  margin: 20px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+@media (max-width: 900px) {
+  .get-started-steps {
+    grid-template-columns: 1fr;
+  }
+}
+
 .dashboard-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
@@ -523,6 +691,10 @@ textarea.control {
   border-left: 3px solid var(--green);
   padding: 10px 12px;
   background: var(--green-soft);
+}
+
+.dashboard-notice.submit-notice {
+  margin: 16px 0 0;
 }
 
 .recent-sets {
@@ -672,6 +844,11 @@ textarea.control {
   background: var(--paper);
 }
 
+/* The professor's API Access panel opens the new-question-set form; keep clear of the first field. */
+.form-card > .key-source-panel {
+  margin-bottom: 32px;
+}
+
 .key-source-main,
 .key-source-oauth {
   display: grid;
@@ -741,51 +918,32 @@ textarea.control {
   background: var(--green);
 }
 
-.advanced-navigation {
-  position: relative;
+/* Second-level tabs under *New question set*: underlined text, so they read as subordinate to the
+   segmented tabs above. */
+.sub-tabs {
   display: flex;
+  gap: 24px;
+  margin: 4px 0 18px;
+  border-bottom: 1px solid var(--line);
 }
 
-.advanced-button {
-  min-width: 112px;
-}
-
-.advanced-button.active {
-  color: var(--green-dark);
-  border-color: var(--green);
-  background: var(--green-soft);
-}
-
-.advanced-menu {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 7px);
-  right: 0;
-  display: grid;
-  width: min(310px, calc(100vw - 32px));
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  background: white;
-  box-shadow: var(--shadow);
-}
-
-.advanced-menu button {
+.sub-tabs button {
+  margin-bottom: -1px;
   border: 0;
-  padding: 13px 16px;
-  background: white;
+  border-bottom: 2px solid transparent;
+  padding: 8px 2px 10px;
+  color: var(--muted);
+  background: none;
+  font-weight: 720;
+}
+
+.sub-tabs button:hover {
   color: var(--ink);
-  text-align: left;
-  font-weight: 680;
 }
 
-.advanced-menu button + button {
-  border-top: 1px solid var(--line);
-}
-
-.advanced-menu button:hover,
-.advanced-menu button:focus-visible {
-  background: var(--paper);
+.sub-tabs button.active {
+  border-bottom-color: var(--green);
+  color: var(--green-dark);
 }
 
 @media (max-width: 900px) {
@@ -836,6 +994,17 @@ textarea.control {
 
 .section-heading p {
   margin: 4px 0 0;
+}
+
+/* Title and hint on one line, the actions on their own line beneath. */
+.section-heading-stacked {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.section-heading-stacked > .add-buttons {
+  align-self: stretch;
 }
 
 .add-buttons {
@@ -889,6 +1058,11 @@ textarea.control {
   margin-left: 0;
 }
 
+/* A link styled as one of the header's account buttons. */
+.account-link {
+  text-decoration: none;
+}
+
 .sign-out:hover {
   color: var(--ink);
   border-color: var(--green);
@@ -896,6 +1070,41 @@ textarea.control {
 
 .login-card {
   max-width: 460px;
+}
+
+/* Sign-in and sign-up: one centred column, with the form itself left-aligned for easy scanning. */
+.auth-shell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: clamp(28px, 8vh, 96px);
+  text-align: center;
+}
+
+.auth-shell .lede {
+  margin-inline: auto;
+}
+
+.auth-shell .login-card {
+  display: grid;
+  gap: 22px;
+  width: 100%;
+  text-align: left;
+}
+
+/* Each label sits close to its own input, and the gap above it separates it from the field before. */
+.auth-shell .login-card .field {
+  gap: 6px;
+}
+
+.auth-shell .login-card .submit-row {
+  margin-top: 6px;
+}
+
+.auth-shell .login-card .hint a {
+  color: var(--green);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .participant-link {
@@ -1021,8 +1230,18 @@ textarea.control {
   text-align: center;
 }
 
+.intro-title {
+  max-width: none;
+  margin: 0 0 22px;
+  color: var(--ink);
+  font-weight: 760;
+  font-size: clamp(2rem, 4.5vw, 2.8rem);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
 .intro-facts {
-  margin: 22px 0 28px;
+  margin: 0 0 28px;
   padding: 0;
   list-style: none;
   text-align: left;
@@ -1183,17 +1402,6 @@ textarea.control {
 .set-facts strong {
   color: var(--ink);
   font-weight: 720;
-}
-
-.summary-notice {
-  max-width: 720px;
-  margin-bottom: 24px;
-  padding: 12px 16px;
-  border-left: 3px solid var(--amber);
-  border-radius: 0 10px 10px 0;
-  background: #fdf5ea;
-  color: #6d4514;
-  font-size: 0.92rem;
 }
 
 .summary-list {
@@ -1402,6 +1610,67 @@ textarea.control {
   margin: 4px 0 0;
 }
 
+.question-config-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 10px;
+}
+
+/* Folds a question family card down to its header. */
+.collapse-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 10px;
+  color: var(--ink);
+  background: white;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.collapse-button:hover:not(:disabled) {
+  border-color: var(--green);
+}
+
+.collapse-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Pushed to the far end of the add-buttons row, apart from the actions that change the list. */
+.collapse-all-button {
+  align-self: center;
+  margin-left: auto;
+}
+
+.collapse-chevron {
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 150ms;
+}
+
+.collapse-button[aria-expanded="false"] .collapse-chevron {
+  transform: rotate(-45deg);
+}
+
+.collapsed-summary {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 640;
+}
+
+/* A folded card has nothing below its header, so the header's own spacing goes too. */
+.question-config:has(.collapse-button[aria-expanded="false"]) > header {
+  margin-bottom: 0;
+}
+
 .remove-button {
   border: 0;
   padding: 6px;
@@ -1444,6 +1713,14 @@ textarea.prompt-control {
 .quiz-header h1 {
   margin-bottom: 8px;
   font-size: clamp(2rem, 4vw, 3.2rem);
+}
+
+/* A paper's full title is often long, so it is set smaller than other page titles. */
+.quiz-header h1.attempt-title {
+  font-size: clamp(1.35rem, 2.4vw, 1.9rem);
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
 }
 
 .quiz-meta {
@@ -1505,9 +1782,11 @@ textarea.prompt-control {
   color: var(--muted);
 }
 
+/* `auto-fit`, not `auto-fill`: the unused tracks collapse, so the buttons stretch across the full
+   width instead of leaving a gap after the last one. Long sets still wrap onto more rows. */
 .question-navigator-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
   gap: 8px;
 }
 
@@ -1538,16 +1817,32 @@ textarea.prompt-control {
   outline-offset: 2px;
 }
 
+/* Sized to its question: vertical padding kept modest, and no minimum height padding out a short
+   question with empty space. */
 .question-card {
-  min-height: 490px;
-  padding: clamp(24px, 5vw, 52px);
+  padding: clamp(20px, 3vw, 28px) clamp(24px, 5vw, 52px);
 }
 
 /* Each question type carries a top margin that used to separate it from the type chip. With the
    chip gone that margin is a void at the top of the box, so the first element starts at the
    card's own padding. */
-.question-card > :first-child {
+.question-card > :first-child,
+.question-card > .question-position + * {
   margin-top: 0;
+}
+
+/* "Question 3 of 8", in the card's top-left corner above the question itself. */
+.question-position {
+  display: inline-block;
+  align-self: flex-start;
+  margin: 0 0 20px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  color: var(--muted);
+  background: white;
+  font-size: 0.8rem;
+  font-weight: 720;
 }
 
 .question-number {
@@ -1694,7 +1989,8 @@ textarea.prompt-control {
   justify-content: flex-end;
 }
 
-.navigable-actions .submit-assessment {
+/* Submit on the left, Previous and Next together on the right. */
+.navigable-actions .previous-question {
   margin-left: auto;
 }
 
@@ -1869,6 +2165,13 @@ button.option.selected {
   text-align: center;
 }
 
+/* Headings and ledes carry a max-width from the global styles; centring the text alone left the
+   block itself hugging the card's left edge, so the blocks are centred too. */
+.result > h1,
+.result > .lede {
+  margin-inline: auto;
+}
+
 .result-navigation {
   display: flex;
   justify-content: flex-end;
@@ -1913,9 +2216,32 @@ button.option.selected {
   margin-bottom: 0;
 }
 
-.review-heading > p {
+.review-heading > p,
+.review-heading-side > p {
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+/* The locked-answers note with the collapse-all control beside it. */
+.review-heading-side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 14px;
+}
+
+/* A review card's score and its own collapse control, at the right of its header. */
+.review-card-actions {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+/* A folded review card is just its header, so the header's spacing below goes too. */
+.review-card:has(.review-card-header .collapse-button[aria-expanded="false"]) > .review-card-header {
+  margin-bottom: 0;
 }
 
 .review-card {
@@ -2208,14 +2534,46 @@ button.option.selected {
   transform: translate(-50%, -50%);
 }
 
+/* A little space on every side, so the assessment does not run up against the divider or the
+   window edge. */
 .pdf-assessment-content {
   min-width: 0;
-  padding: 28px 16px 64px 4px;
+  padding: 28px 28px 64px 20px;
 }
 
 .pdf-assessment-content > .app-shell {
   width: 100%;
   padding: 0;
+}
+
+/*
+ * The assessment fills the pane's full height: title and question navigator at the top, the
+ * question card taking the space in the middle, and the save status and navigation buttons at the
+ * bottom, so the buttons stay in one place from question to question.
+ */
+.pdf-assessment-content:has(> .assessment-layout) {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding-bottom: 28px;
+}
+
+.assessment-layout {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.assessment-layout > .question-card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+/* A free response's answer box grows into the card's spare height. */
+.assessment-layout .free-response-question {
+  flex: 1;
+  grid-template-rows: auto auto minmax(260px, 1fr);
 }
 
 @media (max-width: 900px) {
@@ -2234,7 +2592,7 @@ button.option.selected {
   }
 
   .pdf-assessment-content {
-    padding: 24px 16px 64px;
+    padding: 24px 20px 64px;
   }
 }
 
@@ -2261,6 +2619,10 @@ button.option.selected {
   .submit-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .submit-row > .primary {
+    margin-left: 0;
   }
 
   .attempt-start-card {
@@ -2319,27 +2681,12 @@ button.option.selected {
     font-size: 0.85rem;
   }
 
-  .advanced-navigation,
-  .advanced-button {
-    width: 100%;
-  }
-
-  .advanced-menu {
-    right: auto;
-    left: 0;
-  }
-
-  .question-card {
-    min-height: 540px;
-  }
-
   .navigable-actions {
     flex-wrap: wrap;
   }
 
   .navigable-actions .submit-assessment {
     width: 100%;
-    margin-left: 0;
   }
 }
 
@@ -2478,14 +2825,9 @@ button.option.selected {
   gap: 10px 14px;
 }
 
-.landing-badge {
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  border-radius: 999px;
-  padding: 4px 11px;
-  font-size: 0.74rem;
-  font-weight: 760;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+.landing-screen .demo-badge {
+  border-color: rgba(255, 255, 255, 0.5);
+  color: white;
 }
 
 .landing-scroll {
@@ -2661,6 +3003,7 @@ button.option.selected {
 
 .landing-card {
   padding: 24px 26px;
+  border-color: var(--green);
   box-shadow: none;
 }
 
@@ -2737,6 +3080,15 @@ button.option.selected {
   font-style: italic;
 }
 
+/* A muted note under a group of cards, at body-text size. */
+.landing-caption {
+  max-width: 720px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.02rem;
+  line-height: 1.7;
+}
+
 .landing-list {
   display: grid;
   gap: 10px;
@@ -2778,11 +3130,15 @@ button.option.selected {
   max-width: 640px;
 }
 
+.landing-cta .landing-list + p {
+  margin: 16px 0 0;
+}
+
 .landing-cite {
   margin: 0;
   padding: 20px 22px;
   overflow-x: auto;
-  border: 1px solid var(--line);
+  border: 1px solid var(--green);
   border-radius: 16px;
   background: var(--surface);
   font-family: var(--font-geist-mono);

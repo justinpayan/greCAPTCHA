@@ -6,15 +6,16 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { openRouterCredentials } from "@/db/schema";
 import { validateOpenRouterKey } from "@/lib/openrouter";
+import { OpenRouterError } from "@/lib/openrouter-errors";
 
 function encryptionKey() {
   const raw = process.env.OPENROUTER_CREDENTIAL_ENCRYPTION_KEY?.trim();
   if (!raw) {
-    throw new Error("OPENROUTER_CREDENTIAL_ENCRYPTION_KEY is not configured.");
+    throw new OpenRouterError("OPENROUTER_CREDENTIAL_ENCRYPTION_KEY is not configured.");
   }
   const key = Buffer.from(raw, "base64");
   if (key.length !== 32) {
-    throw new Error("OPENROUTER_CREDENTIAL_ENCRYPTION_KEY must be 32 random base64 bytes.");
+    throw new OpenRouterError("OPENROUTER_CREDENTIAL_ENCRYPTION_KEY must be 32 random base64 bytes.");
   }
   return key;
 }
@@ -47,7 +48,7 @@ export async function saveOpenRouterCredential(userId: string, apiKey: string) {
   const trimmed = apiKey.trim();
   const metadata = await validateOpenRouterKey(trimmed, { requireSafeguards: true });
   if (metadata.limit === null || metadata.expiresAt === null) {
-    throw new Error("The OpenRouter key is missing required safeguards.");
+    throw new OpenRouterError("The OpenRouter key is missing required safeguards.");
   }
   const encrypted = encrypt(trimmed);
   const now = new Date().toISOString();
@@ -98,9 +99,9 @@ export async function requireOpenRouterCredential(userId: string) {
     .from(openRouterCredentials)
     .where(eq(openRouterCredentials.userId, userId))
     .get();
-  if (!row) throw new Error("The assessor has not connected an OpenRouter account.");
+  if (!row) throw new OpenRouterError("The administrator has not connected an OpenRouter account.");
   if (new Date(row.expiresAt).getTime() <= Date.now()) {
-    throw new Error("The assessor's OpenRouter key has expired.");
+    throw new OpenRouterError("The administrator's OpenRouter key has expired.");
   }
   return decrypt(row);
 }

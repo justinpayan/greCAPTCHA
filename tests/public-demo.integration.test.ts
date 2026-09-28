@@ -57,6 +57,7 @@ import {
 } from "@/lib/jobs";
 import { clearJobKeys, registerJobKey, requireJobKey } from "@/lib/openrouter-key-store";
 import { credentialStatus } from "@/lib/openrouter-credentials";
+import { OpenRouterError } from "@/lib/openrouter-errors";
 import { setOpenRouterTransportForTests, validateOpenRouterKey } from "@/lib/openrouter";
 import type { QuestionBlockConfig } from "@/lib/quiz";
 import { POST as submitAnswer } from "@/app/api/attempts/[id]/answers/route";
@@ -249,9 +250,14 @@ describe("public demo account-to-grade flow", () => {
     await expect(
       validateOpenRouterKey("sk-or-unsafe", { requireSafeguards: true }),
     ).rejects.toThrow("spending limit");
+    // Key problems are tagged as OpenRouter errors, so the forms show them by the key controls.
+    await expect(
+      validateOpenRouterKey("sk-or-unsafe", { requireSafeguards: true }),
+    ).rejects.toBeInstanceOf(OpenRouterError);
     registerJobKey("restart-example", "sk-or-memory-only");
     clearJobKeys();
     expect(() => requireJobKey("restart-example")).toThrow("interrupted");
+    expect(() => requireJobKey("restart-example")).toThrow(OpenRouterError);
   });
 
   it("generates, takes, and grades a mixed assessment without network access", async () => {

@@ -57,13 +57,16 @@ public demo.
    PKCE or paste it directly, upload the course PDF, describe the material to
    cover, choose a model, and generate the question set. Either connection
    method stores one encrypted server credential for automatic grading.
+   Instead of uploading the PDF, you can paste a direct link to it; the server
+   downloads it (public addresses only, same size limit) and checks that it is a
+   real PDF before generating.
 4. For a conference, enter the test-set name and choose the required model and
    question configuration. **Create and copy conference link** saves the
-   template and copies its reusable examinee invitation; the assessor does not
+   template and copies its reusable examinee invitation; the administrator does not
    upload a manuscript or provide an OpenRouter key.
 5. Each conference examinee opens that invitation, uploads their manuscript and
-   contribution statement, and supplies a pasted or browser-managed PKCE key to
-   generate their assessment.
+   contribution statement (or links to the PDF), and supplies a pasted or
+   browser-managed PKCE key to generate their assessment.
 6. Course question sets use `/take/...` links. Each signed-in account receives
    one independent attempt for a shared course question set.
 7. Submission starts grading immediately. Course grading uses the professor's
