@@ -154,7 +154,30 @@ function FieldHint({ text }: { text: string }) {
   );
 }
 
-export function ResearchCaptcha({ username }: { username: string }) {
+export function ResearchCaptcha({
+  username,
+  initialGetStartedHidden = false,
+}: {
+  username: string;
+  /** The account's saved choice to hide the Get started guide, read on the server. */
+  initialGetStartedHidden?: boolean;
+}) {
+  const [getStartedHidden, setGetStartedHidden] = useState(initialGetStartedHidden);
+
+  /**
+   * Shows or hides the guide at once and saves the choice to the account, so it holds in every
+   * browser and later session. A failed save leaves the page as chosen; it is a display preference,
+   * and the next visit simply shows the last saved state.
+   */
+  function changeGetStartedHidden(hidden: boolean) {
+    setGetStartedHidden(hidden);
+    void fetch("/api/preferences", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ getStartedHidden: hidden }),
+    }).catch(() => undefined);
+  }
+
   const [mode, setMode] = useState<"default" | "custom" | "resume" | "mine">(
     "default",
   );
@@ -1346,6 +1369,15 @@ export function ResearchCaptcha({ username }: { username: string }) {
         <span className="demo-badge">Public demo</span>
         <span className="account-name">Signed in as {username}</span>
         {/* The landing page, at an address that stays reachable while signed in. */}
+        {getStartedHidden && (
+          <button
+            className="sign-out account-action"
+            type="button"
+            onClick={() => changeGetStartedHidden(false)}
+          >
+            Show guide
+          </button>
+        )}
         <Link className="sign-out account-action account-link" href="/about">
           About
         </Link>
@@ -1360,28 +1392,42 @@ export function ResearchCaptcha({ username }: { username: string }) {
           Sign out
         </button>
       </div>
-      <section className="card get-started" aria-labelledby="get-started-title">
-        <h2 id="get-started-title">Get started</h2>
-        <ol className="get-started-steps">
-          <li>
-            <strong>Create.</strong> Generate a question set from a paper in the{" "}
-            <em>New question set</em> tab.
-          </li>
-          <li>
-            <strong>Share.</strong> Copy the link on the right to share the exam with someone.
-          </li>
-          <li>
-            <strong>Review.</strong> Open <em>Tests I&apos;ve Created</em> to see attempts
-            completed on your exams.
-          </li>
-        </ol>
-        <p className="get-started-taken">
-          <strong>Taking an exam?</strong> The <em>Tests I&apos;ve Taken</em> tab shows assessments
-          you have taken. Return there to continue an assessment, check whether it has been graded,
-          or review your grades and feedback once they are available.
-        </p>
-      </section>
-      <hr className="dashboard-divider" />
+      {!getStartedHidden && (
+        <>
+          <section className="card get-started" aria-labelledby="get-started-title">
+            <div className="get-started-head">
+              <h2 id="get-started-title">Get started</h2>
+              <button
+                className="collapse-button"
+                type="button"
+                title="Hide this guide. Show it again with “Show guide” at the top of the page."
+                onClick={() => changeGetStartedHidden(true)}
+              >
+                Hide
+              </button>
+            </div>
+            <ol className="get-started-steps">
+              <li>
+                <strong>Create.</strong> Generate a question set from a paper in the{" "}
+                <em>New question set</em> tab.
+              </li>
+              <li>
+                <strong>Share.</strong> Copy the link on the right to share the exam with someone.
+              </li>
+              <li>
+                <strong>Review.</strong> Open <em>Tests I&apos;ve Created</em> to see attempts
+                completed on your exams.
+              </li>
+            </ol>
+            <p className="get-started-taken">
+              <strong>Taking an exam?</strong> The <em>Tests I&apos;ve Taken</em> tab shows assessments
+              you have taken. Return there to continue an assessment, check whether it has been graded,
+              or review your grades and feedback once they are available.
+            </p>
+          </section>
+          <hr className="dashboard-divider" />
+        </>
+      )}
 
       <div className="dashboard-layout">
       <div className="dashboard-main">
@@ -1788,23 +1834,7 @@ export function ResearchCaptcha({ username }: { username: string }) {
                                 </div>
                                 <div className="catalog-actions">
                                   <button
-                                    className="secondary danger"
-                                    type="button"
-                                    onClick={() => void deleteAttemptRow(entry)}
-                                  >
-                                    Delete attempt
-                                  </button>
-                                  <button
                                     className="secondary"
-                                    type="button"
-                                    disabled={resettingId === entry.id}
-                                    title="Clear this attempt's answers and run it again from the start. The question order is kept."
-                                    onClick={() => void resetAttemptRow(entry)}
-                                  >
-                                    {resettingId === entry.id ? "Resetting…" : "Reset"}
-                                  </button>
-                                  <button
-                                    className="primary"
                                     type="button"
                                     disabled={working}
                                     onClick={() => void openAttempt(entry.id)}
@@ -1816,6 +1846,22 @@ export function ResearchCaptcha({ username }: { username: string }) {
                                         : entry.answeredCount
                                           ? "Resume"
                                           : "Open"}
+                                  </button>
+                                  <button
+                                    className="secondary"
+                                    type="button"
+                                    disabled={resettingId === entry.id}
+                                    title="Clear this attempt's answers and run it again from the start. The question order is kept."
+                                    onClick={() => void resetAttemptRow(entry)}
+                                  >
+                                    {resettingId === entry.id ? "Resetting…" : "Reset"}
+                                  </button>
+                                  <button
+                                    className="secondary danger"
+                                    type="button"
+                                    onClick={() => void deleteAttemptRow(entry)}
+                                  >
+                                    Delete attempt
                                   </button>
                                 </div>
                               </div>

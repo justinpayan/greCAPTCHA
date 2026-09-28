@@ -612,8 +612,16 @@ textarea.control {
   border-top: 1px solid var(--line);
 }
 
-.get-started h2 {
+.get-started-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 18px;
+}
+
+.get-started h2 {
+  margin-bottom: 0;
   font-size: 1.35rem;
 }
 
