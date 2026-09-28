@@ -172,6 +172,8 @@ export const generatedFillSetSchema = z.object({
     z.object({
       prompt: z.string().min(1),
       description: z.string().min(1),
+      /** The PDF page (from 1) the question draws on; orders the set through the paper. */
+      page: z.number().int().min(1).optional(),
       blanks: z.array(generatedBlankSchema).min(1),
     }),
   ),
@@ -188,6 +190,8 @@ export const generatedFreeResponseSetSchema = z.object({
     z.object({
       prompt: z.string().min(1),
       description: z.string().min(1),
+      /** The PDF page (from 1) the question draws on; orders the set through the paper. */
+      page: z.number().int().min(1).optional(),
       rubric: z.object({
         summary: z.string().min(1),
         criteria: z.array(rubricCriterionSchema).min(1),
@@ -203,6 +207,8 @@ export const generatedMultipleChoiceSetSchema = z.object({
     z.object({
       prompt: z.string().min(1),
       description: z.string().min(1),
+      /** The PDF page (from 1) the question draws on; orders the set through the paper. */
+      page: z.number().int().min(1).optional(),
       answer: z.string().min(1),
       distractors: z.array(z.string().min(1)).min(1),
       rationale: z.string().min(1),
@@ -258,6 +264,8 @@ export type StoredFillQuestion = {
   warmup?: boolean;
   blockName?: string;
   description?: string;
+  /** The PDF page the question draws on, when the generator reported one. */
+  sourcePage?: number;
   segments: QuestionSegment[];
   choices: QuizChoice[];
   blanks: StoredBlank[];
@@ -275,6 +283,8 @@ export type StoredFreeResponseQuestion = {
   warmup?: boolean;
   blockName?: string;
   description?: string;
+  /** The PDF page the question draws on, when the generator reported one. */
+  sourcePage?: number;
   prompt: string;
   rubric: Rubric;
 };
@@ -286,6 +296,8 @@ export type StoredMultipleChoiceQuestion = {
   warmup?: boolean;
   blockName?: string;
   description?: string;
+  /** The PDF page the question draws on, when the generator reported one. */
+  sourcePage?: number;
   prompt: string;
   /** Already shuffled at generation, so every attempt on this set sees the same order. */
   options: QuizChoice[];
@@ -638,11 +650,30 @@ export function prepareFillQuestions(
       warmup: block.warmup,
       blockName: block.name,
       description: question.description.trim(),
+      sourcePage: question.page,
       segments: parseSegments(question.prompt, new Set(ids)),
       choices: shuffled(choices),
       blanks,
     };
   });
+}
+
+/**
+ * A question set in the order the paper presents its material: by the page each question draws
+ * on, earliest first, so an attempt moves through the manuscript once instead of jumping between
+ * sections. The sort is stable, so questions on the same page keep their generated order, and a
+ * question with no reported page keeps its place after the paged ones. Randomized attempts still
+ * shuffle this order when they are created.
+ */
+export function orderQuestionsByPage<T extends { sourcePage?: number }>(questions: T[]): T[] {
+  return questions
+    .map((question, index) => ({ question, index }))
+    .sort(
+      (a, b) =>
+        (a.question.sourcePage ?? Number.POSITIVE_INFINITY) -
+          (b.question.sourcePage ?? Number.POSITIVE_INFINITY) || a.index - b.index,
+    )
+    .map(({ question }) => question);
 }
 
 export function prepareFreeResponseQuestions(
@@ -656,6 +687,7 @@ export function prepareFreeResponseQuestions(
     warmup: block.warmup,
     blockName: block.name,
     description: question.description.trim(),
+    sourcePage: question.page,
     prompt: question.prompt.trim(),
     rubric: question.rubric,
   }));
@@ -704,6 +736,7 @@ export function prepareMultipleChoiceQuestions(
       warmup: block.warmup,
       blockName: block.name,
       description: question.description.trim(),
+      sourcePage: question.page,
       prompt: question.prompt.trim(),
       options,
       correctOptionId: correctOption.id,

@@ -125,6 +125,7 @@ setOpenRouterTransportForTests(async (input, init) => {
         questions: [{
           prompt: "Which result is reported?",
           description: "Checks the main reported result.",
+          page: 3,
           answer: "Result A",
           distractors: ["Result B", "Result C", "Result D"],
           rationale: "The paper reports Result A.",
@@ -135,6 +136,7 @@ setOpenRouterTransportForTests(async (input, init) => {
         questions: [{
           prompt: "Explain the main contribution.",
           description: "Checks understanding of the contribution.",
+          page: 7,
           rubric: {
             summary: "Names the contribution.",
             criteria: [{ criterion: "Correct contribution", points: 100, guidance: "Accept equivalents." }],
@@ -285,6 +287,12 @@ describe("public demo account-to-grade flow", () => {
       .where(eq(questionSets.id, generatedSetId))
       .get();
     expect(generatedSet?.randomize).toBe(false);
+    // Stored in page order, each question keeping the page it was generated from.
+    expect(
+      (JSON.parse(generatedSet?.questionsJson ?? "[]") as Array<{ sourcePage?: number }>).map(
+        (question) => question.sourcePage,
+      ),
+    ).toEqual([3, 7]);
     const shared = await createQuestionSetShareLink(generatedSetId, alice.id);
     const bob = await db
       .select()

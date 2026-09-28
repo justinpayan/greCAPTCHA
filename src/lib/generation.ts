@@ -13,6 +13,7 @@ import {
   getOpenRouterModels,
 } from "@/lib/openrouter";
 import {
+  orderQuestionsByPage,
   prepareFillQuestions,
   prepareFreeResponseQuestions,
   prepareMultipleChoiceQuestions,
@@ -137,7 +138,8 @@ export async function executeGeneration(
     overallTimeLimitSeconds: payload.overallTimeLimitSeconds,
     randomize: payload.randomize,
     configJson: JSON.stringify(payload.blocks),
-    questionsJson: JSON.stringify(questions),
+    // Page order is the default sequence; a randomized attempt shuffles it at creation.
+    questionsJson: JSON.stringify(orderQuestionsByPage(questions)),
     createdAt: new Date().toISOString(),
   });
   if (!payload.taker) return { questionSetId: payload.questionSetId };

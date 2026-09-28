@@ -185,6 +185,7 @@ const fillResponseJsonSchema = {
           properties: {
             prompt: { type: "string" },
             description: { type: "string" },
+            page: { type: "integer", minimum: 1 },
             blanks: {
               type: "array",
               items: {
@@ -199,7 +200,7 @@ const fillResponseJsonSchema = {
               },
             },
           },
-          required: ["prompt", "description", "blanks"],
+          required: ["prompt", "description", "page", "blanks"],
         },
       },
     },
@@ -222,6 +223,7 @@ const freeResponseJsonSchema = {
           properties: {
             prompt: { type: "string" },
             description: { type: "string" },
+            page: { type: "integer", minimum: 1 },
             rubric: {
               type: "object",
               additionalProperties: false,
@@ -244,7 +246,7 @@ const freeResponseJsonSchema = {
               required: ["summary", "criteria"],
             },
           },
-          required: ["prompt", "description", "rubric"],
+          required: ["prompt", "description", "page", "rubric"],
         },
       },
     },
@@ -267,6 +269,7 @@ const multipleChoiceJsonSchema = {
           properties: {
             prompt: { type: "string" },
             description: { type: "string" },
+            page: { type: "integer", minimum: 1 },
             answer: { type: "string" },
             distractors: { type: "array", items: { type: "string" } },
             rationale: { type: "string" },
@@ -274,6 +277,7 @@ const multipleChoiceJsonSchema = {
           required: [
             "prompt",
             "description",
+            "page",
             "answer",
             "distractors",
             "rationale",
@@ -481,6 +485,8 @@ User-authored generation instructions:
 ${input.block.prompt}
 
 For every question also supply a "description": one sentence, at most 25 words, naming what the question probes and which part of the manuscript it draws on. It is read only by the researcher reviewing the item bank and is never shown to the person taking the assessment, so state the target plainly rather than hinting at it. Do not reveal the correct answer in the description.
+
+For every question also supply a "page": the page number of the PDF, counting its first page as 1, where the material the question tests appears. If it spans several pages, give the first of them. The assessment presents questions in page order, so the participant moves through the paper once from start to finish rather than jumping between sections.
 
 Spread the questions across the manuscript. No two questions in this batch may draw on the same section or subsection, or on the same table, figure, or equation. Where the manuscript is too short for that, make each question draw on a distinct claim, result, or design decision rather than on the same passage twice. Before returning, read your own descriptions back: if they name the same part of the paper, replace a question rather than reword it. A set of questions that all land in one part of the paper measures understanding of one part of the paper.
 
