@@ -5,6 +5,8 @@ import { logIncoming } from "@/lib/request-log";
 const SESSION_COOKIE = "rc_session";
 
 const ALWAYS_OPEN = new Set([
+  // The landing page; it renders the dashboard itself once there is a valid session.
+  "/",
   "/login",
   "/signup",
   "/api/session",
@@ -49,5 +51,6 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // Static files under public/figures are served to everyone, including the signed-out landing page.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|figures/).*)"],
 };

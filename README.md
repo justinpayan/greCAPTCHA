@@ -31,7 +31,8 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open <http://localhost:3000>. The database is created under `data/`, and
+Open <http://localhost:3000>. Signed-out visitors see the project landing page
+(`src/components/landing-page.tsx`); signed-in accounts see their dashboard. The database is created under `data/`, and
 checked-in Drizzle migrations run automatically on startup.
 
 Minimum `.env.local` configuration:

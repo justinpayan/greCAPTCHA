@@ -45,7 +45,7 @@ body {
     rgba(23, 107, 75, 0) 30rem
   );
   background-repeat: no-repeat;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "Helvetica LT Pro", Helvetica, Arial, sans-serif;
 }
 
 button,
@@ -2340,5 +2340,495 @@ button.option.selected {
   .navigable-actions .submit-assessment {
     width: 100%;
     margin-left: 0;
+  }
+}
+
+/* ---- Landing page ---------------------------------------------------------------------- */
+
+.landing {
+  max-width: 1080px;
+}
+
+.landing a {
+  color: var(--green);
+}
+
+.landing a.primary {
+  color: white;
+}
+
+.landing a.secondary {
+  color: var(--ink);
+}
+
+/* The first screen: a full-bleed green panel holding the header and hero, filling the viewport. */
+.landing-screen {
+  position: relative;
+  display: flex;
+  min-height: 100svh;
+  color: white;
+  background-color: var(--green);
+  background-image:
+    radial-gradient(circle at 85% 10%, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0) 38rem),
+    radial-gradient(circle at 0% 100%, rgba(12, 78, 53, 0.7), rgba(12, 78, 53, 0) 42rem);
+}
+
+/*
+ * A faint dot grid with the odd open square, a nod to a CAPTCHA checkbox. It sits on a
+ * pseudo-element so a mask can fade it out behind the hero text in the lower left.
+ */
+.landing-screen::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' fill='white'%3E%3Ccircle cx='12' cy='12' r='1.8'/%3E%3Ccircle cx='60' cy='12' r='1.8'/%3E%3Ccircle cx='12' cy='60' r='1.8'/%3E%3Crect x='53.5' y='53.5' width='13' height='13' rx='3' fill='none' stroke='white' stroke-width='1.6'/%3E%3C/svg%3E");
+  background-size: 96px 96px;
+  opacity: 0.3;
+  mask-image: radial-gradient(ellipse 140% 110% at 100% 0%, black 35%, transparent 90%);
+}
+
+.landing-screen-inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: calc(100% - 32px);
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 28px 0 88px;
+}
+
+.landing-screen a {
+  color: white;
+}
+
+.landing-screen .brand-mark {
+  color: var(--green);
+  background: white;
+}
+
+.landing-screen .landing-header {
+  margin-bottom: 48px;
+}
+
+.landing-screen .landing-nav a:not(.primary) {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.landing-screen .landing-nav a:not(.primary):hover {
+  color: white;
+}
+
+/* On green, the primary button inverts to white so it stays the strongest element. */
+.landing-screen .primary,
+.landing-screen a.primary {
+  border-color: white;
+  color: var(--green-dark);
+  background: white;
+}
+
+.landing-screen .primary:hover {
+  border-color: var(--green-soft);
+  background: var(--green-soft);
+}
+
+.landing-screen .landing-try-large {
+  box-shadow: 0 12px 32px rgba(8, 48, 32, 0.35);
+}
+
+.landing-screen .secondary,
+.landing-screen a.secondary {
+  border-color: rgba(255, 255, 255, 0.55);
+  color: white;
+  background: transparent;
+}
+
+.landing-screen .secondary:hover {
+  border-color: white;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* The hero sits at the bottom of the first screen, below the header. */
+.landing-screen .landing-hero {
+  margin-top: auto;
+}
+
+.landing-screen h1 {
+  max-width: 920px;
+  color: white;
+}
+
+.landing-screen .lede {
+  color: rgba(255, 255, 255, 0.86);
+  font-size: clamp(1.08rem, 1.6vw, 1.22rem);
+}
+
+.landing-screen .landing-note {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.landing-screen .landing-note a {
+  text-decoration-color: rgba(255, 255, 255, 0.5);
+}
+
+.landing-brand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+
+.landing-badge {
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 999px;
+  padding: 4px 11px;
+  font-size: 0.74rem;
+  font-weight: 760;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.landing-scroll {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  text-decoration: none;
+  transform: translateX(-50%);
+  transition: background 150ms, border-color 150ms;
+}
+
+.landing-scroll:hover {
+  border-color: white;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.landing-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 56px;
+}
+
+.landing-header .brand {
+  margin-bottom: 0;
+}
+
+.landing-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 22px;
+  font-size: 0.92rem;
+  font-weight: 720;
+}
+
+.landing-nav a:not(.primary) {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.landing-nav a:not(.primary):hover {
+  color: var(--ink);
+}
+
+.landing-nav .primary {
+  min-height: 40px;
+  padding: 8px 18px;
+}
+
+.landing-try {
+  justify-content: center;
+}
+
+.landing-try-large {
+  min-height: 56px;
+  padding: 14px 34px;
+  font-size: 1.08rem;
+  box-shadow: 0 10px 28px rgba(23, 107, 75, 0.25);
+}
+
+.landing-hero h1 {
+  max-width: 880px;
+}
+
+.landing-hero .lede {
+  margin-bottom: 30px;
+}
+
+.landing-actions,
+.landing-cta-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+
+.landing-actions .secondary,
+.landing-cta-actions .secondary {
+  min-height: 56px;
+  justify-content: center;
+  padding: 14px 24px;
+}
+
+.landing-note {
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.landing-section {
+  margin-top: 88px;
+}
+
+.landing-figure {
+  margin: 56px 0 0;
+}
+
+/* The figure has a white background, so it sits on a white card rather than on the paper. */
+.landing-figure-scroll {
+  padding: clamp(16px, 3vw, 32px);
+  border: 1px solid var(--green);
+  border-radius: 22px;
+  background: white;
+}
+
+.landing-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+@media (max-width: 720px) {
+  /* The figure's labels become unreadable below this width, so it scrolls sideways instead. */
+  .landing-figure-scroll {
+    overflow-x: auto;
+  }
+
+  .landing-figure-scroll img {
+    width: 720px;
+    max-width: none;
+  }
+}
+
+.landing-section h2,
+.landing-cta h2 {
+  margin-bottom: 20px;
+  font-size: clamp(1.7rem, 3.2vw, 2.4rem);
+  line-height: 1.1;
+}
+
+.landing-prose {
+  max-width: 720px;
+  color: var(--ink);
+  font-size: 1.02rem;
+  line-height: 1.7;
+  text-wrap: pretty;
+}
+
+.landing-prose p {
+  margin-bottom: 16px;
+}
+
+.landing-quote {
+  max-width: 760px;
+  margin: 28px 0 0;
+  padding: 4px 0 4px 22px;
+  border-left: 4px solid var(--green);
+  font-size: clamp(1.15rem, 2.2vw, 1.4rem);
+  font-weight: 700;
+  line-height: 1.45;
+  letter-spacing: -0.015em;
+  text-wrap: pretty;
+}
+
+.landing-grid {
+  display: grid;
+  gap: 18px;
+  margin: 26px 0;
+}
+
+.landing-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.landing-card {
+  padding: 24px 26px;
+  box-shadow: none;
+}
+
+.landing-card h3 {
+  margin-bottom: 10px;
+  font-size: 1.08rem;
+  font-weight: 760;
+  letter-spacing: -0.015em;
+}
+
+.landing-card p {
+  margin-bottom: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.landing-stages {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+  margin: 26px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing-step {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 16px;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--green);
+  background: var(--green-soft);
+  font-family: var(--font-geist-mono);
+  font-weight: 760;
+}
+
+.landing-uses {
+  margin: 22px 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.landing-tag {
+  border-radius: 999px;
+  padding: 5px 12px;
+  color: var(--green);
+  background: var(--green-soft);
+  font-size: 0.82rem;
+  font-weight: 720;
+  white-space: nowrap;
+}
+
+.landing-family-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+}
+
+.landing-family-head h3 {
+  margin-bottom: 0;
+}
+
+.landing-card .landing-example {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--line);
+  color: var(--ink);
+  font-size: 0.92rem;
+  font-style: italic;
+}
+
+.landing-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 20px;
+  line-height: 1.6;
+}
+
+.landing-paragraphs {
+  display: grid;
+  gap: 12px;
+}
+
+.landing-paragraphs strong {
+  color: var(--ink);
+}
+
+.landing-card .landing-list {
+  color: var(--muted);
+}
+
+.landing-cta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 28px 40px;
+  margin-top: 96px;
+  padding: clamp(24px, 4vw, 44px);
+  background: var(--green-soft);
+  border-color: transparent;
+}
+
+.landing-cta p {
+  max-width: 640px;
+  line-height: 1.65;
+}
+
+.landing-cta .landing-list {
+  max-width: 640px;
+}
+
+.landing-cite {
+  margin: 0;
+  padding: 20px 22px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  font-family: var(--font-geist-mono);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.landing-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+  margin-top: 72px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 900px) {
+  .landing-stages {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .landing-cta {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .landing-grid-2,
+  .landing-stages {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-section {
+    margin-top: 64px;
+  }
+
+  .landing-nav a[href^="http"] {
+    display: none;
+  }
+}
+
+/* On narrow phones the header keeps only the wordmark, badge, and Sign in; the hero's large
+   Try it button is on the same screen. */
+@media (max-width: 480px) {
+  .landing-nav .landing-try {
+    display: none;
   }
 }

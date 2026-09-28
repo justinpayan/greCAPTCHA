@@ -15,9 +15,11 @@ deployed("serves course and conference workflows with authentication boundaries"
   expect(health.status).toBe(200);
   expect(await health.json()).toEqual({ ok: true });
 
-  const root = await fetcher(`${baseUrl}/`, { redirect: "manual" });
-  expect([301, 302, 303, 307, 308]).toContain(root.status);
-  expect(new URL(root.headers.get("location") ?? "", baseUrl).pathname).toBe("/login");
+  const root = await fetcher(`${baseUrl}/`, { redirect: "manual", cache: "no-store" });
+  expect(root.status).toBe(200);
+  const rootHtml = await root.text();
+  expect(rootHtml).toContain("capacity to verify");
+  expect(rootHtml).toContain('href="/signup"');
 
   const login = await fetcher(`${baseUrl}/login`, { cache: "no-store" });
   expect(login.status).toBe(200);
