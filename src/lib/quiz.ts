@@ -210,12 +210,26 @@ export const generatedMultipleChoiceSetSchema = z.object({
   ),
 });
 
+/**
+ * The grader's verdict on each free response: overall feedback plus one entry per rubric
+ * criterion saying how many of its points were awarded, why (in particular, why partial marks),
+ * and which passages of the response the decision rests on, quoted verbatim.
+ */
 export const freeResponseGradesSchema = z.object({
   grades: z.array(
     z.object({
       questionId: z.string().min(1),
-      score: z.number().min(0).max(100),
       feedback: z.string().min(1),
+      criteria: z
+        .array(
+          z.object({
+            criterionIndex: z.number().int().min(0),
+            pointsAwarded: z.number().min(0),
+            justification: z.string().min(1),
+            evidence: z.array(z.string()),
+          }),
+        )
+        .min(1),
     }),
   ),
 });
@@ -506,6 +520,16 @@ export type FillReview = ReviewBase & {
   }>;
 };
 
+/** How one rubric criterion was marked, with the response passages it was marked on. */
+export type CriterionGrade = {
+  criterion: string;
+  points: number;
+  awarded: number;
+  justification: string;
+  /** Character ranges of the response, as written, that this criterion's marks rest on. */
+  spans: Array<{ start: number; end: number }>;
+};
+
 export type FreeResponseReview = ReviewBase & {
   type: "free_response";
   questionId: string;
@@ -514,6 +538,9 @@ export type FreeResponseReview = ReviewBase & {
   rubric: Rubric;
   score: number;
   feedback: string;
+  /** Per-criterion marks, one per rubric criterion. Absent for grades made before these existed
+   * and for responses that were skipped or ran out of time. */
+  criterionGrades?: CriterionGrade[];
 };
 
 export type MultipleChoiceReview = ReviewBase & {

@@ -1723,6 +1723,18 @@ textarea.prompt-control {
   text-wrap: balance;
 }
 
+/* Who an attempt belongs to, set apart from the muted metadata around it. */
+.completed-by {
+  margin: 10px 0 0;
+  color: var(--ink);
+  font-size: 1.02rem;
+}
+
+.completed-by strong {
+  color: var(--green-dark);
+  font-weight: 760;
+}
+
 .quiz-meta {
   color: var(--muted);
   font-size: 0.85rem;
@@ -2172,10 +2184,11 @@ button.option.selected {
   margin-inline: auto;
 }
 
+/* Back to dashboard, after the whole review. */
 .result-navigation {
   display: flex;
   justify-content: flex-end;
-  margin-bottom: 16px;
+  margin-top: 24px;
 }
 
 .score-ring {
@@ -2381,6 +2394,124 @@ button.option.selected {
 .free-review li > span {
   display: block;
   color: var(--muted);
+}
+
+/* ---- Graded free responses: evidence underlines linked to rubric criteria ------------------ */
+
+/* One colour per criterion, shared by its underline in the response and its badge in the rubric.
+   Each is dark enough to read as text on white and on its own pale tint. */
+.criterion-colour-0 { --criterion: #176b4b; --criterion-tint: #e3f2eb; }
+.criterion-colour-1 { --criterion: #3b55a8; --criterion-tint: #e7ebf8; }
+.criterion-colour-2 { --criterion: #a04d12; --criterion-tint: #fbeee2; }
+.criterion-colour-3 { --criterion: #8a3a8f; --criterion-tint: #f5e8f6; }
+.criterion-colour-4 { --criterion: #0f6b7d; --criterion-tint: #e1f2f5; }
+.criterion-colour-5 { --criterion: #8b6a0a; --criterion-tint: #f8f1dc; }
+
+.graded-response {
+  white-space: pre-wrap;
+}
+
+mark.evidence {
+  position: relative;
+  border-radius: 3px;
+  color: inherit;
+  background: transparent;
+  text-decoration: underline 2px var(--criterion);
+  text-decoration-skip-ink: none;
+  text-underline-offset: 4px;
+  cursor: help;
+  transition: background 120ms;
+}
+
+/* Evidence for more than one criterion: a double line, and the tooltip lists them all. */
+mark.evidence-shared {
+  text-decoration-style: double;
+}
+
+mark.evidence.active,
+mark.evidence:hover,
+mark.evidence:focus-visible {
+  background: var(--criterion-tint);
+  outline: none;
+}
+
+/* The tooltip: which criteria the passage was marked on, and what each awarded. Positioned by
+   the component against the viewport, so it never opens off-screen. */
+.evidence-tooltip {
+  position: fixed;
+  z-index: 50;
+  max-width: min(320px, calc(100vw - 16px));
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: white;
+  background: var(--ink);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  font-size: 0.78rem;
+  font-weight: 640;
+  line-height: 1.45;
+  white-space: pre-line;
+  pointer-events: none;
+}
+
+.evidence-hint {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+}
+
+.free-review .graded-criteria {
+  margin-top: 14px;
+  padding-left: 0;
+  list-style: none;
+}
+
+.graded-criteria > li {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  transition: border-color 120ms, background 120ms;
+}
+
+.graded-criteria > li.active {
+  border-color: var(--green);
+  background: #f7fbf9;
+}
+
+.criterion-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+}
+
+.criterion-badge {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  align-self: center;
+  border-radius: 6px;
+  color: var(--criterion);
+  background: var(--criterion-tint);
+  font-size: 0.75rem;
+  font-weight: 760;
+}
+
+.criterion-points {
+  margin-left: auto;
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 720;
+  white-space: nowrap;
+}
+
+.free-review .criterion-justification {
+  margin: 4px 0 0;
+  border-left: 3px solid var(--line);
+  padding-left: 10px;
+  color: var(--ink);
+  font-size: 0.92rem;
 }
 
 .review-label {

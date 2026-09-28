@@ -25,9 +25,11 @@ import {
   type AttemptOutline,
   type AttemptOutlineItem,
   type AttemptView,
+  type CriterionGrade,
   type FillReview,
   type QuestionReview,
   type QuestionTiming,
+  type Rubric,
   type StoredQuestion,
 } from "@/lib/quiz";
 
@@ -495,6 +497,40 @@ export async function getCurrentAnswer(attemptId: string, questionId: string) {
     .get();
 }
 
+/** A free response's stored grading: overall feedback, and marks per criterion when graded. */
+type StoredFreeResponseFeedback = {
+  feedback?: string;
+  criteria?: Array<{
+    criterionIndex: number;
+    awarded: number;
+    justification: string;
+    spans?: Array<{ start: number; end: number }>;
+  }>;
+};
+
+/**
+ * The stored per-criterion marks joined to the rubric they belong to. Undefined when the answer
+ * was never marked criterion by criterion (skipped, out of time, or graded before this existed),
+ * so the review falls back to the rubric and overall feedback alone.
+ */
+function criterionGradesFor(
+  rubric: Rubric,
+  stored: StoredFreeResponseFeedback["criteria"],
+): CriterionGrade[] | undefined {
+  if (!stored?.length) return undefined;
+  const byIndex = new Map(stored.map((entry) => [entry.criterionIndex, entry]));
+  return rubric.criteria.map((criterion, index) => {
+    const entry = byIndex.get(index);
+    return {
+      criterion: criterion.criterion,
+      points: criterion.points,
+      awarded: entry?.awarded ?? 0,
+      justification: entry?.justification ?? "",
+      spans: entry?.spans ?? [],
+    };
+  });
+}
+
 export function buildResult(input: {
   attemptId: string;
   questionSetId: string;
@@ -553,6 +589,7 @@ export function buildResult(input: {
         score: answer.score,
       };
     }
+    const stored = JSON.parse(answer.feedbackJson ?? "{}") as StoredFreeResponseFeedback;
     return {
       ...timing,
       type: "free_response",
@@ -561,8 +598,8 @@ export function buildResult(input: {
       response: (JSON.parse(answer.answerJson ?? "{}") as { response?: string }).response ?? "",
       rubric: question.rubric,
       score: answer.score,
-      feedback:
-        (JSON.parse(answer.feedbackJson ?? "{}") as { feedback?: string }).feedback ?? "",
+      feedback: stored.feedback ?? "",
+      criterionGrades: criterionGradesFor(question.rubric, stored.criteria),
     };
   });
 

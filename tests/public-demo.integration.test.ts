@@ -59,7 +59,7 @@ import { clearJobKeys, registerJobKey, requireJobKey } from "@/lib/openrouter-ke
 import { credentialStatus } from "@/lib/openrouter-credentials";
 import { OpenRouterError } from "@/lib/openrouter-errors";
 import { setOpenRouterTransportForTests, validateOpenRouterKey } from "@/lib/openrouter";
-import type { QuestionBlockConfig } from "@/lib/quiz";
+import type { AssessmentResult, QuestionBlockConfig } from "@/lib/quiz";
 import { POST as submitAnswer } from "@/app/api/attempts/[id]/answers/route";
 import { POST as navigateAttempt } from "@/app/api/attempts/[id]/navigate/route";
 import { POST as runEvaluation } from "@/app/api/attempts/[id]/outline/route";
@@ -154,12 +154,19 @@ setOpenRouterTransportForTests(async (input, init) => {
       const marker = "Questions, rubrics, and responses:\n";
       const items = JSON.parse(prompt.slice(prompt.indexOf(marker) + marker.length)) as Array<{
         questionId: string;
+        rubric: { criteria: Array<{ criterionIndex: number; points: number }> };
       }>;
       content = {
         grades: items.map((item) => ({
           questionId: item.questionId,
-          score: 100,
           feedback: "Correct.",
+          // Full marks on every criterion, each resting on a verbatim quote of the response.
+          criteria: item.rubric.criteria.map((criterion) => ({
+            criterionIndex: criterion.criterionIndex,
+            pointsAwarded: criterion.points,
+            justification: "Names the contribution.",
+            evidence: ["main contribution"],
+          })),
         })),
       };
     } else {
@@ -433,6 +440,21 @@ describe("public demo account-to-grade flow", () => {
     const grading = await getAttemptGradingJob(attemptId);
     expect(grading.status).toBe("completed");
     expect((grading.result as { overallScore: number }).overallScore).toBe(100);
+    // Free responses carry per-criterion marks and the located evidence behind them.
+    const freeReview = (grading.result as AssessmentResult).questions.find(
+      (review) => review.type === "free_response",
+    );
+    if (freeReview?.type !== "free_response") throw new Error("Expected a free-response review.");
+    expect(freeReview.criterionGrades).toEqual([
+      {
+        criterion: "Correct contribution",
+        points: 100,
+        awarded: 100,
+        justification: "Names the contribution.",
+        spans: [{ start: 4, end: 21 }],
+      },
+    ]);
+    expect(freeReview.response.slice(4, 21)).toBe("main contribution");
     const claimed = await db.select().from(attempts).where(eq(attempts.id, attemptId)).get();
     expect(claimed?.takerUserId).toBe(bob.id);
     expect(claimed?.takerUsername).toBe(bob.username);

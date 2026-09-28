@@ -299,10 +299,23 @@ const gradingJsonSchema = {
           additionalProperties: false,
           properties: {
             questionId: { type: "string" },
-            score: { type: "number", minimum: 0, maximum: 100 },
             feedback: { type: "string" },
+            criteria: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  criterionIndex: { type: "integer", minimum: 0 },
+                  pointsAwarded: { type: "number", minimum: 0 },
+                  justification: { type: "string" },
+                  evidence: { type: "array", items: { type: "string" } },
+                },
+                required: ["criterionIndex", "pointsAwarded", "justification", "evidence"],
+              },
+            },
           },
-          required: ["questionId", "score", "feedback"],
+          required: ["questionId", "feedback", "criteria"],
         },
       },
     },
@@ -567,27 +580,54 @@ export async function gradeFreeResponseBlock(input: {
   const gradingItems = input.questions.map((question) => ({
     questionId: question.id,
     prompt: question.prompt,
-    rubric: question.rubric,
+    rubric: {
+      summary: question.rubric.summary,
+      // Numbered so each verdict can name the criterion it belongs to.
+      criteria: question.rubric.criteria.map((criterion, criterionIndex) => ({
+        criterionIndex,
+        ...criterion,
+      })),
+    },
     response: input.answers[question.id] ?? "",
   }));
   const parsed = await callOpenRouter({
     apiKey: input.apiKey,
     modelId: input.modelId,
     responseSchema: gradingJsonSchema,
-    prompt: `Grade each submitted response against only its supplied rubric. Apply criteria consistently, allow substantively equivalent wording, and provide concise actionable feedback. Return one 0–100 score and feedback string for every question ID. Do not omit or add IDs.
+    prompt: `Grade each submitted response against only its supplied rubric. Apply criteria consistently and allow substantively equivalent wording.
+
+For every question, return one entry per rubric criterion, identified by its criterionIndex:
+- pointsAwarded: between 0 and that criterion's points.
+- justification: one or two sentences saying how the points were allocated. When awarding partial marks, state what earned the marks given and what was missing or wrong that cost the rest.
+- evidence: the exact passages of the response this decision rests on, each copied verbatim (same words, same order) as a short contiguous excerpt, usually a phrase or a sentence. Use an empty list when nothing in the response addresses the criterion.
+
+Also return feedback: a concise, actionable summary for the participant. Do not omit or add question IDs or criteria.
 
 Questions, rubrics, and responses:
 ${JSON.stringify(gradingItems)}`,
   });
   const validated = freeResponseGradesSchema.parse(parsed);
-  const expectedIds = new Set(input.questions.map((question) => question.id));
+  const questionsById = new Map(input.questions.map((question) => [question.id, question]));
   if (
-    validated.grades.length !== expectedIds.size ||
-    validated.grades.some((grade) => !expectedIds.has(grade.questionId))
+    validated.grades.length !== questionsById.size ||
+    validated.grades.some((grade) => !questionsById.has(grade.questionId))
   ) {
     throw new Error(
       "The grading model returned an incomplete or mismatched grade set.",
     );
+  }
+  for (const grade of validated.grades) {
+    const criteria = questionsById.get(grade.questionId)?.rubric.criteria ?? [];
+    const indices = grade.criteria.map((entry) => entry.criterionIndex).sort((x, y) => x - y);
+    // Every criterion marked exactly once, so the points add up to the rubric's total.
+    if (indices.length !== criteria.length || indices.some((value, index) => value !== index)) {
+      throw new Error("The grading model did not mark every rubric criterion exactly once.");
+    }
+    for (const entry of grade.criteria) {
+      // A criterion cannot award more than it is worth.
+      entry.pointsAwarded = Math.min(entry.pointsAwarded, criteria[entry.criterionIndex].points);
+    }
+    grade.criteria.sort((x, y) => x.criterionIndex - y.criterionIndex);
   }
   return validated;
 }

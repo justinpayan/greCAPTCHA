@@ -12,6 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 
+import { GradedFreeResponse } from "@/components/quiz/graded-response";
 import { MathText } from "@/components/quiz/math-text";
 import { OpenRouterKeyPanel } from "@/components/openrouter-key-panel";
 import { PdfAssessmentSplit } from "@/components/quiz/pdf-assessment-split";
@@ -314,7 +315,11 @@ function ResultSections({
       <section className="card result neutral-result">
         <p className="eyebrow">Assessment complete</p>
         <h1>Overall score</h1>
-        {result.takerUsername && <p className="hint">Completed by {result.takerUsername}</p>}
+        {result.takerUsername && (
+          <p className="completed-by">
+            Completed by user <strong>{result.takerUsername}</strong>
+          </p>
+        )}
         <div className="score-ring neutral-score">{result.overallScore}%</div>
         <p className="lede" style={{ marginInline: "auto", marginBottom: 0 }}>
           An equal-weight average across the {result.scoredQuestionCount} scored{" "}
@@ -470,47 +475,7 @@ function ResultSections({
                     </div>
                   </div>
                 ) : (
-                  <div className="free-review">
-                    <h3>
-                      <MathText text={review.prompt} />
-                    </h3>
-                    <div>
-                      <span className="review-label">Your response</span>
-                      <p>
-                        {review.skipped ? (
-                          "Skipped — no response was submitted."
-                        ) : review.timedOut ? (
-                          "Not answered — the overall time limit ran out."
-                        ) : (
-                          <MathText text={review.response} />
-                        )}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="review-label">Rubric</span>
-                      <p>
-                        <MathText text={review.rubric.summary} />
-                      </p>
-                      <ul>
-                        {review.rubric.criteria.map((criterion) => (
-                          <li key={criterion.criterion}>
-                            <strong>
-                              <MathText text={criterion.criterion} /> ({criterion.points} points)
-                            </strong>
-                            <span>
-                              <MathText text={criterion.guidance} />
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                    <div>
-                      <span className="review-label">Grading feedback</span>
-                      <p>
-                        <MathText text={review.feedback} />
-                      </p>
-                    </div>
-                  </div>
+                  <GradedFreeResponse review={review} />
                 )}
                 {examineeFeedback &&
                   (examineeFeedback.showEmpty ||
@@ -675,13 +640,6 @@ export function ResultView({
   return (
     <PdfAssessmentSplit attemptId={result.attemptId} pdfLabel={result.paperName}>
       <main className="app-shell">
-        {onBack && (
-          <div className="result-navigation">
-            <button className="secondary" type="button" onClick={onBack}>
-              Back to dashboard
-            </button>
-          </div>
-        )}
         {collectFeedback ? (
           <ExamineeFeedbackReview result={result} />
         ) : (
@@ -699,6 +657,13 @@ export function ResultView({
                 : undefined
             }
           />
+        )}
+        {onBack && (
+          <div className="result-navigation">
+            <button className="secondary" type="button" onClick={onBack}>
+              Back to dashboard
+            </button>
+          </div>
         )}
       </main>
     </PdfAssessmentSplit>

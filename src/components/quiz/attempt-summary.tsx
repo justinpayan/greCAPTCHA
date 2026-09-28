@@ -122,12 +122,11 @@ export function AttemptSummary({
   }
 
   return (
-    <main className="app-shell">
+    <main className="app-shell dashboard-shell">
       <Brand onHome={onBack} />
 
       <header className="quiz-header sequential-header">
         <div>
-          <p className="eyebrow">Assessment plan</p>
           <h1>{outline.setLabel}</h1>
           <div className="quiz-meta">
             {/* Only worth showing when the set was named, otherwise it repeats the title. */}
@@ -135,7 +134,9 @@ export function AttemptSummary({
             {outline.modelId}
           </div>
           {outline.takerUsername && (
-            <p className="hint">Completed by {outline.takerUsername}</p>
+            <p className="completed-by">
+              Completed by user <strong>{outline.takerUsername}</strong>
+            </p>
           )}
         </div>
         <div className="summary-header-side">

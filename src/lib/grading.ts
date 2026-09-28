@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { attemptAnswers, attempts } from "@/db/schema";
 import { buildResult, loadAttemptContext } from "@/lib/attempts";
 import { backupInBackground } from "@/lib/backup";
+import { locateEvidence } from "@/lib/evidence";
 import { gradeFreeResponseBlock } from "@/lib/openrouter";
 import type { AssessmentResult, StoredFreeResponseQuestion } from "@/lib/quiz";
 
@@ -59,11 +60,25 @@ export async function finalizeAttempt(
     const gradable = new Set(questions.map((question) => question.id));
     for (const grade of grades.grades) {
       if (!gradable.has(grade.questionId)) continue;
+      const response = responses[grade.questionId] ?? "";
+      // The score is the rubric's own arithmetic: points awarded across its criteria, which
+      // total 100, rather than a separate number the model might not reconcile with them.
+      const awarded = grade.criteria.reduce((sum, entry) => sum + entry.pointsAwarded, 0);
+      const score = Math.round(Math.min(Math.max(awarded, 0), 100) * 10) / 10;
       await db
         .update(attemptAnswers)
         .set({
-          score: grade.score,
-          feedbackJson: JSON.stringify({ feedback: grade.feedback }),
+          score,
+          feedbackJson: JSON.stringify({
+            feedback: grade.feedback,
+            criteria: grade.criteria.map((entry) => ({
+              criterionIndex: entry.criterionIndex,
+              awarded: entry.pointsAwarded,
+              justification: entry.justification,
+              // Located once, here, as ranges of the response the participant wrote.
+              spans: locateEvidence(response, entry.evidence),
+            })),
+          }),
         })
         .where(
           and(
