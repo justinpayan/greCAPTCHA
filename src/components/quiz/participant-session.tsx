@@ -150,8 +150,10 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
   }
 
   return (
-    <main className="app-shell">
-      <p className="lede">Loading the assessment…</p>
+    <main className="app-shell centered-shell" aria-busy="true">
+      <p className="lede" role="status">
+        Loading the assessment…
+      </p>
     </main>
   );
 }

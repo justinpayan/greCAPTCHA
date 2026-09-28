@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["better-sqlite3"],
+  // pdfjs-dist loads its worker from a file at runtime, which bundling would break.
+  serverExternalPackages: ["better-sqlite3", "pdfjs-dist"],
   async headers() {
     return [
       {

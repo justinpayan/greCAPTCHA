@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { Brand } from "@/components/brand";
 import type { AttemptIntro } from "@/lib/quiz";
 
 /**
@@ -36,8 +37,12 @@ export function AttemptIntroPage({
   }
 
   return (
-    <main className="app-shell">
-      <section className="card intro-card">
+    <main className="app-shell centered-shell">
+      <Brand />
+      <section className="card intro-card" aria-labelledby="intro-title">
+        <h1 className="intro-title" id="intro-title">
+          Instructions
+        </h1>
         <ul className="intro-facts">
           <li>
             {intro.totalQuestions} {intro.totalQuestions === 1 ? "question" : "questions"} in total.

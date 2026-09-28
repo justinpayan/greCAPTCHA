@@ -2,7 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { vi } from "vitest";
 
-const databasePath = path.resolve(process.cwd(), "data", "vitest.db");
+// A folder of its own, not `data/` itself: manuscripts and job uploads are stored beside the
+// database, and the cleanup below would otherwise delete the local app's files too.
+const databasePath = path.resolve(process.cwd(), "data", "vitest", "vitest.db");
+fs.mkdirSync(path.dirname(databasePath), { recursive: true });
 process.env.DATABASE_URL = databasePath;
 process.env.JOB_CONCURRENCY = "2";
 process.env.OPENROUTER_CREDENTIAL_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");

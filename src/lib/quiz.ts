@@ -326,6 +326,8 @@ export type AttemptView = {
   attemptId: string;
   questionSetId: string;
   paperName: string;
+  /** The PDF's own title from its metadata, or null when it declares none worth showing. */
+  paperTitle: string | null;
   // No model ID. The participant is not shown which model generated or grades their items, and
   // what is not displayed is not sent — `AttemptOutline` carries it for the researcher instead.
   currentIndex: number;

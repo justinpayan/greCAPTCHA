@@ -300,6 +300,7 @@ export async function getAttemptState(
       attemptId,
       questionSetId: set.id,
       paperName: set.paperName,
+      paperTitle: set.paperTitle ?? null,
       currentIndex: attempt.currentIndex,
       totalQuestions: order.length,
       question: toPublicQuestion(question),

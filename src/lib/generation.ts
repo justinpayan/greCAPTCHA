@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { attempts, conferenceSubmissions, questionSets } from "@/db/schema";
 import { createAttempt } from "@/lib/attempts";
 import { persistManuscript } from "@/lib/manuscripts";
+import { extractPdfTitle } from "@/lib/pdf-title";
 import {
   generateQuestionBlock,
   getOpenRouterModels,
@@ -119,6 +120,8 @@ export async function executeGeneration(
   // The job upload is temporary. Preserve the exact manuscript used for generation before the
   // question set becomes visible, so every attempt can display the same source document.
   persistManuscript(payload.filePath, payload.questionSetId);
+  // Read once here rather than on every attempt load; null when the PDF declares no usable title.
+  const paperTitle = await extractPdfTitle(bytes);
   await db.insert(questionSets).values({
     id: payload.questionSetId,
     ownerUserId,
@@ -127,6 +130,7 @@ export async function executeGeneration(
     schemaVersion: 1,
     name: payload.setName || null,
     paperName: payload.fileName,
+    paperTitle,
     contributions: payload.contributions,
     modelId: payload.modelId,
     pdfEngine: payload.pdfEngine,
