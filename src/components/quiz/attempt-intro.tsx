@@ -52,12 +52,16 @@ export function AttemptIntroPage({
             Your work saves automatically. You can skip a question and return to it before you
             submit the assessment.
           </li>
-          {intro.overallTimeLimitSeconds !== null && (
-            <li>
-              You have {Math.round(intro.overallTimeLimitSeconds / 60)} minutes for the whole set.
-              When time runs out, all saved work is submitted automatically as-is.
-            </li>
-          )}
+          <li>
+            {intro.overallTimeLimitSeconds === null ? (
+              <>There is no time limit for this assessment; you will have unlimited time.</>
+            ) : (
+              <>
+                You have {Math.round(intro.overallTimeLimitSeconds / 60)} minutes for the whole
+                set. When time runs out, all saved work is submitted automatically as-is.
+              </>
+            )}
+          </li>
           <li>
             Submit the assessment when you are finished. Nothing begins until you press Start, so
             take as long as you need on this page.

@@ -98,7 +98,7 @@ export function createDefaultStudyTemplate(modelId: string): StudyTemplateConfig
     pdfEngine: "native",
     blocks: createDefaultStudyBlocks(),
     randomize: false,
-    overallTimeLimitSeconds: null,
+    overallTimeLimitSeconds: 30 * 60,
   };
 }
 

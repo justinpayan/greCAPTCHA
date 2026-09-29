@@ -364,6 +364,12 @@ describe("public demo account-to-grade flow", () => {
       ),
     ).toEqual([3, 7]);
     const shared = await createQuestionSetShareLink(generatedSetId, alice.id);
+    expect(
+      (await listCreatedTests(alice.id)).find((test) => test.id === generatedSetId),
+    ).toMatchObject({
+      invitationEnabled: true,
+      invitationPath: shared.participantPath,
+    });
     const bob = await db
       .select()
       .from(users)
@@ -640,6 +646,12 @@ describe("public demo account-to-grade flow", () => {
     ).resolves.toMatchObject({ id: template.id });
     const sharing = await setTemplateSharing(template.id, alice.id, true);
     if (!sharing.invitationShareToken) throw new Error("Invitation token missing.");
+    expect(
+      (await listCreatedTests(alice.id)).find((test) => test.id === template.id),
+    ).toMatchObject({
+      invitationEnabled: true,
+      invitationPath: `/invite/${sharing.invitationShareToken}`,
+    });
 
     sessionState.token = await createAccountSession(bob.id);
     const form = new FormData();
@@ -922,6 +934,12 @@ describe("public demo account-to-grade flow", () => {
       }
       const sharing = await setTemplateSharing(template.id, alice.id, true);
       if (!sharing.invitationShareToken) throw new Error("Invitation token missing.");
+      expect(
+        (await listCreatedTests(alice.id)).find((test) => test.id === template.id),
+      ).toMatchObject({
+        invitationEnabled: true,
+        invitationPath: `/invite/${sharing.invitationShareToken}`,
+      });
 
       sessionState.token = await createAccountSession(bob.id);
       const form = new FormData();
