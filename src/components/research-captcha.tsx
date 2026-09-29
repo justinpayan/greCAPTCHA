@@ -56,15 +56,17 @@ type CatalogModel = {
 };
 
 const DEFAULT_MODEL_ID = "openai/gpt-6-sol";
+const ASSESSMENT_CREATED_NOTICE =
+  "Assessment created. A reusable assessment link has been copied to your clipboard.";
 const FEATURED_MODEL_IDS = [
-  "openai/gpt-6-astra",
+  "anthropic/claude-opus-5.5",
   DEFAULT_MODEL_ID,
   "openai/gpt-6-luna",
 ] as const;
 const FEATURED_MODELS: CatalogModel[] = [
   {
-    id: "openai/gpt-6-astra",
-    name: "GPT-6 Astra",
+    id: "anthropic/claude-opus-5.5",
+    name: "Claude Opus 5.5",
     inputModalities: ["text", "file"],
     recommended: true,
   },
@@ -94,6 +96,118 @@ function preferredModel(catalog: CatalogModel[]) {
     catalog.find((model) => model.recommended) ??
     catalog[0] ??
     null
+  );
+}
+
+function ModelPicker({
+  models,
+  selected,
+  search,
+  open,
+  loading,
+  onSearchChange,
+  onOpenChange,
+  onSelect,
+}: {
+  models: CatalogModel[];
+  selected: CatalogModel | null;
+  search: string;
+  open: boolean;
+  loading: boolean;
+  onSearchChange: (value: string) => void;
+  onOpenChange: (open: boolean) => void;
+  onSelect: (model: CatalogModel) => void;
+}) {
+  const [showAll, setShowAll] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const query = search === selected?.name ? "" : search.trim().toLowerCase();
+  const visibleModels = query
+    ? models.filter(
+        (model) =>
+          model.name.toLowerCase().includes(query) ||
+          model.id.toLowerCase().includes(query),
+      )
+    : showAll
+      ? models
+      : FEATURED_MODEL_IDS.flatMap((id) => {
+          const model = models.find((candidate) => candidate.id === id);
+          return model ? [model] : [];
+        });
+
+  return (
+    <div className="model-picker">
+      <input
+        ref={inputRef}
+        className="search-control model-search-control"
+        aria-label="Search OpenRouter models"
+        value={search}
+        onChange={(event) => {
+          onSearchChange(event.target.value);
+          onOpenChange(true);
+        }}
+        onFocus={() => onOpenChange(true)}
+        onBlur={() => window.setTimeout(() => onOpenChange(false), 150)}
+        placeholder={loading ? "Loading models..." : "Search or choose a model"}
+        disabled={loading}
+      />
+      <button
+        className="model-search-button"
+        type="button"
+        aria-label="Clear selection and search all OpenRouter models"
+        title="Search all models"
+        disabled={loading}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => {
+          onSearchChange("");
+          setShowAll(true);
+          onOpenChange(true);
+          inputRef.current?.focus();
+        }}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="6.5" />
+          <path d="m16 16 4 4" />
+        </svg>
+      </button>
+      {open && !loading && (
+        <ul className="model-results">
+          {visibleModels.map((model) => (
+            <li key={model.id}>
+              <button
+                className="model-option"
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  onSelect(model);
+                  onOpenChange(false);
+                }}
+              >
+                <strong>
+                  {model.name}{" "}
+                  {model.recommended && <span className="pill">Recommended</span>}
+                </strong>
+                <span>{model.id}</span>
+              </button>
+            </li>
+          ))}
+          {visibleModels.length === 0 && (
+            <li className="model-results-empty">No models match that search.</li>
+          )}
+          {!query && !showAll && models.length > visibleModels.length && (
+            <li className="model-results-more">
+              <button
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => setShowAll(true)}
+              >
+                See more
+                <span>Browse the entire OpenRouter catalog</span>
+              </button>
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -182,9 +296,6 @@ export function ResearchCaptcha({
     "default",
   );
   const [models, setModels] = useState<CatalogModel[]>(FEATURED_MODELS);
-  const [defaultModel, setDefaultModel] = useState<CatalogModel | null>(FEATURED_MODELS[0]);
-  const [defaultModelSearch, setDefaultModelSearch] = useState("");
-  const [defaultModelPickerOpen, setDefaultModelPickerOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<CatalogModel | null>(null);
   const [modelSearch, setModelSearch] = useState("");
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -192,7 +303,7 @@ export function ResearchCaptcha({
   const [blocks, setBlocks] = useState<QuestionBlockConfig[]>(createDefaultStudyBlocks);
   const [randomize, setRandomize] = useState(false);
   /** Whole minutes in the form, seconds in the data. Empty means no overall limit. */
-  const [overallLimitMinutes, setOverallLimitMinutes] = useState("");
+  const [overallLimitMinutes, setOverallLimitMinutes] = useState("30");
   const [loadingModels, setLoadingModels] = useState(false);
   const [working, setWorking] = useState(false);
   const [generationStatus, setGenerationStatus] = useState("");
@@ -267,17 +378,6 @@ export function ResearchCaptcha({
     }),
     [selectedModel, pdfEngine, blocks, randomize, overallLimitMinutes],
   );
-  const defaultConfig = useMemo(
-    () => ({
-      ...createDefaultStudyTemplate(defaultModel?.id ?? ""),
-      pdfEngine:
-        defaultModel && !defaultModel.inputModalities.includes("file")
-          ? ("cloudflare-ai" as const)
-          : ("native" as const),
-    }),
-    [defaultModel],
-  );
-
   function applyConfig(config: StudyTemplateConfig, catalog: CatalogModel[]) {
     setPdfEngine(config.pdfEngine);
     setBlocks(config.blocks);
@@ -330,9 +430,6 @@ export function ResearchCaptcha({
             void loadModelCatalog(browserKey.key, "oauth");
           }
         }
-        const defaultPreferred = preferredModel(catalog);
-        setDefaultModel(defaultPreferred);
-        setDefaultModelSearch(defaultPreferred?.name ?? "");
         setTemplates(stored.templates ?? []);
 
         // Preserve real edits, but replace the untouched starter used before the public
@@ -395,44 +492,6 @@ export function ResearchCaptcha({
     }
   }, [pdfEngine, selectedModel]);
 
-  const filteredModels = useMemo(() => {
-    const query =
-      modelSearch === selectedModel?.name ? "" : modelSearch.trim().toLowerCase();
-    if (!query) {
-      return FEATURED_MODEL_IDS.flatMap((id) => {
-        const model = models.find((candidate) => candidate.id === id);
-        return model ? [model] : [];
-      });
-    }
-    return models
-      .filter(
-        (model) =>
-          model.name.toLowerCase().includes(query) ||
-          model.id.toLowerCase().includes(query),
-      )
-      .slice(0, 60);
-  }, [modelSearch, models, selectedModel]);
-
-  const filteredDefaultModels = useMemo(() => {
-    const query =
-      defaultModelSearch === defaultModel?.name
-        ? ""
-        : defaultModelSearch.trim().toLowerCase();
-    if (!query) {
-      return FEATURED_MODEL_IDS.flatMap((id) => {
-        const model = models.find((candidate) => candidate.id === id);
-        return model ? [model] : [];
-      });
-    }
-    return models
-      .filter(
-        (model) =>
-          model.name.toLowerCase().includes(query) ||
-          model.id.toLowerCase().includes(query),
-      )
-      .slice(0, 60);
-  }, [defaultModel, defaultModelSearch, models]);
-
   async function loadModelCatalog(
     requestedKey: string,
     requestedSource: KeySource,
@@ -457,11 +516,11 @@ export function ResearchCaptcha({
       if (!response.ok) throw new Error(payload.error ?? "Unable to load models.");
       const catalog = withFeaturedModels(payload.models as CatalogModel[]);
       setModels(catalog);
-      if (!defaultModel) {
-        const preferred = preferredModel(catalog);
-        setDefaultModel(preferred);
-        setDefaultModelSearch(preferred?.name ?? "");
-      }
+      const refreshedSelection = selectedModel
+        ? catalog.find((model) => model.id === selectedModel.id) ?? selectedModel
+        : preferredModel(catalog);
+      setSelectedModel(refreshedSelection);
+      setModelSearch(refreshedSelection?.name ?? "");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load models.");
     } finally {
@@ -598,6 +657,26 @@ export function ResearchCaptcha({
     } finally {
       setSharingSetId("");
     }
+  }
+
+  async function activateAndCopyQuestionSetLink(questionSetId: string) {
+    const response = await fetch(
+      `/api/question-sets/${encodeURIComponent(questionSetId)}/share`,
+      { method: "POST" },
+    );
+    const payload = (await response.json()) as {
+      error?: string;
+      participantPath?: string;
+    };
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Unable to activate the assessment link.");
+    }
+    if (!payload.participantPath) {
+      throw new Error("The assessment link was not returned.");
+    }
+    await navigator.clipboard.writeText(
+      new URL(payload.participantPath, window.location.origin).toString(),
+    );
   }
 
   async function deleteCreatedTest(test: CreatedTestEntry) {
@@ -998,6 +1077,7 @@ export function ResearchCaptcha({
     setWorking(true);
     setError("");
     setTemplateStatus("");
+    setGenerationNotice("");
     const form = new FormData(event.currentTarget);
     const paper = form.get("paper");
     if (
@@ -1017,7 +1097,7 @@ export function ResearchCaptcha({
           config,
           apiKeyPayer,
           materialUploader,
-          templateId: mode === "custom" ? templateId || undefined : undefined,
+          templateId: templateId || undefined,
         }),
       });
       const payload = (await response.json()) as {
@@ -1042,6 +1122,7 @@ export function ResearchCaptcha({
         }
       }
       await updateInvitationSharing(saved.id, true);
+      setGenerationNotice(ASSESSMENT_CREATED_NOTICE);
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "Unable to publish the invitation.",
@@ -1185,7 +1266,7 @@ export function ResearchCaptcha({
     form.set("name", setName);
     form.set("apiKeyPayer", apiKeyPayer);
     form.set("materialUploader", materialUploader);
-    if (mode === "custom" && templateId) form.set("sourceTemplateId", templateId);
+    if (templateId) form.set("sourceTemplateId", templateId);
     let jobId = "";
     try {
       const response = await fetch("/api/question-sets", { method: "POST", body: form });
@@ -1193,8 +1274,8 @@ export function ResearchCaptcha({
       if (!response.ok) throw errorFromPayload(payload, "Unable to generate questions.");
       jobId = String(payload.jobId ?? "");
       if (!jobId) throw new Error("The generation job was not created.");
-      let generationCompleted = false;
-      while (!generationCompleted) {
+      let generatedQuestionSetId = "";
+      while (!generatedQuestionSetId) {
         await new Promise((resolve) => window.setTimeout(resolve, 1_000));
         const jobResponse = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);
         const jobPayload = await jobResponse.json();
@@ -1214,17 +1295,16 @@ export function ResearchCaptcha({
         );
         if (job.status === "failed") throw errorFromPayload(job, "Question generation failed.");
         if (job.status === "completed") {
-          if (!job.result?.questionSetId) {
+          generatedQuestionSetId = String(job.result?.questionSetId ?? "");
+          if (!generatedQuestionSetId) {
             throw new Error("Generation completed without a question set.");
           }
-          generationCompleted = true;
         }
       }
+      await activateAndCopyQuestionSetLink(generatedQuestionSetId);
       await refreshCatalog();
       setFailedGenerationJobId("");
-      setGenerationNotice(
-        "Question set generated. Create and copy its reusable assessment link from Recent question sets.",
-      );
+      setGenerationNotice(ASSESSMENT_CREATED_NOTICE);
     } catch (caught) {
       if (jobId) setFailedGenerationJobId(jobId);
       reportError(caught, "Question generation failed.");
@@ -1239,6 +1319,7 @@ export function ResearchCaptcha({
     setWorking(true);
     setError("");
     setKeyError("");
+    setGenerationNotice("");
     try {
       const response = await fetch(
         `/api/jobs/${encodeURIComponent(failedGenerationJobId)}/retry`,
@@ -1250,8 +1331,8 @@ export function ResearchCaptcha({
       );
       const payload = await response.json();
       if (!response.ok) throw errorFromPayload(payload, "Unable to retry generation.");
-      let generationCompleted = false;
-      while (!generationCompleted) {
+      let generatedQuestionSetId = "";
+      while (!generatedQuestionSetId) {
         await new Promise((resolve) => window.setTimeout(resolve, 1_000));
         const jobResponse = await fetch(
           `/api/jobs/${encodeURIComponent(failedGenerationJobId)}`,
@@ -1266,14 +1347,15 @@ export function ResearchCaptcha({
         };
         if (job.status === "failed") throw errorFromPayload(job, "Question generation failed.");
         if (job.status === "completed") {
-          if (!job.result?.questionSetId) {
+          generatedQuestionSetId = String(job.result?.questionSetId ?? "");
+          if (!generatedQuestionSetId) {
             throw new Error("Generation completed without a question set.");
           }
-          generationCompleted = true;
         }
       }
+      await activateAndCopyQuestionSetLink(generatedQuestionSetId);
       await refreshCatalog();
-      setGenerationNotice("Question set generated. Its sharing link is available on the right.");
+      setGenerationNotice(ASSESSMENT_CREATED_NOTICE);
       setFailedGenerationJobId("");
     } catch (caught) {
       reportError(caught, "Unable to retry generation.");
@@ -1416,15 +1498,16 @@ export function ResearchCaptcha({
                 <em>New question set</em> tab.
               </li>
               <li>
-                <strong>Share.</strong> Copy the link on the right to share the exam with someone.
+                <strong>Share.</strong> Open <em>Tests You&apos;ve Created</em> to copy a link for
+                test takers.
               </li>
               <li>
-                <strong>Review.</strong> Open <em>Tests I&apos;ve Created</em> to see attempts
+                <strong>Review.</strong> Open <em>Tests You&apos;ve Created</em> to see attempts
                 completed on your exams.
               </li>
             </ol>
             <p className="get-started-taken">
-              <strong>Taking an exam?</strong> The <em>Tests I&apos;ve Taken</em> tab shows assessments
+              <strong>Taking an exam?</strong> The <em>Tests You&apos;ve Taken</em> tab shows assessments
               you have taken. Return there to continue an assessment, check whether it has been graded,
               or review your grades and feedback once they are available.
             </p>
@@ -1433,7 +1516,6 @@ export function ResearchCaptcha({
         </>
       )}
 
-      <div className="dashboard-layout">
       <div className="dashboard-main">
       <div className="dashboard-navigation">
         <div className="mode-tabs" role="tablist" aria-label="Dashboard section">
@@ -1449,14 +1531,14 @@ export function ResearchCaptcha({
             className={mode === "resume" ? "active" : ""}
             onClick={() => setMode("resume")}
           >
-            Tests I&apos;ve Created
+            Tests You&apos;ve Created
           </button>
           <button
             type="button"
             className={mode === "mine" ? "active" : ""}
             onClick={() => setMode("mine")}
           >
-            Tests I&apos;ve Taken
+            Tests You&apos;ve Taken
           </button>
         </div>
       </div>
@@ -1515,7 +1597,7 @@ export function ResearchCaptcha({
         <div className="sub-tabs" role="tablist" aria-label="New question set">
           {(
             [
-              ["default", "Default"],
+              ["default", "Basic"],
               ["custom", "Advanced"],
             ] as const
           ).map(([view, label]) => (
@@ -1642,7 +1724,7 @@ export function ResearchCaptcha({
         <section className="card form-card">
           <div className="field">
             <label htmlFor="catalogSearch">
-              {mode === "mine" ? "Search tests I’ve taken" : "Search tests I’ve created"}
+              {mode === "mine" ? "Search tests you’ve taken" : "Search tests you’ve created"}
             </label>
             <input
               className="control"
@@ -1911,7 +1993,7 @@ export function ResearchCaptcha({
         <form
           className="card form-card"
           onSubmit={(event) => {
-            const config = mode === "default" ? defaultConfig : currentConfig;
+            const config = currentConfig;
             return apiKeyPayer === "creator" && materialUploader === "creator"
               ? generateSet(event, config)
               : createInvitationTemplate(event, config);
@@ -1969,6 +2051,26 @@ export function ResearchCaptcha({
                   </div>
                 </>
               )}
+              {mode === "default" && (
+                <div className="field basic-time-limit">
+                  <label htmlFor="basicOverallLimit">
+                    Overall time limit
+                    <span className="label-note">minutes</span>
+                    <FieldHint text="Once the budget is spent no further question is served and the attempt is graded. Counts the time questions were actually open, so pausing a session costs nothing. Leave blank for no limit." />
+                  </label>
+                  <input
+                    className="control"
+                    id="basicOverallLimit"
+                    type="number"
+                    min={1}
+                    max={360}
+                    step={1}
+                    value={overallLimitMinutes}
+                    placeholder="No limit"
+                    onChange={(event) => setOverallLimitMinutes(event.target.value)}
+                  />
+                </div>
+              )}
             </div>
           </div>
 
@@ -1986,51 +2088,27 @@ export function ResearchCaptcha({
             <div className="field full">
               <span className="field-label field-label-row">
                 Generator and Evaluator model
-                <FieldHint text="This model generates the questions and grades free-response answers. Click for featured choices or type to search every model available through OpenRouter." />
+                <FieldHint text="This model generates questions and grades free-response answers. Choose a featured model, select See more, or click the magnifying glass to clear the field and search the full catalog." />
               </span>
-              <div className="model-picker">
-                <input
-                  className="search-control"
-                  value={modelSearch}
-                  onChange={(event) => {
-                    setModelSearch(event.target.value);
-                    setModelPickerOpen(true);
-                    if (event.target.value !== selectedModel?.name) setSelectedModel(null);
-                  }}
-                  onFocus={() => setModelPickerOpen(true)}
-                  onBlur={() => window.setTimeout(() => setModelPickerOpen(false), 150)}
-                  placeholder={
-                    loadingModels ? "Loading models..." : "Click or type to search all models"
-                  }
-                  disabled={loadingModels}
-                />
-                {modelPickerOpen && !loadingModels && (
-                  <ul className="model-results">
-                    {filteredModels.map((model) => (
-                      <li key={model.id}>
-                        <button
-                          className="model-option"
-                          type="button"
-                          onMouseDown={(event) => event.preventDefault()}
-                          onClick={() => {
-                            setSelectedModel(model);
-                            setModelSearch(model.name);
-                            setModelPickerOpen(false);
-                          }}
-                        >
-                          <strong>
-                            {model.name}{" "}
-                            {model.recommended && <span className="pill">Recommended</span>}
-                          </strong>
-                          <span>{model.id}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+              <ModelPicker
+                models={models}
+                selected={selectedModel}
+                search={modelSearch}
+                open={modelPickerOpen}
+                loading={loadingModels}
+                onSearchChange={(value) => {
+                  setModelSearch(value);
+                  if (value !== selectedModel?.name) setSelectedModel(null);
+                }}
+                onOpenChange={setModelPickerOpen}
+                onSelect={(model) => {
+                  setSelectedModel(model);
+                  setModelSearch(model.name);
+                }}
+              />
               <small>
-                Click to choose a featured model, or type to search the full OpenRouter catalog.
+                Featured models are shown first. Click the magnifying glass to clear the field,
+                open the full catalog, and then type to filter it.
               </small>
             </div>
 
@@ -2291,54 +2369,27 @@ export function ResearchCaptcha({
               <div className="field">
                 <span className="field-label field-label-row">
                   Generator and Evaluator model
-                  <FieldHint text="This model generates the questions and grades free-response answers. Click for featured choices or type to search every model available through OpenRouter." />
+                  <FieldHint text="This model generates questions and grades free-response answers. Choose a featured model, select See more, or click the magnifying glass to clear the field and search the full catalog." />
                 </span>
-                <div className="model-picker">
-                  <input
-                    className="search-control"
-                    value={defaultModelSearch}
-                    onChange={(event) => {
-                      setDefaultModelSearch(event.target.value);
-                      setDefaultModelPickerOpen(true);
-                      if (event.target.value !== defaultModel?.name) setDefaultModel(null);
-                    }}
-                    onFocus={() => setDefaultModelPickerOpen(true)}
-                    onBlur={() =>
-                      window.setTimeout(() => setDefaultModelPickerOpen(false), 150)
-                    }
-                    placeholder={
-                      loadingModels ? "Loading models..." : "Click or type to search all models"
-                    }
-                    disabled={loadingModels}
-                  />
-                  {defaultModelPickerOpen && !loadingModels && (
-                    <ul className="model-results">
-                      {filteredDefaultModels.map((model) => (
-                        <li key={model.id}>
-                          <button
-                            className="model-option"
-                            type="button"
-                            onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => {
-                              setDefaultModel(model);
-                              setDefaultModelSearch(model.name);
-                              setDefaultModelPickerOpen(false);
-                            }}
-                          >
-                            <strong>
-                              {model.name}{" "}
-                              {model.recommended && <span className="pill">Recommended</span>}
-                            </strong>
-                            <span>{model.id}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+                <ModelPicker
+                  models={models}
+                  selected={selectedModel}
+                  search={modelSearch}
+                  open={modelPickerOpen}
+                  loading={loadingModels}
+                  onSearchChange={(value) => {
+                    setModelSearch(value);
+                    if (value !== selectedModel?.name) setSelectedModel(null);
+                  }}
+                  onOpenChange={setModelPickerOpen}
+                  onSelect={(model) => {
+                    setSelectedModel(model);
+                    setModelSearch(model.name);
+                  }}
+                />
                   <small>
-                    Click to choose a featured model, or type to search the full OpenRouter
-                    catalog.
+                    Featured models are shown first. Click the magnifying glass to clear the field,
+                    open the full catalog, and then type to filter it.
                   </small>
               </div>
             </div>
@@ -2363,9 +2414,8 @@ export function ResearchCaptcha({
               type="submit"
               disabled={
                 working ||
-                (mode === "default"
-                  ? !defaultModel
-                  : !selectedModel || blocks.length === 0) ||
+                !selectedModel ||
+                blocks.length === 0 ||
                 ((apiKeyPayer === "taker" || materialUploader === "taker") &&
                   !setName.trim())
               }
@@ -2387,50 +2437,6 @@ export function ResearchCaptcha({
           )}
         </form>
       )}
-      </div>
-      <aside className="card recent-sets">
-        <div className="recent-sets-heading">
-          <div>
-            <p className="eyebrow">Quick access</p>
-            <h2>Recent question sets</h2>
-          </div>
-          <span className="pill">{Math.min(createdTests.length, 5)} of 5</span>
-        </div>
-        {createdTests.length === 0 ? (
-          <p className="hint">Recently created tests appear here.</p>
-        ) : (
-          <div className="recent-set-list">
-            {createdTests.slice(0, 5).map((test) => (
-              <article className="recent-set" key={test.id}>
-                <strong title={test.name}>{test.name}</strong>
-                <span>
-                  {test.questionCount} {test.questionCount === 1 ? "question" : "questions"} ·{" "}
-                  {new Date(test.createdAt).toLocaleDateString()}
-                </span>
-                <button
-                  className="secondary"
-                  type="button"
-                  disabled={sharingSetId === test.id}
-                  onClick={() => void manageCreatedTestInvitation(test)}
-                >
-                  {sharingSetId === test.id
-                    ? "Creating link…"
-                    : copiedSetId === test.id
-                      ? "Link copied"
-                      : test.invitationEnabled
-                        ? "Copy reusable link"
-                        : "Create and copy reusable link"}
-                </button>
-              </article>
-            ))}
-          </div>
-        )}
-        {shareError && (
-          <p className="error recent-share-error" role="alert">
-            {shareError}
-          </p>
-        )}
-      </aside>
       </div>
     </main>
   );

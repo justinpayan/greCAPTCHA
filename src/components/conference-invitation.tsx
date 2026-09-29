@@ -151,29 +151,28 @@ export function AssessmentInvitation({
           <div>
             <span className="eyebrow">Assessment invitation</span>
             <h1>{template.name}</h1>
-            <p className="hint">
-              {template.materialUploader === "taker"
-                ? "Provide the source material for your assessment."
-                : `This assessment uses source material supplied by the test creator${
-                    template.materialFileName ? ` (${template.materialFileName})` : ""
-                  }.`}{" "}
-              {template.apiKeyPayer === "taker"
-                ? "Your OpenRouter key pays for generation and grading and is not saved."
-                : "The test creator pays for generation and grading."}
-            </p>
           </div>
         </div>
         {template.apiKeyPayer === "taker" && (
-          <OpenRouterKeyPanel
-            apiKey={apiKey}
-            source={keySource}
-            error={keyError}
-            onChange={(key, source) => {
-              setApiKey(key);
-              setKeySource(source);
-              setKeyError("");
-            }}
-          />
+          <>
+            <OpenRouterKeyPanel
+              apiKey={apiKey}
+              source={keySource}
+              error={keyError}
+              onChange={(key, source) => {
+                setApiKey(key);
+                setKeySource(source);
+                setKeyError("");
+              }}
+            />
+            {keySource === "paste" && (
+              <p className="pasted-key-grading-warning">
+                <strong>Important:</strong> A pasted key is used only to generate this assessment
+                and is not stored. When you finish, you will need to paste an OpenRouter API key
+                again to grade the assessment.
+              </p>
+            )}
+          </>
         )}
         {template.materialUploader === "taker" && (
           <div className="form-grid">

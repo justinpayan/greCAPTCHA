@@ -51,7 +51,7 @@ public demo.
 1. Create an account at `/signup` with a username and password, or return
    through `/login`.
 2. Independently choose **who pays OpenRouter costs** and **who uploads source
-   material**. Both controls apply to the Default and Advanced creation forms.
+   material**. Both controls apply to the Basic and Advanced creation forms.
 3. If the test creator pays, connect or paste an app-specific OpenRouter key.
    It is encrypted on the server and used for generation and automatic grading.
    If the test taker pays, their key is used transiently and is never stored.
@@ -88,13 +88,15 @@ review and export.
 
 ## Assessment behavior
 
-- A landing page appears before each question set. Timing starts only when the
-  participant presses **Start**.
+- A landing page appears before each question set. It always states the overall
+  time limit, or that time is unlimited. Timing starts only when the participant
+  presses **Start**.
 - The taking screen has no per-question countdowns or soft limits. Question-open
   durations and first-interaction timings are still recorded for analysis.
-- The optional overall set timer is enforced
-  server-side; when it expires, all autosaved drafts are submitted as-is and
-  genuinely unanswered questions are marked timed out.
+- New templates default to a 30-minute overall timer, which can be changed or
+  cleared for unlimited time. The timer is enforced server-side; when it expires,
+  all autosaved drafts are submitted as-is and genuinely unanswered questions
+  are marked timed out.
 - **Previous**, **Next**, and the numbered overview can open any question.
   **Submit assessment** finalizes all drafts, with a warning if any questions
   remain unanswered.

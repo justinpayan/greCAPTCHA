@@ -144,6 +144,7 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
               submissions can no longer reliably credit expertise based solely on authors&apos; names
               on submitted work.
             </p>
+            
             <p>
               Generative AI has legitimate uses in research, including language assistance,
               accessibility, and exploring the literature. But responsibility for a paper&apos;s claims
@@ -151,11 +152,23 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
               submissions, sanctions for policy violations, and detectors of machine-generated text, do
               not directly establish whether authors understand and can evaluate their contributions.
             </p>
+
+            <p>
+              As a proof of concept, greCAPTCHA co-author Nihar B. Shah, in his capacity as an Editor-in-Chief of the Transactions 
+              on Machine Learning Research (TMLR), interviewed the authors of 10 papers submitted to TMLR and which were slated for desk rejection.
+              He reported the results in a{" "}
+              <a
+                className="landing-inline-link"
+                href="https://medium.com/@TmlrOrg/asking-authors-about-their-own-papers-3d2e04e5dee0"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                post on Medium
+              </a>.
+              Only 1 of the 10 papers' authors was able to answer substantial questions about their own paper! 
+              greCAPTCHA aims to scale these interviews, allowing anyone to reliably assess authors' understanding of their own work.
+            </p>
           </div>
-          <blockquote className="landing-quote">
-            How can institutions assess whether the people submitting a manuscript understand their
-            contributions well enough to evaluate and take responsibility for them?
-          </blockquote>
         </section>
 
         <section className="landing-section">

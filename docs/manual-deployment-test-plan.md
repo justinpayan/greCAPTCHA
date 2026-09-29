@@ -46,7 +46,7 @@ Remove the live-test variables afterward. Before deploying:
 
 ## Workflow matrix
 
-Run all four combinations from both the Default and Advanced creation tabs:
+Run all four combinations from both the Basic and Advanced creation tabs:
 
 1. **Creator pays / creator uploads:** creator credential and material controls are shown. A
    reusable `/take/...` set is generated immediately.
@@ -59,6 +59,11 @@ Run all four combinations from both the Default and Advanced creation tabs:
 
 For every combination, verify the selected model and name persist, each taker receives a distinct
 attempt where invitations are used, and **Tests I've Created** shows payer/uploader badges.
+
+To verify the tabs share one active template, load a saved template in **Advanced**, change its
+model or question configuration, switch to **Basic**, and create the test there. Confirm the
+generated test or invitation uses the loaded template and the edited configuration. Switch back
+to **Advanced** and confirm the same edits are still present.
 
 ## Track A: creator pays / creator uploads
 
@@ -116,9 +121,9 @@ attempt where invitations are used, and **Tests I've Created** shows payer/uploa
 ### Reusable invitation and taker-funded generation
 
 1. As the test creator, select **Test taker** for both controls and
-   confirm both the Default and Advanced creation pages omit the manuscript upload,
+   confirm both the Basic and Advanced creation pages omit the manuscript upload,
    contribution statement, and OpenRouter key/PKCE controls.
-2. On the default page, enter a test-set name, choose the required model, and select **Create
+2. On the Basic page, enter a test-set name, choose the required model, and select **Create
    and copy invitation**. Confirm the template is saved and the copied URL begins
    `/invite/`.
 3. Repeat from Advanced with a custom question configuration. Load the saved template and
@@ -219,6 +224,10 @@ Test each case with a single Railway instance:
    incompatible saved template selected and confirm the template selection clears; load a saved
    template and confirm both global controls change to its choices. Confirm the dashboard labels
    owner-side results as **Tests I've Created** and taker-side results as **Tests I've Taken**.
+   Confirm a new configuration shows a 30-minute overall limit in both **Basic** and
+   **Advanced**, and changing or clearing it in either tab immediately updates the other. Before
+   starting an attempt, confirm the instructions state the configured limit. Repeat with the
+   limit cleared and confirm the instructions explicitly say that time is unlimited.
    Confirm neither creation form nor the participant/review screens show per-question countdown
    or soft-limit controls. With an overall limit configured, confirm only the overall countdown
    appears and expires as expected; without one, confirm no countdown appears. In both cases,
