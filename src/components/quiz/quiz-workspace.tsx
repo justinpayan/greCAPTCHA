@@ -781,10 +781,6 @@ export function PendingEvaluationView({
         <h1>{credentialRequired ? "Submit your key to grade the assessment." : status}</h1>
         {credentialRequired && (
           <>
-            <p className="lede">
-              As with generation, your key is used for this grading job and is not saved by
-              greCAPTCHA.
-            </p>
             <OpenRouterKeyPanel
               apiKey={apiKey}
               source={keySource}

@@ -40,7 +40,6 @@ import {
   type ApiKeyPayer,
   type CreatedTestEntry,
   type MaterialUploader,
-  type QuestionSetListEntry,
   type QuestionSetOverview,
   type PdfEngine,
   type QuestionBlockConfig,
@@ -207,16 +206,12 @@ export function ResearchCaptcha({
   const [sharingSetId, setSharingSetId] = useState("");
   const [copiedSetId, setCopiedSetId] = useState("");
   const [shareError, setShareError] = useState("");
-  const [shareLinks, setShareLinks] = useState<
-    Record<string, { url: string }>
-  >({});
   const [attempt, setAttempt] = useState<AttemptView | null>(null);
   /** Landing page for a question set that has not been served yet. */
   const [intro, setIntro] = useState<AttemptIntro | null>(null);
   const [outline, setOutline] = useState<AttemptOutline | null>(null);
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [setName, setSetName] = useState("");
-  const [savedSets, setSavedSets] = useState<QuestionSetListEntry[]>([]);
   const [createdTests, setCreatedTests] = useState<CreatedTestEntry[]>([]);
   const [attemptList, setAttemptList] = useState<AttemptListEntry[]>([]);
   const [myAssessments, setMyAssessments] = useState<AttemptListEntry[]>([]);
@@ -475,15 +470,11 @@ export function ResearchCaptcha({
   }
 
   const refreshCatalog = useCallback(async () => {
-    const [setsResult, createdResult, attemptsResult, mineResult] = await Promise.allSettled([
-      fetch("/api/question-sets").then((response) => response.json()),
+    const [createdResult, attemptsResult, mineResult] = await Promise.allSettled([
       fetch("/api/created-tests").then((response) => response.json()),
       fetch("/api/attempts").then((response) => response.json()),
       fetch("/api/attempts/mine").then((response) => response.json()),
     ]);
-    if (setsResult.status === "fulfilled" && setsResult.value.sets) {
-      setSavedSets(setsResult.value.sets as QuestionSetListEntry[]);
-    }
     if (createdResult.status === "fulfilled" && createdResult.value.tests) {
       setCreatedTests(createdResult.value.tests as CreatedTestEntry[]);
     }
@@ -536,38 +527,6 @@ export function ResearchCaptcha({
       ),
     );
   }, [catalogSearch, myAssessments]);
-
-  async function copyRecentAssessmentLink(set: Pick<QuestionSetListEntry, "id">) {
-    setSharingSetId(set.id);
-    setShareError("");
-    try {
-      let shared = shareLinks[set.id];
-      if (!shared) {
-        const response = await fetch(
-          `/api/question-sets/${encodeURIComponent(set.id)}/share`,
-          { method: "POST" },
-        );
-        const payload = await response.json();
-        if (!response.ok) {
-          throw new Error(payload.error ?? "Unable to create an assessment link.");
-        }
-        shared = {
-          url: new URL(String(payload.participantPath), window.location.origin).toString(),
-        };
-        setShareLinks((current) => ({ ...current, [set.id]: shared! }));
-        await refreshCatalog();
-      }
-      await navigator.clipboard.writeText(shared.url);
-      setCopiedSetId(set.id);
-      window.setTimeout(() => setCopiedSetId(""), 2_000);
-    } catch (caught) {
-      setShareError(
-        caught instanceof Error ? caught.message : "Unable to copy the assessment link.",
-      );
-    } finally {
-      setSharingSetId("");
-    }
-  }
 
   async function manageCreatedTestInvitation(test: CreatedTestEntry, revoke = false) {
     setSharingSetId(test.id);
@@ -1384,11 +1343,9 @@ export function ResearchCaptcha({
               ? { ...current, name, label: name || current.paperName, overallTimeLimitSeconds }
               : current,
           );
-          setSavedSets((current) =>
-            current.map((entry) =>
-              entry.id === setOverview.id
-                ? { ...entry, name, label: name || entry.paperName }
-                : entry,
+          setCreatedTests((current) =>
+            current.map((test) =>
+              test.id === setOverview.id ? { ...test, name: name || setOverview.paperName } : test,
             ),
           );
         }}
@@ -1458,7 +1415,7 @@ export function ResearchCaptcha({
             </div>
             <ol className="get-started-steps">
               <li>
-                <strong>Create.</strong> Generate a question set from a paper in the{" "}
+                <strong>Create.</strong> Generate an assessment in the{" "}
                 <em>New question set</em> tab.
               </li>
               <li>
@@ -2440,43 +2397,31 @@ export function ResearchCaptcha({
             <p className="eyebrow">Quick access</p>
             <h2>Recent question sets</h2>
           </div>
-          <span className="pill">{Math.min(savedSets.length, 5)} of 5</span>
+          <span className="pill">{Math.min(createdTests.length, 5)} of 5</span>
         </div>
-        {savedSets.length === 0 ? (
-          <p className="hint">Recently generated question sets appear here.</p>
+        {createdTests.length === 0 ? (
+          <p className="hint">Recently created tests appear here.</p>
         ) : (
           <div className="recent-set-list">
-            {savedSets.slice(0, 5).map((set) => (
-              <article className="recent-set" key={set.id}>
-                <strong title={set.label}>{set.label}</strong>
+            {createdTests.slice(0, 5).map((test) => (
+              <article className="recent-set" key={test.id}>
+                <strong title={test.name}>{test.name}</strong>
                 <span>
-                  {set.questionCount} {set.questionCount === 1 ? "question" : "questions"} ·{" "}
-                  {new Date(set.createdAt).toLocaleDateString()}
+                  {test.questionCount} {test.questionCount === 1 ? "question" : "questions"} ·{" "}
+                  {new Date(test.createdAt).toLocaleDateString()}
                 </span>
-                {shareLinks[set.id] && (
-                  <div className="recent-link">
-                    <input
-                      className="control"
-                      aria-label={`Assessment link for ${set.label}`}
-                      value={shareLinks[set.id].url}
-                      readOnly
-                      onFocus={(event) => event.currentTarget.select()}
-                    />
-                    <small>Reusable link · one attempt per signed-in account</small>
-                  </div>
-                )}
                 <button
                   className="secondary"
                   type="button"
-                  disabled={sharingSetId === set.id}
-                  onClick={() => void copyRecentAssessmentLink(set)}
+                  disabled={sharingSetId === test.id}
+                  onClick={() => void manageCreatedTestInvitation(test)}
                 >
-                  {sharingSetId === set.id
+                  {sharingSetId === test.id
                     ? "Creating link…"
-                    : copiedSetId === set.id
+                    : copiedSetId === test.id
                       ? "Link copied"
-                      : shareLinks[set.id]
-                        ? "Copy link again"
+                      : test.invitationEnabled
+                        ? "Copy reusable link"
                         : "Create and copy reusable link"}
                 </button>
               </article>

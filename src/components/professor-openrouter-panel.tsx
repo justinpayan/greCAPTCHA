@@ -40,11 +40,15 @@ export function ProfessorOpenRouterPanel({ error: pageError = "" }: { error?: st
   }, [refresh]);
 
   async function connect() {
+    setBusy("save");
     setError("");
     try {
       await beginOpenRouterOAuth("server");
+      await refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to start OpenRouter sign-in.");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -173,7 +177,6 @@ export function ProfessorOpenRouterPanel({ error: pageError = "" }: { error?: st
                 ? "Replace with pasted key"
                 : "Save pasted key"}
           </button>
-          <small>The key value is never shown again after submission.</small>
         </div>
         {[error, pageError]
           .filter((message, index, all) => message && all.indexOf(message) === index)

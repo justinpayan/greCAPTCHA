@@ -179,12 +179,12 @@ export function AssessmentInvitation({
           <div className="form-grid">
             <ManuscriptField id="invitation-paper" />
             <div className="field full">
-              <label htmlFor="invitation-contributions">Contribution or coverage statement</label>
+              <label htmlFor="invitation-contributions">What material can we test on?</label>
               <textarea
                 className="control"
                 id="invitation-contributions"
                 name="contributions"
-                placeholder="Describe the material or contributions this assessment should cover."
+                placeholder="Describe which sections or aspects of the source material the assessment should address."
               />
             </div>
           </div>

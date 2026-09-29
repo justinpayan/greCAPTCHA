@@ -64,51 +64,39 @@ export function OpenRouterKeyPanel({
   }
 
   async function connect() {
+    setChecking(true);
     setError("");
     try {
       await beginOpenRouterOAuth();
+      const checked = await validateBrowserOpenRouterKey();
+      setBrowserKey(checked);
+      onChange(checked.key, "oauth");
+      onReady?.(checked.key, "oauth");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to start OpenRouter sign-in.");
+    } finally {
+      setChecking(false);
     }
   }
 
   return (
     <section className="key-source-panel">
       <div className="key-source-main">
-        <label htmlFor="openrouterApiKey">OpenRouter API key</label>
-        <input
-          className="control"
-          id="openrouterApiKey"
-          name="grecaptcha-openrouter-api-key"
-          type="password"
-          autoComplete="new-password"
-          data-1p-ignore
-          data-lpignore="true"
-          value={source === "paste" ? apiKey : ""}
-          disabled={source === "oauth"}
-          placeholder={source === "oauth" ? "Using browser-managed key" : "Paste for this action"}
-          onChange={(event) => onChange(event.target.value, "paste")}
-          onBlur={() => {
-            if (source === "paste" && apiKey.trim()) onReady?.(apiKey.trim(), "paste");
-          }}
-        />
-        <small>
-          Pasted keys are sent over HTTPS for this job, held only in server memory, and never
-          saved by greCAPTCHA.
-        </small>
-      </div>
-      <aside className="key-source-oauth">
-        <strong>Browser-managed key</strong>
+        <strong>API Access</strong>
         <p>
-          OpenRouter creates the key and your browser stores it. Creation and storage never send
-          the key to greCAPTCHA. When you run a job, it is sent ephemerally to our server and is
-          never persisted.
+          Connect with OpenRouter or paste an API key for this action. A connected key stays in
+          this browser; a pasted key is held only long enough to run the job. Neither is stored by
+          greCAPTCHA.
         </p>
         <p className="key-warning">
-          Required: set a spending limit and an expiration date. Keys without either are rejected.
+          Connected keys require a <strong>positive spending limit</strong> and{" "}
+          <strong>future expiration date</strong>.
         </p>
+      </div>
+      <aside className="key-source-oauth">
         {browserKey ? (
           <>
+            <strong>OpenRouter connected</strong>
             <small>
               Limit ${browserKey.limit}
               {browserKey.limitRemaining !== null
@@ -119,6 +107,14 @@ export function OpenRouterKeyPanel({
             <div className="key-source-actions">
               <button className="secondary" type="button" disabled={checking} onClick={useBrowserKey}>
                 {checking ? "Checking…" : source === "oauth" ? "Recheck safeguards" : "Use this key"}
+              </button>
+              <button
+                className="secondary"
+                type="button"
+                disabled={checking}
+                onClick={() => void connect()}
+              >
+                Replace with OpenRouter
               </button>
               <a className="secondary button-link" href={browserKey.settingsUrl} target="_blank" rel="noreferrer">
                 Open key settings
@@ -137,10 +133,35 @@ export function OpenRouterKeyPanel({
             </div>
           </>
         ) : (
-          <button className="secondary" type="button" onClick={() => void connect()}>
-            Connect with OpenRouter
+          <button
+            className="secondary"
+            type="button"
+            disabled={checking}
+            onClick={() => void connect()}
+          >
+            {checking ? "Waiting for OpenRouter…" : "Connect with OpenRouter"}
           </button>
         )}
+        <div className="key-paste-control">
+          <label htmlFor="openrouterApiKey">
+            {browserKey ? "Or use a pasted key" : "Or paste an API key"}
+          </label>
+          <input
+            className="control"
+            id="openrouterApiKey"
+            name="grecaptcha-openrouter-api-key"
+            type="password"
+            autoComplete="new-password"
+            data-1p-ignore
+            data-lpignore="true"
+            value={source === "paste" ? apiKey : ""}
+            placeholder="sk-or-v1-…"
+            onChange={(event) => onChange(event.target.value, "paste")}
+            onBlur={() => {
+              if (source === "paste" && apiKey.trim()) onReady?.(apiKey.trim(), "paste");
+            }}
+          />
+        </div>
         {[error, pageError]
           .filter((message, index, all) => message && all.indexOf(message) === index)
           .map((message) => (

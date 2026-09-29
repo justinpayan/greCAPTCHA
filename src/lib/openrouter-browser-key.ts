@@ -16,6 +16,7 @@ export type BrowserOpenRouterKey = {
 
 const KEY_STORAGE = "grecaptcha.openrouter.oauth-key";
 const FLOW_STORAGE = "grecaptcha.openrouter.pkce-flow";
+export const OPENROUTER_OAUTH_CHANNEL = "grecaptcha.openrouter.oauth";
 
 function base64Url(bytes: Uint8Array) {
   return btoa(String.fromCharCode(...bytes))
@@ -46,6 +47,17 @@ export function readBrowserOpenRouterKey(ownerUsername?: string): BrowserOpenRou
 
 export function disconnectBrowserOpenRouterKey() {
   localStorage.removeItem(KEY_STORAGE);
+}
+
+export function readOpenRouterOAuthNonce(): string | null {
+  try {
+    const flow = JSON.parse(sessionStorage.getItem(FLOW_STORAGE) ?? "null") as {
+      nonce?: string;
+    } | null;
+    return flow?.nonce ?? null;
+  } catch {
+    return null;
+  }
 }
 
 async function inspectKey(key: string, ownerUsername: string): Promise<BrowserOpenRouterKey> {
@@ -102,27 +114,96 @@ export async function validateBrowserOpenRouterKey() {
 }
 
 export async function beginOpenRouterOAuth(storage: "browser" | "server" = "browser") {
+  const popup = window.open(
+    "about:blank",
+    "grecaptcha-openrouter-oauth",
+    "popup=yes,width=560,height=760,resizable=yes,scrollbars=yes",
+  );
+  if (!popup) {
+    throw new OpenRouterError(
+      "The OpenRouter authorization popup was blocked. Allow popups for this site and try again.",
+    );
+  }
+  popup.document.title = "Connecting to OpenRouter";
+  popup.document.body.textContent = "Preparing OpenRouter authorization…";
+
   const sessionResponse = await fetch("/api/session", { cache: "no-store" });
   const session = (await sessionResponse.json()) as { username?: string };
   if (!sessionResponse.ok || !session.username) {
+    popup.close();
     throw new OpenRouterError("Sign in before connecting an OpenRouter key.");
   }
   const verifierBytes = crypto.getRandomValues(new Uint8Array(48));
   const verifier = base64Url(verifierBytes);
   const nonce = base64Url(crypto.getRandomValues(new Uint8Array(24)));
   const challenge = base64Url(await sha256(verifier));
-  sessionStorage.setItem(
-    FLOW_STORAGE,
-    JSON.stringify({ verifier, nonce, username: session.username, storage, createdAt: Date.now() }),
-  );
-  const callback = new URL(window.location.origin + window.location.pathname);
+  const flow = JSON.stringify({
+    verifier,
+    nonce,
+    username: session.username,
+    storage,
+    createdAt: Date.now(),
+  });
+  try {
+    popup.sessionStorage.setItem(FLOW_STORAGE, flow);
+  } catch {
+    popup.close();
+    throw new OpenRouterError("The authorization popup could not initialize browser storage.");
+  }
+  const callback = new URL("/openrouter/callback", window.location.origin);
   callback.searchParams.set("openrouter_oauth", nonce);
   const authorize = new URL("https://openrouter.ai/auth");
   authorize.searchParams.set("callback_url", callback.toString());
   authorize.searchParams.set("code_challenge", challenge);
   authorize.searchParams.set("code_challenge_method", "S256");
   authorize.searchParams.set("key_label", "greCAPTCHA browser key");
-  window.location.assign(authorize.toString());
+  popup.location.replace(authorize.toString());
+
+  await new Promise<void>((resolve, reject) => {
+    const channel = new BroadcastChannel(OPENROUTER_OAUTH_CHANNEL);
+    let settled = false;
+    const cleanup = () => {
+      settled = true;
+      channel.close();
+      window.removeEventListener("message", receiveWindowMessage);
+      window.clearInterval(closedTimer);
+      window.clearTimeout(expirationTimer);
+    };
+    const receive = (data: unknown) => {
+      const message = data as {
+        type?: string;
+        nonce?: string;
+        ok?: boolean;
+        error?: string;
+      };
+      if (message.type !== "openrouter-oauth-result" || message.nonce !== nonce) return;
+      cleanup();
+      if (message.ok) {
+        window.dispatchEvent(new Event("grecaptcha:openrouter-credential-changed"));
+        resolve();
+      } else {
+        reject(new OpenRouterError(message.error ?? "OpenRouter authorization failed."));
+      }
+    };
+    const receiveWindowMessage = (event: MessageEvent) => {
+      if (event.origin === window.location.origin && event.source === popup) receive(event.data);
+    };
+    channel.onmessage = (event) => receive(event.data);
+    window.addEventListener("message", receiveWindowMessage);
+    const closedTimer = window.setInterval(() => {
+      if (!settled && popup.closed) {
+        cleanup();
+        reject(new OpenRouterError("The OpenRouter authorization popup was closed."));
+      }
+    }, 500);
+    const expirationTimer = window.setTimeout(() => {
+      if (!settled) {
+        cleanup();
+        popup.close();
+        reject(new OpenRouterError("The OpenRouter authorization popup expired."));
+      }
+    }, 10 * 60 * 1000);
+  });
 }
 
 export async function completeOpenRouterOAuth(): Promise<
