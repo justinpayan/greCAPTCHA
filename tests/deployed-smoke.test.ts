@@ -50,7 +50,21 @@ deployed("serves decoupled workflow choices with authentication boundaries", asy
     expect(await protectedApi.json(), path).toMatchObject({ error: "Not authorised." });
   }
 
+  const passwordChange = await fetcher(`${baseUrl}/api/account/password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      currentPassword: "not-a-real-password",
+      newPassword: "not-a-real-new-password",
+      passwordConfirmation: "not-a-real-new-password",
+    }),
+    redirect: "manual",
+  });
+  expect(passwordChange.status).toBe(401);
+  expect(await passwordChange.json()).toMatchObject({ error: "Not authorised." });
+
   for (const path of [
+    "/account/password",
     "/take/not-a-real-token",
     "/invite/not-a-real-token",
     "/conference/not-a-real-token",

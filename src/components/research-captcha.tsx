@@ -1388,6 +1388,9 @@ export function ResearchCaptcha({
         <Link className="sign-out account-action account-link" href="/about">
           About
         </Link>
+        <Link className="sign-out account-action account-link" href="/account/password">
+          Change password
+        </Link>
         <button
           className="sign-out account-action"
           type="button"

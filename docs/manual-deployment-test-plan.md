@@ -171,6 +171,21 @@ attempt where invitations are used, and **Tests I've Created** shows payer/uploa
 5. Submit both assessments. Confirm grading starts immediately with no key prompt and can complete
    while the creator is offline.
 
+## Password changes
+
+1. From the signed-in dashboard, select **Change password** and confirm the page asks for the
+   current password, new password, and confirmation without pre-filling any field.
+2. Try an incorrect current password, a password shorter than 10 characters, mismatched
+   confirmation, and reuse of the current password. Confirm each is rejected without changing
+   the account credentials.
+3. Change to a valid new password. Confirm the current browser remains signed in and reports that
+   other sessions were revoked.
+4. In another browser profile that was signed in before the change, confirm the old session can
+   no longer access authenticated pages or APIs.
+5. Sign out of the current browser. Confirm the old password fails and the new password succeeds.
+6. Confirm a signed-out visit to `/account/password` redirects to login with the return path
+   preserved, and a signed-out password-change API request returns 401.
+
 ## Authorization and isolation
 
 1. Attempt to read another creator's template, publish/revoke its invitation, inspect its

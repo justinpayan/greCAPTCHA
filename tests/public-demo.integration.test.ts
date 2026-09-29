@@ -66,6 +66,7 @@ import { POST as runEvaluation } from "@/app/api/attempts/[id]/outline/route";
 import { POST as submitAttempt } from "@/app/api/attempts/[id]/submit/route";
 import { POST as createInvitationAssessment } from "@/app/api/invitations/[token]/route";
 import { POST as uploadTemplateMaterial } from "@/app/api/templates/[id]/material/route";
+import { POST as changePassword } from "@/app/api/account/password/route";
 import { POST as gradeTakerFundedAttempt } from "@/app/api/attempts/[id]/grade/route";
 import {
   GET as getOpenRouterCredentialStatus,
@@ -251,6 +252,72 @@ describe("public demo account-to-grade flow", () => {
     expect((await accountForSession(bobToken))?.id).toBe(bob.id);
     expect((await authenticateAccount("ALICE.TEST", "long-password-alice"))?.id).toBe(alice.id);
     expect(await authenticateAccount("alice.test", "wrong-password")).toBeNull();
+
+    sessionState.token = aliceToken;
+    const passwordRequest = (body: Record<string, string>) =>
+      changePassword(
+        new Request("http://localhost/api/account/password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      );
+    expect(
+      (
+        await passwordRequest({
+          currentPassword: "wrong-current-password",
+          newPassword: "new-long-password-alice",
+          passwordConfirmation: "new-long-password-alice",
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await passwordRequest({
+          currentPassword: "long-password-alice",
+          newPassword: "new-long-password-alice",
+          passwordConfirmation: "different-confirmation",
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await passwordRequest({
+          currentPassword: "long-password-alice",
+          newPassword: "short",
+          passwordConfirmation: "short",
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await passwordRequest({
+          currentPassword: "long-password-alice",
+          newPassword: "long-password-alice",
+          passwordConfirmation: "long-password-alice",
+        })
+      ).status,
+    ).toBe(400);
+    const changedPassword = await passwordRequest({
+      currentPassword: "long-password-alice",
+      newPassword: "new-long-password-alice",
+      passwordConfirmation: "new-long-password-alice",
+    });
+    expect(changedPassword.status).toBe(200);
+    const rotatedToken = /rc_session=([^;]+)/.exec(
+      changedPassword.headers.get("set-cookie") ?? "",
+    )?.[1];
+    expect(rotatedToken).toBeTruthy();
+    expect(await accountForSession(aliceToken)).toBeNull();
+    expect(await accountForSession(decodeURIComponent(rotatedToken ?? ""))).toMatchObject({
+      id: alice.id,
+    });
+    expect(await authenticateAccount("alice.test", "long-password-alice")).toBeNull();
+    expect(
+      (await authenticateAccount("alice.test", "new-long-password-alice"))?.id,
+    ).toBe(alice.id);
+    expect((await accountForSession(bobToken))?.id).toBe(bob.id);
+    sessionState.token = "";
 
     const storedAlice = await db.select().from(users).where(eq(users.id, alice.id)).get();
     const storedSessions = await db.select().from(sessions);

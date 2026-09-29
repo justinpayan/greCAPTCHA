@@ -26,7 +26,7 @@ function validateUsername(username: string) {
   return trimmed;
 }
 
-function validatePassword(password: string) {
+export function validatePassword(password: string) {
   if (password.length < 10) throw new Error("Password must be at least 10 characters.");
   if (password.length > 200) throw new Error("Password is too long.");
 }
@@ -83,6 +83,47 @@ export async function authenticateAccount(username: string, password: string) {
   const actual = await scrypt(password, Buffer.from(user.passwordSalt, "base64"));
   const expected = Buffer.from(user.passwordHash, "base64");
   return actual.length === expected.length && timingSafeEqual(actual, expected) ? user : null;
+}
+
+export async function changeAccountPassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+) {
+  validatePassword(newPassword);
+  const user = await db.select().from(users).where(eq(users.id, userId)).get();
+  if (!user) throw new Error("Account not found.");
+
+  const existingSalt = Buffer.from(user.passwordSalt, "base64");
+  const expected = Buffer.from(user.passwordHash, "base64");
+  const currentHash = await scrypt(currentPassword, existingSalt);
+  if (
+    currentHash.length !== expected.length ||
+    !timingSafeEqual(currentHash, expected)
+  ) {
+    throw new Error("Current password is incorrect.");
+  }
+
+  const reusedHash = await scrypt(newPassword, existingSalt);
+  if (reusedHash.length === expected.length && timingSafeEqual(reusedHash, expected)) {
+    throw new Error("Choose a new password that is different from your current password.");
+  }
+
+  const newSalt = randomBytes(16);
+  const newHash = await scrypt(newPassword, newSalt);
+  db.transaction((tx) => {
+    const updated = tx
+      .update(users)
+      .set({
+        passwordHash: newHash.toString("base64"),
+        passwordSalt: newSalt.toString("base64"),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(users.id, userId))
+      .run();
+    if (updated.changes !== 1) throw new Error("Account not found.");
+    tx.delete(sessions).where(eq(sessions.userId, userId)).run();
+  });
 }
 
 function tokenHash(token: string) {
