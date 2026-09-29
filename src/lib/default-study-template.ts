@@ -59,7 +59,7 @@ export function createDefaultStudyBlocks(): QuestionBlockConfig[] {
     {
       id: "default-planted-error",
       type: "multiple_choice",
-      name: "F1 planted error",
+      name: "Planted error",
       count: 2,
       optionsPerQuestion: 2,
       warmup: false,
@@ -68,7 +68,7 @@ export function createDefaultStudyBlocks(): QuestionBlockConfig[] {
     {
       id: "default-unstated-rationale",
       type: "free_response",
-      name: "F3 unstated rationale",
+      name: "Unstated rationale",
       count: 2,
       warmup: false,
       prompt: UNSTATED_RATIONALE_PROMPT,
@@ -76,7 +76,7 @@ export function createDefaultStudyBlocks(): QuestionBlockConfig[] {
     {
       id: "default-background-concept",
       type: "free_response",
-      name: "F7 background concept",
+      name: "Background concept",
       count: 2,
       warmup: false,
       prompt: BACKGROUND_CONCEPT_PROMPT,
@@ -84,7 +84,7 @@ export function createDefaultStudyBlocks(): QuestionBlockConfig[] {
     {
       id: "default-failure-mode",
       type: "free_response",
-      name: "F9 failure mode",
+      name: "Failure mode",
       count: 2,
       warmup: false,
       prompt: FAILURE_MODE_PROMPT,

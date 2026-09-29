@@ -2188,7 +2188,7 @@ export function ResearchCaptcha({
                             id={`${block.id}-name`}
                             value={block.name}
                             maxLength={80}
-                            placeholder={`e.g. F1 planted error`}
+                            placeholder={`e.g. Planted error`}
                             onChange={(event) =>
                               updateBlock(block.id, { name: event.target.value })
                             }

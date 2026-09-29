@@ -26,7 +26,7 @@ Each question presents a specific claim about the paper's methods, results, or d
 
 const blockBase = {
   id: z.string().min(1).max(100),
-  // Researcher-facing label for the card, e.g. "F1 planted error". Never shown to the
+  // Researcher-facing label for the card, e.g. "Planted error". Never shown to the
   // participant; snapshotted onto each answer row so exports can group by family.
   name: z.string().max(80).default(""),
   count: z.number().int().min(1).max(30),
