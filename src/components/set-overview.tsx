@@ -251,12 +251,6 @@ export function SetOverview({
                 if (event.key === "Enter" && changed) void save();
               }}
             />
-            <small>
-              Blank falls back to the PDF filename. Renaming touches nothing else — the questions,
-              the {overview.attemptCount}{" "}
-              {overview.attemptCount === 1 ? "attempt" : "attempts"} on this set and their answers
-              are unaffected.
-            </small>
           </div>
 
           <div className="field">
@@ -278,11 +272,6 @@ export function SetOverview({
                 if (event.key === "Enter" && changed) void save();
               }}
             />
-            <small>
-              Enforced: once spent, no further question is served. Changing it also updates attempts
-              on this set that have not started; one already under way keeps the budget it began
-              with.
-            </small>
           </div>
         </div>
 
@@ -368,10 +357,6 @@ export function SetOverview({
       {status && <p className="template-status">{status}</p>}
 
       <div className="quiz-actions sequential-actions">
-        <span className="hint">
-          Stored order. Warm-ups move to the front when an attempt is created, and the rest are
-          shuffled if that attempt randomizes them.
-        </span>
         <button className="secondary" type="button" onClick={onBack}>
           Back to dashboard
         </button>

@@ -37,14 +37,14 @@ import {
   type AttemptListEntry,
   type AttemptOutline,
   type AttemptView,
+  type ApiKeyPayer,
   type CreatedTestEntry,
-  type QuestionSetListEntry,
+  type MaterialUploader,
   type QuestionSetOverview,
   type PdfEngine,
   type QuestionBlockConfig,
   type StudyTemplateConfig,
   type StudyTemplateSummary,
-  type WorkflowType,
 } from "@/lib/quiz";
 
 type CatalogModel = {
@@ -206,16 +206,12 @@ export function ResearchCaptcha({
   const [sharingSetId, setSharingSetId] = useState("");
   const [copiedSetId, setCopiedSetId] = useState("");
   const [shareError, setShareError] = useState("");
-  const [shareLinks, setShareLinks] = useState<
-    Record<string, { url: string }>
-  >({});
   const [attempt, setAttempt] = useState<AttemptView | null>(null);
   /** Landing page for a question set that has not been served yet. */
   const [intro, setIntro] = useState<AttemptIntro | null>(null);
   const [outline, setOutline] = useState<AttemptOutline | null>(null);
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [setName, setSetName] = useState("");
-  const [savedSets, setSavedSets] = useState<QuestionSetListEntry[]>([]);
   const [createdTests, setCreatedTests] = useState<CreatedTestEntry[]>([]);
   const [attemptList, setAttemptList] = useState<AttemptListEntry[]>([]);
   const [myAssessments, setMyAssessments] = useState<AttemptListEntry[]>([]);
@@ -251,7 +247,9 @@ export function ResearchCaptcha({
   const [templates, setTemplates] = useState<StudyTemplateSummary[]>([]);
   const [templateId, setTemplateId] = useState("");
   const [templateName, setTemplateName] = useState("");
-  const [workflowType, setWorkflowType] = useState<WorkflowType>("course");
+  const [apiKeyPayer, setApiKeyPayer] = useState<ApiKeyPayer>("creator");
+  const [materialUploader, setMaterialUploader] =
+    useState<MaterialUploader>("creator");
   const [templateStatus, setTemplateStatus] = useState("");
   // Blocks autosaving until the stored draft has been applied, so the restore is never
   // overwritten by the component's own initial state.
@@ -472,15 +470,11 @@ export function ResearchCaptcha({
   }
 
   const refreshCatalog = useCallback(async () => {
-    const [setsResult, createdResult, attemptsResult, mineResult] = await Promise.allSettled([
-      fetch("/api/question-sets").then((response) => response.json()),
+    const [createdResult, attemptsResult, mineResult] = await Promise.allSettled([
       fetch("/api/created-tests").then((response) => response.json()),
       fetch("/api/attempts").then((response) => response.json()),
       fetch("/api/attempts/mine").then((response) => response.json()),
     ]);
-    if (setsResult.status === "fulfilled" && setsResult.value.sets) {
-      setSavedSets(setsResult.value.sets as QuestionSetListEntry[]);
-    }
     if (createdResult.status === "fulfilled" && createdResult.value.tests) {
       setCreatedTests(createdResult.value.tests as CreatedTestEntry[]);
     }
@@ -502,9 +496,13 @@ export function ResearchCaptcha({
     const query = catalogSearch.trim().toLowerCase();
     if (!query) return createdTests;
     return createdTests.filter((test) => {
-      const parentMatches = [test.name, test.modelId, test.workflowType, test.id].some((field) =>
-        field.toLowerCase().includes(query),
-      );
+      const parentMatches = [
+        test.name,
+        test.modelId,
+        test.apiKeyPayer,
+        test.materialUploader,
+        test.id,
+      ].some((field) => field.toLowerCase().includes(query));
       return (
         parentMatches ||
         test.attempts.some((entry) =>
@@ -530,45 +528,13 @@ export function ResearchCaptcha({
     );
   }, [catalogSearch, myAssessments]);
 
-  async function copyRecentAssessmentLink(set: Pick<QuestionSetListEntry, "id">) {
-    setSharingSetId(set.id);
-    setShareError("");
-    try {
-      let shared = shareLinks[set.id];
-      if (!shared) {
-        const response = await fetch(
-          `/api/question-sets/${encodeURIComponent(set.id)}/share`,
-          { method: "POST" },
-        );
-        const payload = await response.json();
-        if (!response.ok) {
-          throw new Error(payload.error ?? "Unable to create an assessment link.");
-        }
-        shared = {
-          url: new URL(String(payload.participantPath), window.location.origin).toString(),
-        };
-        setShareLinks((current) => ({ ...current, [set.id]: shared! }));
-        await refreshCatalog();
-      }
-      await navigator.clipboard.writeText(shared.url);
-      setCopiedSetId(set.id);
-      window.setTimeout(() => setCopiedSetId(""), 2_000);
-    } catch (caught) {
-      setShareError(
-        caught instanceof Error ? caught.message : "Unable to copy the assessment link.",
-      );
-    } finally {
-      setSharingSetId("");
-    }
-  }
-
   async function manageCreatedTestInvitation(test: CreatedTestEntry, revoke = false) {
     setSharingSetId(test.id);
     setShareError("");
     try {
       if (revoke) {
         const response = await fetch(
-          `/api/templates/${encodeURIComponent(test.id)}/conference-share`,
+          `/api/templates/${encodeURIComponent(test.id)}/invite-share`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -579,23 +545,25 @@ export function ResearchCaptcha({
         if (!response.ok) throw new Error(payload.error ?? "Unable to revoke the invitation.");
         setTemplates((current) =>
           current.map((template) =>
-            template.id === test.id ? { ...template, conferenceShareToken: null } : template,
+            template.id === test.id ? { ...template, invitationShareToken: null } : template,
           ),
         );
-        setTemplateStatus("Conference invitation revoked.");
+        setTemplateStatus("Invitation revoked.");
         await refreshCatalog();
         return;
       }
 
       let participantPath = test.invitationPath;
       if (!participantPath) {
+        const isTemplate =
+          test.apiKeyPayer !== "creator" || test.materialUploader !== "creator";
         const endpoint =
-          test.workflowType === "course"
+          !isTemplate
             ? `/api/question-sets/${encodeURIComponent(test.id)}/share`
-            : `/api/templates/${encodeURIComponent(test.id)}/conference-share`;
+            : `/api/templates/${encodeURIComponent(test.id)}/invite-share`;
         const response = await fetch(endpoint, {
           method: "POST",
-          ...(test.workflowType === "conference"
+          ...(isTemplate
             ? {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ enabled: true }),
@@ -606,13 +574,13 @@ export function ResearchCaptcha({
         if (!response.ok) throw new Error(payload.error ?? "Unable to create the invitation.");
         participantPath = String(payload.participantPath ?? "");
         if (!participantPath) throw new Error("The invitation link was not returned.");
-        if (test.workflowType === "conference") {
+        if (isTemplate) {
           setTemplates((current) =>
             current.map((template) =>
               template.id === test.id
                 ? {
                     ...template,
-                    conferenceShareToken: payload.conferenceShareToken ?? null,
+                    invitationShareToken: payload.invitationShareToken ?? null,
                   }
                 : template,
             ),
@@ -641,21 +609,23 @@ export function ResearchCaptcha({
       : "No attempts or response data are attached to it.";
     if (
       !window.confirm(
-        `Delete the ${test.workflowType} test “${test.name}”?\n\n${consequence}\n\nThis cannot be undone.`,
+        `Delete the test “${test.name}”?\n\n${consequence}\n\nThis cannot be undone.`,
       )
     ) {
       return;
     }
     setError("");
     try {
+      const isTemplate =
+        test.apiKeyPayer !== "creator" || test.materialUploader !== "creator";
       const endpoint =
-        test.workflowType === "course"
+        !isTemplate
           ? `/api/question-sets/${encodeURIComponent(test.id)}`
           : `/api/templates/${encodeURIComponent(test.id)}`;
       const response = await fetch(endpoint, { method: "DELETE" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to delete the test.");
-      if (test.workflowType === "conference") {
+      if (isTemplate) {
         setTemplates((current) => current.filter((template) => template.id !== test.id));
         if (templateId === test.id) setTemplateId("");
       }
@@ -908,7 +878,12 @@ export function ResearchCaptcha({
       const response = await fetch("/api/templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: templateName, config: currentConfig, workflowType }),
+        body: JSON.stringify({
+          name: templateName,
+          config: currentConfig,
+          apiKeyPayer,
+          materialUploader,
+        }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to save the template.");
@@ -933,11 +908,15 @@ export function ResearchCaptcha({
       if (!response.ok) throw new Error(payload.error ?? "Unable to load the template.");
       const template = payload.template as {
         name: string;
-        workflowType: WorkflowType;
+        apiKeyPayer: ApiKeyPayer;
+        materialUploader: MaterialUploader;
         config: StudyTemplateConfig;
       };
-      setWorkflowType(template.workflowType);
-      if (template.workflowType === "conference") setSetName(template.name);
+      setApiKeyPayer(template.apiKeyPayer);
+      setMaterialUploader(template.materialUploader);
+      if (template.apiKeyPayer === "taker" || template.materialUploader === "taker") {
+        setSetName(template.name);
+      }
       const matchedModel = applyConfig(template.config, models);
       setTemplateStatus(
         matchedModel
@@ -949,21 +928,26 @@ export function ResearchCaptcha({
     }
   }
 
-  function changeWorkflow(next: WorkflowType) {
-    if (next === workflowType) return;
+  function changeWorkflow(
+    nextPayer: ApiKeyPayer = apiKeyPayer,
+    nextUploader: MaterialUploader = materialUploader,
+  ) {
+    if (nextPayer === apiKeyPayer && nextUploader === materialUploader) return;
     const selected = templates.find((template) => template.id === templateId);
-    setWorkflowType(next);
-    if (selected && selected.workflowType !== next) {
+    setApiKeyPayer(nextPayer);
+    setMaterialUploader(nextUploader);
+    if (
+      selected &&
+      (selected.apiKeyPayer !== nextPayer || selected.materialUploader !== nextUploader)
+    ) {
       setTemplateId("");
-      setTemplateStatus(
-        `Cleared “${selected.name}” because it uses the ${selected.workflowType} workflow.`,
-      );
+      setTemplateStatus(`Cleared “${selected.name}” because it uses different workflow choices.`);
     }
   }
 
-  async function updateConferenceSharing(id: string, enabled: boolean) {
+  async function updateInvitationSharing(id: string, enabled: boolean) {
     const response = await fetch(
-      `/api/templates/${encodeURIComponent(id)}/conference-share`,
+      `/api/templates/${encodeURIComponent(id)}/invite-share`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -972,38 +956,38 @@ export function ResearchCaptcha({
     );
     const payload = (await response.json()) as {
       error?: string;
-      conferenceShareToken?: string | null;
+      invitationShareToken?: string | null;
       participantPath?: string | null;
     };
     if (!response.ok) throw new Error(payload.error ?? "Unable to update sharing.");
     setTemplates((current) =>
       current.map((template) =>
         template.id === id
-          ? { ...template, conferenceShareToken: payload.conferenceShareToken ?? null }
+          ? { ...template, invitationShareToken: payload.invitationShareToken ?? null }
           : template,
       ),
     );
     if (payload.participantPath) {
       const link = `${window.location.origin}${payload.participantPath}`;
       await navigator.clipboard.writeText(link);
-      setTemplateStatus("Conference template saved. Examinee link published and copied.");
+      setTemplateStatus("Invitation saved, published, and copied.");
     } else {
-      setTemplateStatus("Conference link revoked.");
+      setTemplateStatus("Invitation revoked.");
     }
   }
 
-  async function setConferenceSharing(enabled: boolean) {
+  async function setInvitationSharing(enabled: boolean) {
     if (!templateId) return;
     setError("");
     setTemplateStatus("");
     try {
-      await updateConferenceSharing(templateId, enabled);
+      await updateInvitationSharing(templateId, enabled);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to update sharing.");
     }
   }
 
-  async function createConferenceTemplate(
+  async function createInvitationTemplate(
     event: FormEvent<HTMLFormElement>,
     config: StudyTemplateConfig,
   ) {
@@ -1014,6 +998,16 @@ export function ResearchCaptcha({
     setWorking(true);
     setError("");
     setTemplateStatus("");
+    const form = new FormData(event.currentTarget);
+    const paper = form.get("paper");
+    if (
+      materialUploader === "creator" &&
+      paper instanceof File &&
+      paper.size > MAX_PDF_BYTES
+    ) {
+      setWorking(false);
+      return setPaperError(pdfTooLargeMessage(paper.size));
+    }
     try {
       const response = await fetch("/api/templates", {
         method: "POST",
@@ -1021,7 +1015,8 @@ export function ResearchCaptcha({
         body: JSON.stringify({
           name: setName,
           config,
-          workflowType: "conference",
+          apiKeyPayer,
+          materialUploader,
           templateId: mode === "custom" ? templateId || undefined : undefined,
         }),
       });
@@ -1030,16 +1025,26 @@ export function ResearchCaptcha({
         template?: StudyTemplateSummary;
       };
       if (!response.ok || !payload.template) {
-        throw new Error(payload.error ?? "Unable to save the conference template.");
+        throw new Error(payload.error ?? "Unable to save the invitation.");
       }
       const saved = payload.template;
       setTemplates((current) => [saved, ...current.filter((one) => one.id !== saved.id)]);
       setTemplateId(saved.id);
       setSetName(saved.name);
-      await updateConferenceSharing(saved.id, true);
+      if (materialUploader === "creator") {
+        const materialResponse = await fetch(
+          `/api/templates/${encodeURIComponent(saved.id)}/material`,
+          { method: "POST", body: form },
+        );
+        const materialPayload = await materialResponse.json();
+        if (!materialResponse.ok) {
+          throw new Error(materialPayload.error ?? "Unable to save the source material.");
+        }
+      }
+      await updateInvitationSharing(saved.id, true);
     } catch (caught) {
       setError(
-        caught instanceof Error ? caught.message : "Unable to publish the conference template.",
+        caught instanceof Error ? caught.message : "Unable to publish the invitation.",
       );
     } finally {
       setWorking(false);
@@ -1050,10 +1055,13 @@ export function ResearchCaptcha({
     const target = templates.find((one) => one.id === templateId);
     if (!target) return;
     const createdTest = createdTests.find(
-      (test) => test.workflowType === "conference" && test.id === target.id,
+      (test) =>
+        (test.apiKeyPayer !== "creator" || test.materialUploader !== "creator") &&
+        test.id === target.id,
     );
     const consequence =
-      target.workflowType === "conference" && createdTest?.attempts.length
+      (target.apiKeyPayer !== "creator" || target.materialUploader !== "creator") &&
+      createdTest?.attempts.length
         ? ` This also permanently deletes its ${createdTest.attempts.length} ${
             createdTest.attempts.length === 1 ? "attempt" : "attempts"
           } and all associated manuscripts, answers, grades, timings, and feedback.`
@@ -1136,7 +1144,7 @@ export function ResearchCaptcha({
    */
   function reportError(caught: unknown, fallback: string) {
     const message = caught instanceof Error ? caught.message : fallback;
-    if (isOpenRouterError(caught) && workflowType === "course") setKeyError(message);
+    if (isOpenRouterError(caught) && apiKeyPayer === "creator") setKeyError(message);
     else setError(message);
   }
 
@@ -1175,7 +1183,8 @@ export function ResearchCaptcha({
         : String(config.overallTimeLimitSeconds),
     );
     form.set("name", setName);
-    form.set("workflowType", "course");
+    form.set("apiKeyPayer", apiKeyPayer);
+    form.set("materialUploader", materialUploader);
     if (mode === "custom" && templateId) form.set("sourceTemplateId", templateId);
     let jobId = "";
     try {
@@ -1334,11 +1343,9 @@ export function ResearchCaptcha({
               ? { ...current, name, label: name || current.paperName, overallTimeLimitSeconds }
               : current,
           );
-          setSavedSets((current) =>
-            current.map((entry) =>
-              entry.id === setOverview.id
-                ? { ...entry, name, label: name || entry.paperName }
-                : entry,
+          setCreatedTests((current) =>
+            current.map((test) =>
+              test.id === setOverview.id ? { ...test, name: name || setOverview.paperName } : test,
             ),
           );
         }}
@@ -1402,7 +1409,7 @@ export function ResearchCaptcha({
             <h2 id="get-started-title">Get started</h2>
             <ol className="get-started-steps">
               <li>
-                <strong>Create.</strong> Generate a question set from a paper in the{" "}
+                <strong>Create.</strong> Generate an assessment in the{" "}
                 <em>New question set</em> tab.
               </li>
               <li>
@@ -1451,36 +1458,53 @@ export function ResearchCaptcha({
         </div>
       </div>
       {(mode === "default" || mode === "custom") && (
-        // Only question-set creation depends on the workflow; created and taken tests carry
-        // their own.
         <section className="dashboard-workflow" aria-labelledby="workflow-heading">
           <div>
-            <span className="field-label" id="workflow-heading">Workflow</span>
-            <p className="hint">
-              Set who provides the OpenRouter API key for generation and grading.
-            </p>
+            <span className="field-label" id="workflow-heading">Workflow choices</span>
           </div>
-          <div className="workflow-toggle" role="radiogroup" aria-label="Assessment workflow">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={workflowType === "course"}
-              className={workflowType === "course" ? "active" : ""}
-              onClick={() => changeWorkflow("course")}
-            >
-              Course
-              <small>Professor key · automatic grading</small>
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={workflowType === "conference"}
-              className={workflowType === "conference" ? "active" : ""}
-              onClick={() => changeWorkflow("conference")}
-            >
-              Conference
-              <small>Examinee supplies the key</small>
-            </button>
+          <div>
+            <span className="field-label">Who pays OpenRouter costs?</span>
+            <div className="workflow-toggle" role="radiogroup" aria-label="OpenRouter payer">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={apiKeyPayer === "creator"}
+                className={apiKeyPayer === "creator" ? "active" : ""}
+                onClick={() => changeWorkflow("creator", materialUploader)}
+              >
+                Test creator
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={apiKeyPayer === "taker"}
+                className={apiKeyPayer === "taker" ? "active" : ""}
+                onClick={() => changeWorkflow("taker", materialUploader)}
+              >
+                Test taker
+              </button>
+            </div>
+            <span className="field-label">Who uploads source material?</span>
+            <div className="workflow-toggle" role="radiogroup" aria-label="Material uploader">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={materialUploader === "creator"}
+                className={materialUploader === "creator" ? "active" : ""}
+                onClick={() => changeWorkflow(apiKeyPayer, "creator")}
+              >
+                Test creator
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={materialUploader === "taker"}
+                className={materialUploader === "taker" ? "active" : ""}
+                onClick={() => changeWorkflow(apiKeyPayer, "taker")}
+              >
+                Test taker
+              </button>
+            </div>
           </div>
         </section>
       )}
@@ -1521,8 +1545,8 @@ export function ResearchCaptcha({
             <div>
               <span className="field-label">Study set template</span>
               <p className="hint">
-                {workflowType === "conference"
-                  ? "Load an existing conference template or configure a new one below."
+                {apiKeyPayer === "taker" || materialUploader === "taker"
+                  ? "Load an existing invitation template or configure a new one below."
                   : "Everything below except the PDF and the contribution statement. Your current setup is saved automatically and restored on the next visit."}
               </p>
             </div>
@@ -1546,7 +1570,7 @@ export function ResearchCaptcha({
                 ))}
               </select>
             </div>
-            {workflowType === "course" && (
+            {apiKeyPayer === "creator" && materialUploader === "creator" && (
               <div className="field">
                 <label htmlFor="templateName">
                   Save current setup as
@@ -1570,7 +1594,7 @@ export function ResearchCaptcha({
               >
                 Reset to default template
               </button>
-              {workflowType === "course" && (
+              {apiKeyPayer === "creator" && materialUploader === "creator" && (
                 <button
                   className="secondary"
                   type="button"
@@ -1588,21 +1612,21 @@ export function ResearchCaptcha({
               >
                 Delete selected
               </button>
-              {workflowType === "conference" && templateId && (
+              {(apiKeyPayer === "taker" || materialUploader === "taker") && templateId && (
                 <button
                   className="secondary"
                   type="button"
                   onClick={() =>
-                    void setConferenceSharing(
+                    void setInvitationSharing(
                       !templates.find((template) => template.id === templateId)
-                        ?.conferenceShareToken,
+                        ?.invitationShareToken,
                     )
                   }
                 >
                   {templates.find((template) => template.id === templateId)
-                    ?.conferenceShareToken
-                    ? "Revoke conference link"
-                    : "Publish and copy conference link"}
+                    ?.invitationShareToken
+                    ? "Revoke invitation"
+                    : "Publish and copy invitation"}
                 </button>
               )}
             </div>
@@ -1716,13 +1740,20 @@ export function ResearchCaptcha({
                 {visibleCreatedTests.map((test) => {
                   const expanded = expandedTestIds.has(test.id);
                   return (
-                    <article className="created-test" key={`${test.workflowType}:${test.id}`}>
+                    <article className="created-test" key={test.id}>
                       <div className="catalog-row created-test-parent">
                         <div className="catalog-main">
                           <div className="catalog-title-row">
                             <strong>{test.name}</strong>
                             <span className="pill">
-                              {test.workflowType === "course" ? "Course" : "Conference"}
+                              {test.apiKeyPayer === "creator"
+                                ? "Creator pays"
+                                : "Taker pays"}
+                            </span>
+                            <span className="pill">
+                              {test.materialUploader === "creator"
+                                ? "Creator uploads"
+                                : "Taker uploads"}
                             </span>
                           </div>
                           <span className="catalog-meta">
@@ -1749,7 +1780,9 @@ export function ResearchCaptcha({
                                   ? "Copy invitation"
                                   : "Create invitation"}
                           </button>
-                          {test.workflowType === "conference" && test.invitationEnabled && (
+                          {(test.apiKeyPayer !== "creator" ||
+                            test.materialUploader !== "creator") &&
+                            test.invitationEnabled && (
                             <button
                               className="secondary"
                               type="button"
@@ -1759,7 +1792,8 @@ export function ResearchCaptcha({
                               Revoke invitation
                             </button>
                           )}
-                          {test.workflowType === "course" && (
+                          {test.apiKeyPayer === "creator" &&
+                            test.materialUploader === "creator" && (
                             <button
                               className="secondary"
                               type="button"
@@ -1875,14 +1909,14 @@ export function ResearchCaptcha({
           className="card form-card"
           onSubmit={(event) => {
             const config = mode === "default" ? defaultConfig : currentConfig;
-            return workflowType === "conference"
-              ? createConferenceTemplate(event, config)
-              : generateSet(event, config);
+            return apiKeyPayer === "creator" && materialUploader === "creator"
+              ? generateSet(event, config)
+              : createInvitationTemplate(event, config);
           }}
         >
-          {workflowType === "course" && <ProfessorOpenRouterPanel error={keyError} />}
+          {apiKeyPayer === "creator" && <ProfessorOpenRouterPanel error={keyError} />}
           <div className="form-section">
-            {mode !== "default" && workflowType === "course" && (
+            {mode !== "default" && materialUploader === "creator" && (
               <div className="section-heading">
                 <div>
                   <span className="field-label">This paper</span>
@@ -1899,8 +1933,8 @@ export function ResearchCaptcha({
                   Test set name
                   <FieldHint
                     text={
-                      workflowType === "conference"
-                        ? "Names the reusable template shown to examinees who open its invitation link."
+                      apiKeyPayer === "taker" || materialUploader === "taker"
+                        ? "Names the reusable test shown to test takers who open its invitation link."
                         : "Identifies this set in the saved-set list. Leave blank to use the PDF filename. You can rename it later."
                     }
                   />
@@ -1914,12 +1948,12 @@ export function ResearchCaptcha({
                   onChange={(event) => setSetName(event.target.value)}
                 />
               </div>
-              {workflowType === "course" && (
+              {materialUploader === "creator" && (
                 <>
                   <ManuscriptField id="paper" error={paperError} onError={setPaperError} />
                   <div className="field full">
                     <label htmlFor="contributions">
-                      What material are we testing the student on?
+                      What material can we test on?
                     </label>
                     {/* No length constraint, blank included: with no statement the generator is told
                         there is no declared scope and covers the whole manuscript. */}
@@ -1927,7 +1961,7 @@ export function ResearchCaptcha({
                       className="control"
                       id="contributions"
                       name="contributions"
-                      placeholder="Enter the sections of the lecture-notes PDF to cover, or describe which aspects of the course-project PDF the assessment should address."
+                      placeholder="Describe which sections or aspects of the source material the assessment should address."
                     />
                   </div>
                 </>
@@ -2309,7 +2343,9 @@ export function ResearchCaptcha({
 
           {error && <p className="error" role="alert">{error}</p>}
           <div className="submit-row">
-            {workflowType === "course" && failedGenerationJobId && (
+            {apiKeyPayer === "creator" &&
+              materialUploader === "creator" &&
+              failedGenerationJobId && (
               <button
                 className="secondary"
                 type="button"
@@ -2327,15 +2363,16 @@ export function ResearchCaptcha({
                 (mode === "default"
                   ? !defaultModel
                   : !selectedModel || blocks.length === 0) ||
-                (workflowType === "conference" && !setName.trim())
+                ((apiKeyPayer === "taker" || materialUploader === "taker") &&
+                  !setName.trim())
               }
             >
               {working
-                ? workflowType === "conference"
-                  ? "Publishing conference link…"
+                ? apiKeyPayer === "taker" || materialUploader === "taker"
+                  ? "Publishing invitation…"
                   : generationStatus || "Preparing upload…"
-                : workflowType === "conference"
-                  ? "Create and copy conference link"
+                : apiKeyPayer === "taker" || materialUploader === "taker"
+                  ? "Create and copy invitation"
                   : "Generate question set"}
             </button>
           </div>
@@ -2354,43 +2391,31 @@ export function ResearchCaptcha({
             <p className="eyebrow">Quick access</p>
             <h2>Recent question sets</h2>
           </div>
-          <span className="pill">{Math.min(savedSets.length, 5)} of 5</span>
+          <span className="pill">{Math.min(createdTests.length, 5)} of 5</span>
         </div>
-        {savedSets.length === 0 ? (
-          <p className="hint">Your five most recently generated question sets will appear here.</p>
+        {createdTests.length === 0 ? (
+          <p className="hint">Recently created tests appear here.</p>
         ) : (
           <div className="recent-set-list">
-            {savedSets.slice(0, 5).map((set) => (
-              <article className="recent-set" key={set.id}>
-                <strong>{set.label}</strong>
+            {createdTests.slice(0, 5).map((test) => (
+              <article className="recent-set" key={test.id}>
+                <strong title={test.name}>{test.name}</strong>
                 <span>
-                  {set.questionCount} {set.questionCount === 1 ? "question" : "questions"} ·{" "}
-                  {new Date(set.createdAt).toLocaleDateString()}
+                  {test.questionCount} {test.questionCount === 1 ? "question" : "questions"} ·{" "}
+                  {new Date(test.createdAt).toLocaleDateString()}
                 </span>
-                {shareLinks[set.id] && (
-                  <div className="recent-link">
-                    <input
-                      className="control"
-                      aria-label={`Assessment link for ${set.label}`}
-                      value={shareLinks[set.id].url}
-                      readOnly
-                      onFocus={(event) => event.currentTarget.select()}
-                    />
-                    <small>Reusable link · one attempt per signed-in account</small>
-                  </div>
-                )}
                 <button
                   className="secondary"
                   type="button"
-                  disabled={sharingSetId === set.id}
-                  onClick={() => void copyRecentAssessmentLink(set)}
+                  disabled={sharingSetId === test.id}
+                  onClick={() => void manageCreatedTestInvitation(test)}
                 >
-                  {sharingSetId === set.id
+                  {sharingSetId === test.id
                     ? "Creating link…"
-                    : copiedSetId === set.id
+                    : copiedSetId === test.id
                       ? "Link copied"
-                      : shareLinks[set.id]
-                        ? "Copy link again"
+                      : test.invitationEnabled
+                        ? "Copy reusable link"
                         : "Create and copy reusable link"}
                 </button>
               </article>

@@ -9,7 +9,7 @@ function realFetch() {
   return fetcher;
 }
 
-deployed("serves course and conference workflows with authentication boundaries", async () => {
+deployed("serves decoupled workflow choices with authentication boundaries", async () => {
   const fetcher = realFetch();
   const health = await fetcher(`${baseUrl}/api/health`, { cache: "no-store" });
   expect(health.status).toBe(200);
@@ -37,6 +37,7 @@ deployed("serves course and conference workflows with authentication boundaries"
     "/api/export/answers",
     "/api/openrouter/credential",
     "/api/openrouter/models",
+    "/api/invitations/not-a-real-token",
     "/api/conference/not-a-real-token",
     "/api/attempts/not-a-real-attempt/grade",
     "/api/attempts/not-a-real-attempt/feedback",
@@ -49,7 +50,11 @@ deployed("serves course and conference workflows with authentication boundaries"
     expect(await protectedApi.json(), path).toMatchObject({ error: "Not authorised." });
   }
 
-  for (const path of ["/take/not-a-real-token", "/conference/not-a-real-token"]) {
+  for (const path of [
+    "/take/not-a-real-token",
+    "/invite/not-a-real-token",
+    "/conference/not-a-real-token",
+  ]) {
     const protectedPage = await fetcher(`${baseUrl}${path}`, { redirect: "manual" });
     expect([301, 302, 303, 307, 308], path).toContain(protectedPage.status);
     const location = new URL(protectedPage.headers.get("location") ?? "", baseUrl);

@@ -14,6 +14,8 @@ import {
 } from "@/lib/openrouter";
 import {
   orderQuestionsByPage,
+  type ApiKeyPayer,
+  type MaterialUploader,
   prepareFillQuestions,
   prepareFreeResponseQuestions,
   prepareMultipleChoiceQuestions,
@@ -26,7 +28,9 @@ export type GenerationJobPayload = {
   questionSetId: string;
   questionSetOwnerUserId?: string;
   sourceTemplateId?: string | null;
-  workflowType?: "course" | "conference";
+  apiKeyPayer: ApiKeyPayer;
+  materialUploader: MaterialUploader;
+  credentialOwnerUserId?: string;
   conferenceSubmissionId?: string;
   taker?: { id: string; username: string };
   filePath: string;
@@ -127,7 +131,8 @@ export async function executeGeneration(
     id: payload.questionSetId,
     ownerUserId,
     sourceTemplateId: payload.sourceTemplateId ?? null,
-    workflowType: payload.workflowType ?? "course",
+    apiKeyPayer: payload.apiKeyPayer,
+    materialUploader: payload.materialUploader,
     schemaVersion: 1,
     name: payload.setName || null,
     paperName: payload.fileName,

@@ -737,6 +737,17 @@ textarea.control {
   gap: 4px;
   border-top: 1px solid var(--line);
   padding-top: 12px;
+  min-width: 0;
+}
+
+.recent-set > strong {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .recent-set > span {
@@ -3160,7 +3171,7 @@ mark.evidence:focus-visible {
 
 .landing-stages {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 18px;
   margin: 26px 0 0;
   padding: 0;

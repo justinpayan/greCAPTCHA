@@ -1,7 +1,7 @@
 # Manual deployment test plan
 
 Use restricted, short-lived OpenRouter keys and a low-cost file-capable model. Create three
-greCAPTCHA accounts: one administrator/professor and two examinees. Keep each account in a separate
+greCAPTCHA accounts: one test creator and two test takers. Keep each account in a separate
 browser profile so browser storage and sessions cannot leak between roles.
 
 ## Pre-deployment checks
@@ -21,10 +21,11 @@ npm run test:live-openrouter
 Remove the live-test variables afterward. Before deploying:
 
 1. Back up the production volume.
-2. Confirm the migrations containing `openrouter_credentials`, `conference_submissions`,
-   `attempt_feedback`, `attempt_question_feedback`, and workflow columns are present.
+2. Confirm the migrations containing `openrouter_credentials`, invitation submissions,
+   `attempt_feedback`, `attempt_question_feedback`, `api_key_payer`, and
+   `material_uploader` are present.
 3. Set a stable `OPENROUTER_CREDENTIAL_ENCRYPTION_KEY` containing exactly 32 random bytes
-   encoded as base64. Never rotate it without first disconnecting/reconnecting professor keys.
+   encoded as base64. Never rotate it without first disconnecting/reconnecting creator keys.
 4. Keep `RATE_LIMIT_SALT`, `PUBLIC_BASE_URL`, and the encryption key stable across deploys.
 
 ## Deployment preflight
@@ -38,28 +39,44 @@ Remove the live-test variables afterward. Before deploying:
    npm run test:deployed
    ```
 
-3. Confirm unauthenticated `/take/...` and `/conference/...` links redirect to `/login` while
+3. Confirm unauthenticated `/take/...` and `/invite/...` links redirect to `/login` while
    preserving the original path in `next`.
-4. Confirm unauthenticated credential, conference, grading, feedback, and question-set APIs
+4. Confirm unauthenticated credential, invitation, grading, feedback, and question-set APIs
    return 401 without revealing whether a token, attempt, or template exists.
 
-## Track A: course workflow
+## Workflow matrix
+
+Run all four combinations from both the Default and Advanced creation tabs:
+
+1. **Creator pays / creator uploads:** creator credential and material controls are shown. A
+   reusable `/take/...` set is generated immediately.
+2. **Taker pays / creator uploads:** creator material controls are shown but creator credential
+   controls are hidden. A `/invite/...` link asks for a test-taker key but not material.
+3. **Creator pays / taker uploads:** creator credential controls are shown but material controls
+   are hidden. A `/invite/...` link asks for test-taker material but not a key.
+4. **Taker pays / taker uploads:** neither credential nor material is requested from the creator.
+   A `/invite/...` link asks the test taker for both.
+
+For every combination, verify the selected model and name persist, each taker receives a distinct
+attempt where invitations are used, and **Tests I've Created** shows payer/uploader badges.
+
+## Track A: creator pays / creator uploads
 
 ### Professor credential and template
 
-1. Sign in as the professor, select **Course** in the workflow control above the dashboard tabs,
-   and confirm both question-set creation tabs show course credential controls. Create a template
+1. Sign in as the test creator, select **Test creator** for both controls,
+   and confirm both question-set creation tabs show creator credential controls. Create a template
    with one deterministic question and one free-response question.
 2. Select **Connect with OpenRouter**. Complete OAuth/PKCE using a key with a small positive spending
    limit and near-term expiration. Disconnect, then paste an app-specific key with the same
    safeguards and select **Save pasted key**. Confirm both paths report the same metadata-only
    connected state.
 3. Replace the pasted key once with another pasted key and once through PKCE. Confirm there is
-   still only one stored professor credential and subsequent Course grading uses the replacement.
+   still only one stored creator credential and subsequent grading uses the replacement.
 4. Try pasted keys without a spending limit, without an expiration, and with exhausted credit.
    Confirm each is rejected with an actionable message and the password-style input clears
    without displaying any part of the submitted key.
-5. Reload and sign out/in. Confirm the server still reports the professor credential as
+5. Reload and sign out/in. Confirm the server still reports the creator credential as
    connected and displays only generic connection, spending-limit, and expiration status. It
    must never display the plaintext key, a shortened `sk-or-...` value, or a credential label.
 6. Inspect SQLite, logs, exports, and backups. `openrouter_credentials` should contain
@@ -68,127 +85,149 @@ Remove the live-test variables afterward. Before deploying:
 
 ### Generate, take, and auto-grade
 
-1. Generate a small course question set and publish its `/take/...` link.
-2. Open it as examinee A, sign in, answer all questions, and select submit. Confirm the
+1. Generate a small question set and publish its `/take/...` link.
+2. Open it as test taker A, sign in, answer all questions, and select submit. Confirm the
    irreversible-submission prompt appears even with an answer in every question, cancel it once,
    then confirm and submit. Repeat with an unanswered question and confirm the prompt also states
    the unanswered count.
-3. Confirm grading starts immediately without asking the examinee or professor for another key.
+3. Confirm grading starts immediately without asking the test taker or creator for another key.
    The pending screen should move from queued/running to the result automatically.
-4. Confirm the professor did not need an open browser window when the examinee submitted.
-5. Open the same link again as examinee A and confirm it returns to the same attempt.
-6. Open it as examinee B and confirm a separate blank attempt is created.
-7. Confirm each examinee sees only their own attempt and result; the professor sees both
+4. Confirm the creator did not need an open browser window when the test taker submitted.
+5. Open the same link again as test taker A and confirm it returns to the same attempt.
+6. Open it as test taker B and confirm a separate blank attempt is created.
+7. Confirm each test taker sees only their own attempt and result; the creator sees both
    usernames and reports.
 8. Try to create another test using the same name with different capitalization. Confirm it is
    rejected without starting generation.
 
-### Course feedback
+### Feedback
 
-1. After examinee A's result appears, confirm every question review has its own optional feedback
+1. After test taker A's result appears, confirm every question review has its own optional feedback
    box. Enter different comments for at least two questions and submit them together.
 2. Reload the result. Confirm every submitted comment is read-only and the feedback cannot be
    submitted again.
-3. Open the report as the professor. Confirm each comment appears with the correct question and
+3. Open the report as the creator. Confirm each comment appears with the correct question and
    the attempt-wide submission timestamp appears.
-4. For examinee B, use **Submit without comments**. Confirm that decision is also locked and the
-   professor report distinguishes it from feedback not yet submitted.
+4. For test taker B, use **Submit without comments**. Confirm that decision is also locked and the
+   creator report distinguishes it from feedback not yet submitted.
 
-## Track B: conference workflow
+## Track B: taker pays / taker uploads
 
-### Reusable template link and examinee-funded generation
+### Reusable invitation and taker-funded generation
 
-1. As the administrator, select **Conference** in the workflow control above the dashboard tabs and
-   confirm both the default and Advanced creation pages omit the manuscript upload,
+1. As the test creator, select **Test taker** for both controls and
+   confirm both the Default and Advanced creation pages omit the manuscript upload,
    contribution statement, and OpenRouter key/PKCE controls.
 2. On the default page, enter a test-set name, choose the required model, and select **Create
-   and copy conference link**. Confirm the template is saved and the copied URL begins
-   `/conference/`.
+   and copy invitation**. Confirm the template is saved and the copied URL begins
+   `/invite/`.
 3. Repeat from Advanced with a custom question configuration. Load the saved template and
    confirm its test-set name, model, and configuration are restored. Confirm no administrator PDF,
    contribution statement, or API key is requested.
 4. Try to create a second template using the same name with different capitalization. Confirm it
    is rejected, while updating the currently selected template under its own name still succeeds.
-5. Open the link as examinee A. Confirm the fixed model is shown, then upload a PDF and
+5. Open the link as test taker A. Confirm the fixed model is shown, then upload a PDF and
    contribution statement.
 6. Generate once with a pasted OpenRouter key. Confirm the pasted field clears and the key is
    absent from SQLite, job JSON, logs, exports, and backups.
-7. Repeat with examinee B using browser OAuth/PKCE. Confirm browser storage is scoped to
-   examinee B's greCAPTCHA account and cannot be used by another account in that profile.
-8. Confirm each upload creates a distinct question set/attempt owned by the administrator but bound
-   to the uploading examinee. One examinee must not be able to poll or open the other's job.
-9. Revoke the conference link and confirm new visits fail while already-created attempts remain.
+7. Repeat with test taker B using browser OAuth/PKCE. Confirm browser storage is scoped to
+   test taker B's greCAPTCHA account and cannot be used by another account in that profile.
+8. Confirm each upload creates a distinct question set/attempt owned by the creator but bound
+   to the uploading test taker. One test taker must not be able to poll or open the other's job.
+9. Revoke the invitation and confirm new visits fail while already-created attempts remain.
 
-### Examinee-funded grading
+### Taker-funded grading
 
-1. Finish examinee A's conference assessment.
-2. Confirm submission does not start grading until the examinee supplies a key again.
+1. Finish test taker A's assessment.
+2. Confirm submission does not start grading until the test taker supplies a key again.
 3. Submit a pasted key on the completion screen. Confirm the field clears, grading begins
    immediately, and the result appears without administrator action.
-4. Finish examinee B's assessment and select the connected browser PKCE key at grading.
+4. Finish test taker B's assessment and select the connected browser PKCE key at grading.
 5. Confirm no generation or grading key appears in the database, logs, or report.
-6. Attempt to call the conference grading endpoint as the administrator, examinee A for examinee B,
+6. Attempt to call the taker-funded grading endpoint as the creator, test taker A for test taker B,
    and an unrelated account. Confirm all are denied.
-7. Submit feedback and verify the same immutability and administrator-report behavior as Track A.
+7. Submit feedback and verify the same immutability and creator-report behavior as Track A.
+
+## Track C: taker pays / creator uploads
+
+1. Select **Test taker** as payer and **Test creator** as material uploader.
+2. Confirm the creator must provide a PDF and contribution/coverage statement before publishing,
+   but is not asked to connect an OpenRouter credential.
+3. Open the invitation as both test takers. Confirm neither sees material-upload fields, both see
+   the creator-provided filename, and both must supply a key for generation.
+4. Confirm each taker gets a separately generated set from the same stored creator material.
+5. Submit each assessment. Confirm each taker is prompted for a key again for grading and no key
+   appears in SQLite, job JSON, logs, exports, or backups.
+
+## Track D: creator pays / taker uploads
+
+1. Select **Test creator** as payer and **Test taker** as material uploader.
+2. Confirm the creator must connect or paste a safeguarded credential but does not see material
+   upload or contribution fields before publishing.
+3. Open the invitation as both test takers. Confirm each must provide source material and a
+   contribution/coverage statement, but neither sees API-key controls.
+4. Confirm generation starts with the creator's stored credential and creates a distinct set and
+   attempt for each taker.
+5. Submit both assessments. Confirm grading starts immediately with no key prompt and can complete
+   while the creator is offline.
 
 ## Authorization and isolation
 
-1. Attempt to read another administrator's template, publish/revoke its conference link, inspect its
+1. Attempt to read another creator's template, publish/revoke its invitation, inspect its
    encrypted credential status, open its outline, or poll its jobs. Confirm denial.
-2. Confirm a taker cannot access administrator-only outlines or exports.
-3. Confirm an administrator cannot use the examinee feedback endpoint unless that account is also the
+2. Confirm a taker cannot access creator-only outlines or exports.
+3. Confirm a creator cannot use the feedback endpoint unless that account is also the
    attempt's recorded taker.
-4. Disconnect the professor credential. Confirm course generation/grading fails clearly rather
+4. Disconnect the creator credential. Confirm creator-funded generation/grading fails clearly rather
    than falling back to another account's key.
-5. Reconnect a new professor key and confirm subsequent course work uses it.
+5. Reconnect a new creator key and confirm subsequent creator-funded work uses it.
 
 ## Restart and recovery matrix
 
 Test each case with a single Railway instance:
 
-1. **Course or conference generation:** restart during generation. The temporary key must not
-   survive; the job should fail explicitly. Retry course generation with the registered
-   professor credential, or conference generation with a freshly supplied examinee key.
-2. **Course grading:** restart while grading. The job should return to the queue and resume using
-   the professor's encrypted credential. Answers must remain submitted and no key prompt should
-   appear.
-3. **Conference grading:** restart while grading. The job should fail because its temporary key
-   was discarded. Returning examinees should be prompted to supply a key again; retry must reuse
+1. **Taker-funded generation:** restart during generation. The temporary key must not
+   survive; the job should fail explicitly and retry should require a freshly supplied key.
+2. **Creator-funded generation or grading:** restart while the job runs. It should return to the
+   queue and resume using the creator's encrypted credential. No key prompt should appear.
+3. **Taker-funded grading:** restart while grading. The job should fail because its temporary key
+   was discarded. Returning test takers should be prompted to supply a key again; retry must reuse
    the submitted answers rather than create a new attempt.
 4. Repeat with expired, exhausted, revoked, and malformed keys. Errors must be visible and jobs
    must not silently remain queued.
 
 ## Export, responsive UI, and final checks
 
-1. Test desktop and narrow mobile layouts for the global workflow control above the dashboard
-   tabs, both creation forms, the Course credential panel, `/take/` and `/conference/` pages,
+1. Test desktop and narrow mobile layouts for both global workflow controls above the dashboard
+   tabs, both creation forms, the creator credential panel, `/take/` and `/invite/` pages,
    grading progress, results, feedback, and administrator reports. Switch workflows with an
    incompatible saved template selected and confirm the template selection clears; load a saved
-   template and confirm the global control changes to its workflow. Confirm the dashboard labels
+   template and confirm both global controls change to its choices. Confirm the dashboard labels
    owner-side results as **Tests I've Created** and taker-side results as **Tests I've Taken**.
    Confirm neither creation form nor the participant/review screens show per-question countdown
    or soft-limit controls. With an overall limit configured, confirm only the overall countdown
    appears and expires as expected; without one, confirm no countdown appears. In both cases,
    confirm exported `duration_ms` and first-interaction timing fields are still populated.
-2. Open **Tests I've Created** and confirm each Course question set and each Conference template
-   appears once as a top-level test, including tests with no attempts. Confirm Conference
-   examinee-generated question sets do not appear as separate tests. Search by test name,
-   workflow, model, examinee username, manuscript name, and attempt status.
-3. Expand both a Course and Conference test. Confirm all and only their attempts appear beneath
+2. Open **Tests I've Created** and confirm each directly generated set and each invitation template
+   appears once as a top-level test, including tests with no attempts. Confirm invitation-generated
+   question sets do not appear as separate tests. Search by test name, payer/uploader choice,
+   model, test-taker username, manuscript name, and attempt status.
+3. Expand both a directly generated and invitation-based test. Confirm all and only their attempts appear beneath
    them, and that graded attempts open their reports. Delete one attempt and confirm its answers,
    grade, timing, and feedback disappear while the parent test and its other attempts remain.
 4. From each top-level test, create or copy its invitation and successfully open it as another
-   account. Revoke a Conference invitation and confirm new visits fail; republish it and confirm
-   the newly copied link works. Confirm Course invitations remain reusable.
-5. Delete a Course test with attempts and verify the confirmation states how many attempts will
-   be lost, then confirm the set and every child attempt disappear. Delete a Conference test and
+   account. Revoke an invitation and confirm new visits fail; republish it and confirm
+   the newly copied link works. Confirm `/take/` invitations remain reusable.
+5. Delete a generated test with attempts and verify the confirmation states how many attempts will
+   be lost, then confirm the set and every child attempt disappear. Delete an invitation test and
    confirm its template, invitation, submissions, generated manuscript sets, attempts, reports,
    feedback, and files all disappear. Confirm another creator's tests are unchanged.
-6. Export administrator attempts. Confirm expected usernames, answers, `workflow_type`,
+6. Export creator attempts. Confirm expected usernames, answers, `api_key_payer`,
+   `material_uploader`,
    `examinee_feedback`, and `examinee_feedback_submitted_at` are present, and that each answer row
    contains only the comment submitted for that question.
 7. Confirm a second feedback POST returns 409 and no update endpoint exists.
 8. Search Railway logs and a database copy for the exact test key strings.
-9. Restart once after all work completes. Confirm templates, conference submissions, attempts,
-   grades, encrypted professor credential metadata, and feedback remain available.
+9. Restart once after all work completes. Confirm templates, invitation submissions, attempts,
+   grades, encrypted creator credential metadata, and feedback remain available.
 10. Restore the pre-test backup or delete test accounts and revoke all OpenRouter test keys.

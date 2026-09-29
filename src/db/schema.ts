@@ -113,8 +113,11 @@ export const studyTemplates = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    workflowType: text("workflow_type").notNull().default("course"),
-    conferenceShareToken: text("conference_share_token"),
+    apiKeyPayer: text("api_key_payer").notNull().default("creator"),
+    materialUploader: text("material_uploader").notNull().default("creator"),
+    invitationShareToken: text("conference_share_token"),
+    materialFileName: text("material_file_name"),
+    materialContributions: text("material_contributions"),
     configJson: text("config_json").notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
@@ -123,7 +126,7 @@ export const studyTemplates = sqliteTable(
     uniqueIndex("study_templates_owner_name_unique").on(table.ownerUserId, table.name),
     index("study_templates_owner_idx").on(table.ownerUserId),
     uniqueIndex("study_templates_conference_share_token_unique").on(
-      table.conferenceShareToken,
+      table.invitationShareToken,
     ),
   ],
 );
@@ -155,7 +158,8 @@ export const questionSets = sqliteTable(
     sourceTemplateId: text("source_template_id").references(() => studyTemplates.id, {
       onDelete: "set null",
     }),
-    workflowType: text("workflow_type").notNull().default("course"),
+    apiKeyPayer: text("api_key_payer").notNull().default("creator"),
+    materialUploader: text("material_uploader").notNull().default("creator"),
     schemaVersion: integer("schema_version").notNull().default(1),
     /** Human-chosen label for the set. Falls back to the PDF filename when left blank. */
     name: text("name"),

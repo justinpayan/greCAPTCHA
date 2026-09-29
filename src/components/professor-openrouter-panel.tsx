@@ -40,11 +40,15 @@ export function ProfessorOpenRouterPanel({ error: pageError = "" }: { error?: st
   }, [refresh]);
 
   async function connect() {
+    setBusy("save");
     setError("");
     try {
       await beginOpenRouterOAuth("server");
+      await refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to start OpenRouter sign-in.");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -92,8 +96,8 @@ export function ProfessorOpenRouterPanel({ error: pageError = "" }: { error?: st
         <strong>API Access</strong>
         <p>
           Connect with OpenRouter or paste an app-specific OpenRouter key once. Either credential is
-          encrypted on the server and used automatically when a student submits a course
-          assessment.
+          encrypted on the server and used automatically whenever the test creator pays for
+          generation or grading.
         </p>
         <p className="key-warning">
           OpenRouter requires a <strong>positive spending limit</strong> and{" "}
@@ -141,11 +145,11 @@ export function ProfessorOpenRouterPanel({ error: pageError = "" }: { error?: st
           </button>
         )}
         <div className="key-paste-control">
-          <label htmlFor="professorOpenRouterKey">
+          <label htmlFor="creatorOpenRouterKey">
             {status.connected ? "Or replace with a pasted key" : "Or paste an API key"}
           </label>
           <input
-            id="professorOpenRouterKey"
+            id="creatorOpenRouterKey"
             className="control"
             type="password"
             autoComplete="off"
@@ -173,7 +177,6 @@ export function ProfessorOpenRouterPanel({ error: pageError = "" }: { error?: st
                 ? "Replace with pasted key"
                 : "Save pasted key"}
           </button>
-          <small>The key value is never shown again after submission.</small>
         </div>
         {[error, pageError]
           .filter((message, index, all) => message && all.indexOf(message) === index)

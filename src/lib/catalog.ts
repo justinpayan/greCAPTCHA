@@ -318,8 +318,8 @@ export async function listAttempts(ownerUserId: string): Promise<AttemptListEntr
 /**
  * The creator dashboard's real hierarchy.
  *
- * Course tests are generated sets. Conference tests are reusable templates whose examinees each
- * generate a private set, so those generated sets are deliberately folded into their template.
+ * Immediately generated tests are question sets. Any workflow that needs a test-taker choice is
+ * an invitation template whose per-taker generated sets are folded into the template.
  */
 export async function listCreatedTests(ownerUserId: string): Promise<CreatedTestEntry[]> {
   const [sets, templates, rows, answered] = await Promise.all([
@@ -331,12 +331,7 @@ export async function listCreatedTests(ownerUserId: string): Promise<CreatedTest
     db
       .select()
       .from(studyTemplates)
-      .where(
-        and(
-          eq(studyTemplates.ownerUserId, ownerUserId),
-          eq(studyTemplates.workflowType, "conference"),
-        ),
-      )
+      .where(eq(studyTemplates.ownerUserId, ownerUserId))
       .orderBy(desc(studyTemplates.createdAt)),
     db
       .select({
@@ -394,11 +389,19 @@ export async function listCreatedTests(ownerUserId: string): Promise<CreatedTest
     }
   }
 
-  const courseTests: CreatedTestEntry[] = sets
-    .filter((set) => set.workflowType === "course")
+  const invitationTemplates = templates.filter(
+    (template) =>
+      template.apiKeyPayer !== "creator" || template.materialUploader !== "creator",
+  );
+  const invitationTemplateIds = new Set(invitationTemplates.map((template) => template.id));
+  const generatedTests: CreatedTestEntry[] = sets
+    .filter(
+      (set) => !set.sourceTemplateId || !invitationTemplateIds.has(set.sourceTemplateId),
+    )
     .map((set) => ({
       id: set.id,
-      workflowType: "course",
+      apiKeyPayer: set.apiKeyPayer === "taker" ? "taker" : "creator",
+      materialUploader: set.materialUploader === "taker" ? "taker" : "creator",
       name: questionSetLabel(set.name, set.paperName),
       modelId: set.modelId,
       questionCount: (JSON.parse(set.questionsJson) as StoredQuestion[]).length,
@@ -407,24 +410,25 @@ export async function listCreatedTests(ownerUserId: string): Promise<CreatedTest
       createdAt: set.createdAt,
       attempts: attemptsBySet.get(set.id) ?? [],
     }));
-  const conferenceTests: CreatedTestEntry[] = templates.map((template) => {
+  const invitationTests: CreatedTestEntry[] = invitationTemplates.map((template) => {
     const config = JSON.parse(template.configJson) as StudyTemplateConfig;
     return {
       id: template.id,
-      workflowType: "conference",
+      apiKeyPayer: template.apiKeyPayer === "taker" ? "taker" : "creator",
+      materialUploader: template.materialUploader === "taker" ? "taker" : "creator",
       name: template.name,
       modelId: config.modelId,
       questionCount: config.blocks.reduce((total, block) => total + block.count, 0),
-      invitationEnabled: Boolean(template.conferenceShareToken),
-      invitationPath: template.conferenceShareToken
-        ? `/conference/${template.conferenceShareToken}`
+      invitationEnabled: Boolean(template.invitationShareToken),
+      invitationPath: template.invitationShareToken
+        ? `/invite/${template.invitationShareToken}`
         : null,
       createdAt: template.createdAt,
       attempts: attemptsByTemplate.get(template.id) ?? [],
     };
   });
 
-  return [...courseTests, ...conferenceTests].sort((left, right) =>
+  return [...generatedTests, ...invitationTests].sort((left, right) =>
     right.createdAt.localeCompare(left.createdAt),
   );
 }

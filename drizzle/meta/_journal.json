@@ -176,6 +176,20 @@
       "when": 1790623365676,
       "tag": "0024_pdf_title",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1790631053741,
+      "tag": "0025_add_workflow_dimensions",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1790631099048,
+      "tag": "0026_remove_legacy_workflow_type",
+      "breakpoints": true
     }
   ]
 }

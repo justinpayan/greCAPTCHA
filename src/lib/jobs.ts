@@ -39,7 +39,7 @@ export async function enqueueGenerationJob(
   ownerUserId: string,
   file: { name: string; arrayBuffer(): Promise<ArrayBuffer> },
   input: Omit<GenerationJobPayload, "questionSetId" | "filePath" | "fileName">,
-  apiKey: string,
+  apiKey?: string,
 ) {
   const questionSetOwnerUserId = input.questionSetOwnerUserId ?? ownerUserId;
   const setLimit = Math.max(1, Number(process.env.MAX_SETS_PER_ACCOUNT ?? "100"));
@@ -92,7 +92,7 @@ export async function enqueueGenerationJob(
     }
     throw error;
   }
-  registerJobKey(id, apiKey);
+  if (apiKey) registerJobKey(id, apiKey);
   void tick();
   return { jobId: id };
 }
@@ -178,7 +178,7 @@ export async function enqueueGradingJob(
 export async function enqueueAutomaticGrading(attemptId: string) {
   const row = await db
     .select({
-      workflowType: questionSets.workflowType,
+      apiKeyPayer: questionSets.apiKeyPayer,
       ownerUserId: questionSets.ownerUserId,
     })
     .from(attempts)
@@ -186,7 +186,7 @@ export async function enqueueAutomaticGrading(attemptId: string) {
     .where(eq(attempts.id, attemptId))
     .get();
   if (!row) throw new Error("Attempt not found.");
-  if (row.workflowType === "conference") {
+  if (row.apiKeyPayer === "taker") {
     return { pendingEvaluation: true as const, gradingCredentialRequired: true as const };
   }
   const grading = await enqueueGradingJob(attemptId, {
@@ -209,7 +209,7 @@ export async function getOwnedJob(id: string, ownerUserId: string) {
   return publicJob(job);
 }
 
-export async function getConferenceJob(id: string, takerUserId: string) {
+export async function getInvitationJob(id: string, takerUserId: string) {
   const job = await db
     .select({ job: jobs })
     .from(jobs)
@@ -228,6 +228,8 @@ export async function getConferenceJob(id: string, takerUserId: string) {
   return publicJob(job.job);
 }
 
+export const getConferenceJob = getInvitationJob;
+
 export async function retryOwnedJob(id: string, ownerUserId: string, apiKey?: string) {
   const job = await db
     .select()
@@ -240,8 +242,8 @@ export async function retryOwnedJob(id: string, ownerUserId: string, apiKey?: st
     if (!fs.existsSync(payload.filePath)) {
       throw new Error("The uploaded PDF is no longer available. Start generation again.");
     }
-    if (!apiKey && payload.workflowType === "course") {
-      apiKey = await requireOpenRouterCredential(ownerUserId);
+    if (!apiKey && payload.credentialOwnerUserId) {
+      apiKey = await requireOpenRouterCredential(payload.credentialOwnerUserId);
     }
   }
   if (!apiKey) throw new Error("Supply an OpenRouter key to retry this job.");
@@ -267,7 +269,7 @@ export async function getAttemptGradingJob(attemptId: string) {
       status: attempts.status,
       gradingJson: attempts.gradingJson,
       takerUsername: attempts.takerUsername,
-      workflowType: questionSets.workflowType,
+      apiKeyPayer: questionSets.apiKeyPayer,
     })
     .from(attempts)
     .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
@@ -294,11 +296,11 @@ export async function getAttemptGradingJob(attemptId: string) {
     ? {
         ...publicJob(job),
         gradingCredentialRequired:
-          attempt.workflowType === "conference" && job.status === "failed",
+          attempt.apiKeyPayer === "taker" && job.status === "failed",
       }
     : {
         status: "not_started",
-        gradingCredentialRequired: attempt.workflowType === "conference",
+        gradingCredentialRequired: attempt.apiKeyPayer === "taker",
       };
 }
 
@@ -349,8 +351,10 @@ async function executeJob(job: typeof jobs.$inferSelect & { runCount: number }) 
   try {
     let result: unknown;
     if (job.type === "generation") {
-      const apiKey = requireJobKey(job.id);
       const payload = JSON.parse(job.payloadJson) as GenerationJobPayload;
+      const apiKey = payload.credentialOwnerUserId
+        ? await requireOpenRouterCredential(payload.credentialOwnerUserId)
+        : requireJobKey(job.id);
       result = await executeGeneration(job.ownerUserId, payload, apiKey, async (current, total) => {
         await db
           .update(jobs)
@@ -434,15 +438,15 @@ async function tick() {
 export async function startJobWorker() {
   if (workerStarted) return;
   workerStarted = true;
-  // Temporary examinee keys intentionally do not survive restarts. Course grading jobs reference
-  // an encrypted administrator credential and can safely be put back on the queue.
+  // Temporary test-taker keys intentionally do not survive restarts. Creator-funded jobs reference
+  // an encrypted creator credential and can safely be put back on the queue.
   const interrupted = await db
     .select()
     .from(jobs)
     .where(inArray(jobs.status, ACTIVE_STATUSES));
   for (const job of interrupted) {
     const payload = JSON.parse(job.payloadJson) as { credentialOwnerUserId?: string };
-    const resumable = job.type === "grading" && Boolean(payload.credentialOwnerUserId);
+    const resumable = Boolean(payload.credentialOwnerUserId);
     await db
       .update(jobs)
       .set({

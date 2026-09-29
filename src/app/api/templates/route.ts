@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { studyTemplateConfigSchema, workflowTypeSchema } from "@/lib/quiz";
+import {
+  apiKeyPayerSchema,
+  materialUploaderSchema,
+  studyTemplateConfigSchema,
+} from "@/lib/quiz";
 import { requireUser } from "@/lib/session";
 import { getDraft, listTemplates, saveDraft, saveTemplate } from "@/lib/templates";
 
@@ -25,16 +29,21 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       name?: unknown;
       config?: unknown;
-      workflowType?: unknown;
+      apiKeyPayer?: unknown;
+      materialUploader?: unknown;
       templateId?: unknown;
     };
     const config = studyTemplateConfigSchema.parse(body.config);
-    const workflowType = workflowTypeSchema.parse(body.workflowType ?? "course");
+    const apiKeyPayer = apiKeyPayerSchema.parse(body.apiKeyPayer ?? "creator");
+    const materialUploader = materialUploaderSchema.parse(
+      body.materialUploader ?? "creator",
+    );
     const saved = await saveTemplate(
       user.id,
       String(body.name ?? ""),
       config,
-      workflowType,
+      apiKeyPayer,
+      materialUploader,
       body.templateId ? String(body.templateId) : null,
     );
     return NextResponse.json({ template: saved }, { status: 201 });
