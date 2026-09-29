@@ -352,7 +352,7 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
 
         <section className="landing-section">
           <p className="eyebrow">Cite</p>
-          <h2>Please cite our work</h2>
+          <h2>The preferred bibtex citation for greCAPTCHA is:</h2>
           <pre className="landing-cite">{CITATION}</pre>
         </section>
 

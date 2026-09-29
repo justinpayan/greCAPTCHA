@@ -3,8 +3,9 @@
 import { useState } from "react";
 
 import { Brand } from "@/components/brand";
-
+import { TakerAllowlistField } from "@/components/taker-allowlist-field";
 import { MathText } from "@/components/quiz/math-text";
+import { formatAllowlist } from "@/lib/allowlist";
 import type { QuestionSetOverview, StoredQuestion } from "@/lib/quiz";
 
 const TYPE_LABELS = {
@@ -128,11 +129,16 @@ export function SetOverview({
   onBack,
 }: {
   overview: QuestionSetOverview;
-  onSaved: (patch: { name: string; overallTimeLimitSeconds: number | null }) => void;
+  onSaved: (patch: {
+    name: string;
+    overallTimeLimitSeconds: number | null;
+    takerAllowlist: string[] | null;
+  }) => void;
   onBack: () => void;
 }) {
   const [name, setName] = useState(overview.name);
   const [limitMinutes, setLimitMinutes] = useState(limitToMinutes(overview.overallTimeLimitSeconds));
+  const [allowlistText, setAllowlistText] = useState(formatAllowlist(overview.takerAllowlist));
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -155,7 +161,8 @@ export function SetOverview({
   const nameChanged = name !== overview.name;
   const limitChanged = limitMinutes.trim() !== savedMinutes;
   const nextLimitSeconds = limitMinutes.trim() ? Number(limitMinutes) * 60 : null;
-  const changed = nameChanged || limitChanged;
+  const allowlistChanged = allowlistText !== formatAllowlist(overview.takerAllowlist);
+  const changed = nameChanged || limitChanged || allowlistChanged;
 
   /** Sends only the fields that changed, so saving one cannot clear the other. */
   async function save() {
@@ -163,9 +170,14 @@ export function SetOverview({
     setStatus("");
     setError("");
     try {
-      const body: { name?: string; overallTimeLimitSeconds?: number | null } = {};
+      const body: {
+        name?: string;
+        overallTimeLimitSeconds?: number | null;
+        allowlist?: string;
+      } = {};
       if (nameChanged) body.name = name;
       if (limitChanged) body.overallTimeLimitSeconds = nextLimitSeconds;
+      if (allowlistChanged) body.allowlist = allowlistText;
 
       const response = await fetch(`/api/question-sets/${encodeURIComponent(overview.id)}`, {
         method: "PATCH",
@@ -179,7 +191,15 @@ export function SetOverview({
       const savedLimit = limitChanged
         ? (payload.overallTimeLimitSeconds as number | null)
         : overview.overallTimeLimitSeconds;
-      onSaved({ name: savedName, overallTimeLimitSeconds: savedLimit });
+      const savedAllowlist = allowlistChanged
+        ? ((payload.allowlist as string[] | null) ?? null)
+        : overview.takerAllowlist;
+      if (allowlistChanged) setAllowlistText(formatAllowlist(savedAllowlist));
+      onSaved({
+        name: savedName,
+        overallTimeLimitSeconds: savedLimit,
+        takerAllowlist: savedAllowlist,
+      });
 
       const notes: string[] = [];
       if (nameChanged) {
@@ -200,6 +220,13 @@ export function SetOverview({
             : `Also applied to ${touched} attempt${touched === 1 ? "" : "s"} that ${
                 touched === 1 ? "has" : "have"
               } not started.`,
+        );
+      }
+      if (allowlistChanged) {
+        notes.push(
+          savedAllowlist?.length
+            ? `Restricted to ${savedAllowlist.length} username${savedAllowlist.length === 1 ? "" : "s"}.`
+            : "Anyone with the link can take this test.",
         );
       }
       setStatus(notes.join(" "));
@@ -273,6 +300,12 @@ export function SetOverview({
               }}
             />
           </div>
+
+          <TakerAllowlistField
+            id="setAllowlist"
+            value={allowlistText}
+            onChange={setAllowlistText}
+          />
         </div>
 
         <div className="set-save-row">

@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 
+import { AssessmentNotAllowed } from "@/components/quiz/assessment-not-allowed";
 import { ManuscriptField } from "@/components/manuscript-field";
 import { OpenRouterKeyPanel } from "@/components/openrouter-key-panel";
 import {
@@ -33,6 +34,7 @@ export function AssessmentInvitation({
   const [working, setWorking] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [deniedAs, setDeniedAs] = useState<string | null>(null);
   // OpenRouter problems, shown under the key controls rather than at the bottom of the form.
   const [keyError, setKeyError] = useState("");
 
@@ -92,7 +94,13 @@ export function AssessmentInvitation({
         jobId?: string;
         error?: string;
         errorSource?: string;
+        notAllowed?: boolean;
+        username?: string;
       };
+      if (response.status === 403 && payload.notAllowed) {
+        setDeniedAs(payload.username ?? "");
+        return;
+      }
       if (!response.ok || !payload.jobId) {
         throw errorFromPayload(payload, "Unable to start assessment generation.");
       }
@@ -138,6 +146,10 @@ export function AssessmentInvitation({
       setWorking(false);
       setStatus("");
     }
+  }
+
+  if (deniedAs !== null) {
+    return <AssessmentNotAllowed username={deniedAs} />;
   }
 
   return (

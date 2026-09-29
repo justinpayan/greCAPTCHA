@@ -15,6 +15,7 @@ import {
 } from "@/lib/manuscript-input";
 import { errorResponseBody } from "@/lib/openrouter-errors";
 import { MAX_UPLOAD_BYTES, uploadTooLargeMessage } from "@/lib/uploads";
+import { parseAllowlist } from "@/lib/allowlist";
 import { requireUser } from "@/lib/session";
 import { assertSameOrigin } from "@/lib/security";
 import {
@@ -144,7 +145,6 @@ export async function POST(request: Request) {
     await validateOpenRouterKey(apiKey, { requireSafeguards: true });
     const modelId = String(form.get("modelId") ?? "").trim();
     const pdfEngine = pdfEngineSchema.parse(form.get("pdfEngine"));
-    const randomize = form.get("randomize") === "true";
     const overallRaw = String(form.get("overallTimeLimitSeconds") ?? "").trim();
     const overallTimeLimitSeconds = overallRaw
       ? z.number().int().min(30).max(21_600).parse(Number(overallRaw))
@@ -160,9 +160,9 @@ export async function POST(request: Request) {
     if (blocks.reduce((sum, block) => sum + block.count, 0) > 50) {
       throw new Error("A question set may contain at most 50 questions.");
     }
+    const takerAllowlist = parseAllowlist(form.get("takerAllowlist"));
 
     const file = await loadManuscript(manuscript);
-
     const created = await enqueueGenerationJob(user.id, file, {
       setName,
       sourceTemplateId,
@@ -172,9 +172,10 @@ export async function POST(request: Request) {
       contributions,
       modelId,
       pdfEngine,
-      randomize,
+      randomize: false,
       overallTimeLimitSeconds,
       blocks,
+      takerAllowlist,
     }, apiKey);
     return NextResponse.json(created, { status: 202 });
   } catch (error) {

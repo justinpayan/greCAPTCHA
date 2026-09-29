@@ -16,11 +16,10 @@ export async function POST(
   try {
     const user = await requireUser();
     const { id } = await context.params;
-    const body = (await request.json()) as { randomize?: unknown };
+    await request.json().catch(() => ({}));
     const created = await createAttempt({
       questionSetId: id,
       ownerUserId: user.id,
-      randomize: body.randomize === true,
     });
     return NextResponse.json(created, { status: 201 });
   } catch (error) {

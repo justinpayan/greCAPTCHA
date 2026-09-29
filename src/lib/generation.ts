@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { attempts, conferenceSubmissions, questionSets } from "@/db/schema";
 import { createAttempt } from "@/lib/attempts";
+import { serializeAllowlist } from "@/lib/allowlist";
 import { persistManuscript } from "@/lib/manuscripts";
 import { extractPdfTitle } from "@/lib/pdf-title";
 import {
@@ -13,7 +14,7 @@ import {
   getOpenRouterModels,
 } from "@/lib/openrouter";
 import {
-  orderQuestionsByPage,
+  orderQuestions,
   type ApiKeyPayer,
   type MaterialUploader,
   prepareFillQuestions,
@@ -42,6 +43,7 @@ export type GenerationJobPayload = {
   randomize: boolean;
   overallTimeLimitSeconds: number | null;
   blocks: QuestionBlockConfig[];
+  takerAllowlist?: string[] | null;
 };
 
 export async function executeGeneration(
@@ -73,7 +75,6 @@ export async function executeGeneration(
       (await createAttempt({
         questionSetId: payload.questionSetId,
         ownerUserId,
-        randomize: payload.randomize,
         taker: payload.taker,
       }));
     if (payload.conferenceSubmissionId) {
@@ -141,17 +142,16 @@ export async function executeGeneration(
     modelId: payload.modelId,
     pdfEngine: payload.pdfEngine,
     overallTimeLimitSeconds: payload.overallTimeLimitSeconds,
-    randomize: payload.randomize,
+    randomize: false,
     configJson: JSON.stringify(payload.blocks),
-    // Page order is the default sequence; a randomized attempt shuffles it at creation.
-    questionsJson: JSON.stringify(orderQuestionsByPage(questions)),
+    questionsJson: JSON.stringify(orderQuestions(questions)),
+    takerAllowlistJson: serializeAllowlist(payload.takerAllowlist ?? null),
     createdAt: new Date().toISOString(),
   });
   if (!payload.taker) return { questionSetId: payload.questionSetId };
   const created = await createAttempt({
     questionSetId: payload.questionSetId,
     ownerUserId,
-    randomize: payload.randomize,
     taker: payload.taker,
   });
   if (payload.conferenceSubmissionId) {

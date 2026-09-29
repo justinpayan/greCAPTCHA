@@ -548,7 +548,7 @@ describe("public demo account-to-grade flow", () => {
     );
     const exportHeader = (await buildAnswerCsv(alice.id)).split(/\r?\n/, 1)[0].split(",");
     expect(exportHeader).toEqual([
-      "attempt_id", "question_set_id", "set_name", "paper_name", "model_id",
+      "attempt_id", "question_set_id", "set_name", "paper_name", "contributions", "model_id",
       "api_key_payer", "material_uploader", "attempt_status", "attempt_score", "randomize",
       "attempt_created_at", "attempt_completed_at", "position",
       "question_id", "block_name", "question_type", "warmup",
@@ -636,8 +636,8 @@ describe("public demo account-to-grade flow", () => {
           modelId: "test/model",
           pdfEngine: "native",
           blocks,
-          randomize: true,
-          overallTimeLimitSeconds: null,
+          randomize: false,
+          overallTimeLimitSeconds: 1800,
         },
         "taker",
         "taker",

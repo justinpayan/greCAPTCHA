@@ -100,10 +100,9 @@ review and export.
 - **Previous**, **Next**, and the numbered overview can open any question.
   **Submit assessment** finalizes all drafts, with a warning if any questions
   remain unanswered.
-- Questions are presented in the order of the manuscript pages they draw on, so an
-  attempt moves through the paper once from start to finish. Enabling randomization
-  shuffles the scored questions instead.
-- Warm-up questions appear first and are excluded from the overall score.
+- Questions are presented by type first (multiple choice, then fill in the
+  blank, then free response) and by manuscript page second.
+- Warm-up questions are excluded from the overall score.
 - Fill-in-the-blank and multiple-choice items are graded deterministically;
   free responses are graded in grouped model calls using their rubrics.
 - Questions, options, rubrics, feedback, and answers support LaTeX through

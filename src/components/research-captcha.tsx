@@ -21,6 +21,11 @@ import { ManuscriptField } from "@/components/manuscript-field";
 import { ProfessorOpenRouterPanel } from "@/components/professor-openrouter-panel";
 import { SetOverview } from "@/components/set-overview";
 import {
+  CreatedTestAllowlistEditor,
+  TakerAllowlistField,
+} from "@/components/taker-allowlist-field";
+import { formatAllowlist } from "@/lib/allowlist";
+import {
   loadAttemptEntry,
   serveAttempt,
   type AttemptEntry,
@@ -301,7 +306,8 @@ export function ResearchCaptcha({
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [pdfEngine, setPdfEngine] = useState<PdfEngine>("native");
   const [blocks, setBlocks] = useState<QuestionBlockConfig[]>(createDefaultStudyBlocks);
-  const [randomize, setRandomize] = useState(false);
+  /** In-progress count text so clearing a card's question count does not snap to 0. */
+  const [countDrafts, setCountDrafts] = useState<Record<string, string>>({});
   /** Whole minutes in the form, seconds in the data. Empty means no overall limit. */
   const [overallLimitMinutes, setOverallLimitMinutes] = useState("30");
   const [loadingModels, setLoadingModels] = useState(false);
@@ -323,6 +329,7 @@ export function ResearchCaptcha({
   const [outline, setOutline] = useState<AttemptOutline | null>(null);
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [setName, setSetName] = useState("");
+  const [takerAllowlistText, setTakerAllowlistText] = useState("");
   const [createdTests, setCreatedTests] = useState<CreatedTestEntry[]>([]);
   const [attemptList, setAttemptList] = useState<AttemptListEntry[]>([]);
   const [myAssessments, setMyAssessments] = useState<AttemptListEntry[]>([]);
@@ -371,17 +378,16 @@ export function ResearchCaptcha({
       modelId: selectedModel?.id ?? "",
       pdfEngine,
       blocks,
-      randomize,
+      randomize: false,
       overallTimeLimitSeconds: overallLimitMinutes
         ? Number(overallLimitMinutes) * 60
         : null,
     }),
-    [selectedModel, pdfEngine, blocks, randomize, overallLimitMinutes],
+    [selectedModel, pdfEngine, blocks, overallLimitMinutes],
   );
   function applyConfig(config: StudyTemplateConfig, catalog: CatalogModel[]) {
     setPdfEngine(config.pdfEngine);
     setBlocks(config.blocks);
-    setRandomize(config.randomize);
     setOverallLimitMinutes(
       config.overallTimeLimitSeconds ? String(Math.round(config.overallTimeLimitSeconds / 60)) : "",
     );
@@ -815,7 +821,7 @@ export function ResearchCaptcha({
 
   /** Shows whichever screen an attempt is due: its landing page, or the current question. */
   function showEntry(entry: AttemptEntry) {
-    if (entry.kind !== "closed") pushLayer("assessment");
+    if (entry.kind !== "closed" && entry.kind !== "notAllowed") pushLayer("assessment");
     if (entry.kind === "intro") {
       setAttempt(null);
       setIntro(entry.intro);
@@ -962,6 +968,7 @@ export function ResearchCaptcha({
           config: currentConfig,
           apiKeyPayer,
           materialUploader,
+          allowlist: takerAllowlistText,
         }),
       });
       const payload = await response.json();
@@ -990,9 +997,11 @@ export function ResearchCaptcha({
         apiKeyPayer: ApiKeyPayer;
         materialUploader: MaterialUploader;
         config: StudyTemplateConfig;
+        takerAllowlist?: string[] | null;
       };
       setApiKeyPayer(template.apiKeyPayer);
       setMaterialUploader(template.materialUploader);
+      setTakerAllowlistText(formatAllowlist(template.takerAllowlist));
       if (template.apiKeyPayer === "taker" || template.materialUploader === "taker") {
         setSetName(template.name);
       }
@@ -1098,6 +1107,7 @@ export function ResearchCaptcha({
           apiKeyPayer,
           materialUploader,
           templateId: templateId || undefined,
+          allowlist: takerAllowlistText,
         }),
       });
       const payload = (await response.json()) as {
@@ -1256,7 +1266,7 @@ export function ResearchCaptcha({
     form.set("modelId", config.modelId);
     form.set("pdfEngine", config.pdfEngine);
     form.set("blocks", JSON.stringify(config.blocks));
-    form.set("randomize", String(config.randomize));
+    form.set("randomize", "false");
     form.set(
       "overallTimeLimitSeconds",
       config.overallTimeLimitSeconds === null
@@ -1264,6 +1274,7 @@ export function ResearchCaptcha({
         : String(config.overallTimeLimitSeconds),
     );
     form.set("name", setName);
+    form.set("takerAllowlist", takerAllowlistText);
     form.set("apiKeyPayer", apiKeyPayer);
     form.set("materialUploader", materialUploader);
     if (templateId) form.set("sourceTemplateId", templateId);
@@ -1374,7 +1385,7 @@ export function ResearchCaptcha({
       const response = await fetch(`/api/question-sets/${encodeURIComponent(id)}/attempts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ randomize }),
+        body: JSON.stringify({}),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to load question set.");
@@ -1418,16 +1429,28 @@ export function ResearchCaptcha({
     return (
       <SetOverview
         overview={setOverview}
-        onSaved={({ name, overallTimeLimitSeconds }) => {
+        onSaved={({ name, overallTimeLimitSeconds, takerAllowlist }) => {
           // Keep the open page and the list behind it in step without a refetch of either.
           setSetOverview((current) =>
             current
-              ? { ...current, name, label: name || current.paperName, overallTimeLimitSeconds }
+              ? {
+                  ...current,
+                  name,
+                  label: name || current.paperName,
+                  overallTimeLimitSeconds,
+                  takerAllowlist,
+                }
               : current,
           );
           setCreatedTests((current) =>
             current.map((test) =>
-              test.id === setOverview.id ? { ...test, name: name || setOverview.paperName } : test,
+              test.id === setOverview.id
+                ? {
+                    ...test,
+                    name: name || setOverview.paperName,
+                    takerAllowlist,
+                  }
+                : test,
             ),
           );
         }}
@@ -1840,6 +1863,11 @@ export function ResearchCaptcha({
                                 ? "Creator uploads"
                                 : "Taker uploads"}
                             </span>
+                            {test.takerAllowlist?.length ? (
+                              <span className="pill">
+                                Restricted · {test.takerAllowlist.length}
+                              </span>
+                            ) : null}
                           </div>
                           <span className="catalog-meta">
                             {test.questionCount}{" "}
@@ -1914,6 +1942,21 @@ export function ResearchCaptcha({
                       </div>
                       {expanded && (
                         <div className="created-test-attempts">
+                          {(test.apiKeyPayer !== "creator" ||
+                            test.materialUploader !== "creator") && (
+                            <CreatedTestAllowlistEditor
+                              key={test.id}
+                              testId={test.id}
+                              allowlist={test.takerAllowlist}
+                              onSaved={(next) =>
+                                setCreatedTests((current) =>
+                                  current.map((row) =>
+                                    row.id === test.id ? { ...row, takerAllowlist: next } : row,
+                                  ),
+                                )
+                              }
+                            />
+                          )}
                           {test.attempts.length === 0 ? (
                             <p className="hint catalog-empty">
                               No one has started this test yet. Copy the invitation to share it.
@@ -1940,8 +1983,7 @@ export function ResearchCaptcha({
                                   </div>
                                   <span className="catalog-meta">
                                     {entry.paperName} · {entry.answeredCount} of{" "}
-                                    {entry.totalQuestions} answered
-                                    {entry.randomize && " · randomized"} ·{" "}
+                                    {entry.totalQuestions} answered ·{" "}
                                     {new Date(entry.createdAt).toLocaleString()}
                                   </span>
                                 </div>
@@ -2145,16 +2187,11 @@ export function ResearchCaptcha({
               />
             </div>
 
-            <div className="toggle-group full">
-              <label className="toggle-row">
-                <input
-                  type="checkbox"
-                  checked={randomize}
-                  onChange={(event) => setRandomize(event.target.checked)}
-                />
-                Randomize question order for the first attempt
-              </label>
-            </div>
+            <TakerAllowlistField
+              id="takerAllowlist"
+              value={takerAllowlistText}
+              onChange={setTakerAllowlistText}
+            />
 
             <div className="full">
               <div className="section-heading section-heading-stacked">
@@ -2283,10 +2320,32 @@ export function ResearchCaptcha({
                             type="number"
                             min={1}
                             max={30}
-                            value={block.count}
-                            onChange={(event) =>
-                              updateBlock(block.id, { count: Number(event.target.value) })
-                            }
+                            value={countDrafts[block.id] ?? String(block.count)}
+                            onChange={(event) => {
+                              const raw = event.target.value;
+                              if (raw === "") {
+                                setCountDrafts((current) => ({ ...current, [block.id]: "" }));
+                                return;
+                              }
+                              const next = Number(raw);
+                              if (!Number.isInteger(next) || next < 1 || next > 30) {
+                                setCountDrafts((current) => ({ ...current, [block.id]: raw }));
+                                return;
+                              }
+                              setCountDrafts((current) => {
+                                if (!(block.id in current)) return current;
+                                const { [block.id]: _removed, ...rest } = current;
+                                return rest;
+                              });
+                              updateBlock(block.id, { count: next });
+                            }}
+                            onBlur={() => {
+                              setCountDrafts((current) => {
+                                if (!(block.id in current)) return current;
+                                const { [block.id]: _removed, ...rest } = current;
+                                return rest;
+                              });
+                            }}
                           />
                         </div>
                         {block.type === "fill_blank" && (

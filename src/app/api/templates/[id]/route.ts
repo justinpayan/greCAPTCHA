@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { deleteTemplate, getTemplate } from "@/lib/templates";
+import { parseAllowlist } from "@/lib/allowlist";
+import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
+import { deleteTemplate, getTemplate, setTemplateAllowlist } from "@/lib/templates";
 
 export const runtime = "nodejs";
 
@@ -23,6 +25,24 @@ export async function GET(
     return NextResponse.json({ template: await getTemplate(id, user.id) });
   } catch (error) {
     return errorResponse(error, "Unable to load the template.");
+  }
+}
+
+export async function PATCH(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    assertSameOrigin(request);
+    const user = await requireUser();
+    const { id } = await context.params;
+    const body = (await request.json()) as { allowlist?: unknown };
+    if (!("allowlist" in body)) throw new Error("Nothing to update.");
+    return NextResponse.json({
+      allowlist: await setTemplateAllowlist(id, user.id, parseAllowlist(body.allowlist)),
+    });
+  } catch (error) {
+    return errorResponse(error, "Unable to update the template.");
   }
 }
 

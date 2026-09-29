@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { attemptAnswers, attempts } from "@/db/schema";
-import { buildResult, loadAttemptContext } from "@/lib/attempts";
+import { buildResult, hydrateAssessmentResult, loadAttemptContext } from "@/lib/attempts";
 import { backupInBackground } from "@/lib/backup";
 import { locateEvidence } from "@/lib/evidence";
 import { gradeFreeResponseBlock } from "@/lib/openrouter";
@@ -99,6 +99,7 @@ export async function finalizeAttempt(
     questionSetId: input.set.id,
     takerUsername: input.attempt.takerUsername,
     paperName: input.set.paperName,
+    contributions: input.set.contributions,
     order: input.order,
     questions: input.questions,
     answers: gradedAnswers,
@@ -128,10 +129,10 @@ export async function ensureGraded(attemptId: string, apiKey: string): Promise<A
   const quiz = await loadAttemptContext(attemptId);
   if (quiz.attempt.status === "graded" && quiz.attempt.gradingJson) {
     const result = JSON.parse(quiz.attempt.gradingJson) as AssessmentResult;
-    return {
-      ...result,
-      takerUsername: result.takerUsername ?? quiz.attempt.takerUsername,
-    };
+    return hydrateAssessmentResult(result, {
+      takerUsername: quiz.attempt.takerUsername,
+      contributions: quiz.set.contributions,
+    });
   }
   const answers = await db
     .select()

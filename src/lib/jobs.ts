@@ -15,6 +15,7 @@ import {
   registerJobKey,
   requireJobKey,
 } from "@/lib/openrouter-key-store";
+import { hydrateAssessmentResult } from "@/lib/attempts";
 import { requireOpenRouterCredential } from "@/lib/openrouter-credentials";
 import { decodeJobError, encodeJobError } from "@/lib/openrouter-errors";
 import type { AssessmentResult } from "@/lib/quiz";
@@ -107,6 +108,7 @@ export async function enqueueGradingJob(
       status: attempts.status,
       gradingJson: attempts.gradingJson,
       takerUsername: attempts.takerUsername,
+      contributions: questionSets.contributions,
     })
     .from(attempts)
     .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
@@ -116,10 +118,10 @@ export async function enqueueGradingJob(
   if (row.status === "graded" && row.gradingJson) {
     const result = JSON.parse(row.gradingJson) as AssessmentResult;
     return {
-      result: {
-        ...result,
-        takerUsername: result.takerUsername ?? row.takerUsername,
-      },
+      result: hydrateAssessmentResult(result, {
+        takerUsername: row.takerUsername,
+        contributions: row.contributions,
+      }),
     };
   }
   const existing = await db
@@ -270,6 +272,7 @@ export async function getAttemptGradingJob(attemptId: string) {
       gradingJson: attempts.gradingJson,
       takerUsername: attempts.takerUsername,
       apiKeyPayer: questionSets.apiKeyPayer,
+      contributions: questionSets.contributions,
     })
     .from(attempts)
     .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
@@ -280,10 +283,10 @@ export async function getAttemptGradingJob(attemptId: string) {
     const result = JSON.parse(attempt.gradingJson) as AssessmentResult;
     return {
       status: "completed",
-      result: {
-        ...result,
-        takerUsername: result.takerUsername ?? attempt.takerUsername,
-      },
+      result: hydrateAssessmentResult(result, {
+        takerUsername: attempt.takerUsername,
+        contributions: attempt.contributions,
+      }),
     };
   }
   const job = await db

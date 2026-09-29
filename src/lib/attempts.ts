@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { and, count, desc, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/db";
+import { AssessmentNotAllowedError, isUsernameAllowed, readStoredAllowlist } from "@/lib/allowlist";
 import { questionSetLabel } from "@/lib/catalog";
 import {
   attemptAnswers,
@@ -18,7 +19,7 @@ import {
   draftHasAnswer,
   parseDraft,
   questionBlockName,
-  shuffled,
+  orderQuestions,
   toPublicQuestion,
   type AssessmentResult,
   type AttemptIntro,
@@ -47,7 +48,6 @@ import {
 export async function createAttempt(input: {
   questionSetId: string;
   ownerUserId?: string;
-  randomize: boolean;
   taker?: { id: string; username: string };
 }): Promise<{ attemptId: string }> {
   if (input.ownerUserId) {
@@ -77,24 +77,14 @@ export async function createAttempt(input: {
   if (!set) throw new Error("Question set not found.");
 
   const questions = JSON.parse(set.questionsJson) as StoredQuestion[];
-  // Warm-ups lead the attempt in card order and are never shuffled into the sequence, so
-  // every participant meets the same orientation items first and their latencies stay
-  // comparable. Randomization applies to the scored questions only.
-  const warmupOrder = questions.filter(isWarmup).map((question) => question.id);
-  const scoredOrder = questions
-    .filter((question) => !isWarmup(question))
-    .map((question) => question.id);
-  const order = [
-    ...warmupOrder,
-    ...(input.randomize ? shuffled(scoredOrder) : scoredOrder),
-  ];
+  const order = orderQuestions(questions).map((question) => question.id);
   const id = randomUUID();
 
   await db.insert(attempts).values({
     id,
     questionSetId: input.questionSetId,
     overallTimeLimitSeconds: set.overallTimeLimitSeconds,
-    randomize: input.randomize,
+    randomize: false,
     linkEnabled: Boolean(input.taker),
     takerUserId: input.taker?.id ?? null,
     takerUsername: input.taker?.username ?? null,
@@ -176,11 +166,16 @@ async function createTakerAttemptIfNeeded(
     .orderBy(desc(attempts.createdAt))
     .get();
   if (existing) return existing;
+  if (
+    set.ownerUserId !== taker.id &&
+    !isUsernameAllowed(taker.username, readStoredAllowlist(set.takerAllowlistJson))
+  ) {
+    throw new AssessmentNotAllowedError(taker.username);
+  }
 
   return createAttempt({
     questionSetId: set.id,
     ownerUserId: set.ownerUserId,
-    randomize: set.randomize,
     taker,
   });
 }
@@ -237,12 +232,17 @@ export async function getAttemptState(
   if (!attempt) throw new Error("Attempt not found.");
 
   if (attempt.status === "graded" && attempt.gradingJson) {
+    const set = await db
+      .select({ contributions: questionSets.contributions })
+      .from(questionSets)
+      .where(eq(questionSets.id, attempt.questionSetId))
+      .get();
     const result = JSON.parse(attempt.gradingJson) as AssessmentResult;
     return {
-      result: {
-        ...result,
-        takerUsername: result.takerUsername ?? attempt.takerUsername,
-      },
+      result: hydrateAssessmentResult(result, {
+        takerUsername: attempt.takerUsername,
+        contributions: set?.contributions,
+      }),
     };
   }
   if (attempt.status === "submitted") return { pendingEvaluation: true };
@@ -532,11 +532,24 @@ function criterionGradesFor(
   });
 }
 
+/** Fills fields that older stored grade payloads may omit. */
+export function hydrateAssessmentResult(
+  result: AssessmentResult,
+  extras: { takerUsername?: string | null; contributions?: string | null },
+): AssessmentResult {
+  return {
+    ...result,
+    takerUsername: result.takerUsername ?? extras.takerUsername ?? null,
+    contributions: result.contributions ?? extras.contributions ?? "",
+  };
+}
+
 export function buildResult(input: {
   attemptId: string;
   questionSetId: string;
   takerUsername: string | null;
   paperName: string;
+  contributions: string;
   order: string[];
   questions: StoredQuestion[];
   answers: Array<typeof attemptAnswers.$inferSelect>;
@@ -615,6 +628,7 @@ export function buildResult(input: {
     questionSetId: input.questionSetId,
     takerUsername: input.takerUsername,
     paperName: input.paperName,
+    contributions: input.contributions,
     overallScore: scoredReviews.length ? Math.round(overallScore * 10) / 10 : 0,
     scoredQuestionCount: scoredReviews.length,
     warmupQuestionCount: reviews.length - scoredReviews.length,

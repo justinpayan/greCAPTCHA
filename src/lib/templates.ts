@@ -14,6 +14,10 @@ import {
 } from "@/db/schema";
 import { deleteManuscript, deleteTemplateMaterial } from "@/lib/manuscripts";
 import {
+  readStoredAllowlist,
+  serializeAllowlist,
+} from "@/lib/allowlist";
+import {
   generationConfigSchema,
   studyTemplateConfigSchema,
   type ApiKeyPayer,
@@ -55,6 +59,7 @@ export async function getTemplate(id: string, ownerUserId: string) {
     invitationShareToken: row.invitationShareToken,
     materialFileName: row.materialFileName,
     materialContributions: row.materialContributions,
+    takerAllowlist: readStoredAllowlist(row.takerAllowlistJson),
     updatedAt: row.updatedAt,
     config: studyTemplateConfigSchema.parse(JSON.parse(row.configJson)),
   };
@@ -67,6 +72,7 @@ export async function saveTemplate(
   apiKeyPayer: ApiKeyPayer,
   materialUploader: MaterialUploader,
   templateId?: string | null,
+  takerAllowlist?: string[] | null,
 ) {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Give the template a name.");
@@ -111,6 +117,10 @@ export async function saveTemplate(
       )
       .get();
     if (!existing) throw new Error("Template not found.");
+    const nextAllowlistJson =
+      takerAllowlist === undefined
+        ? existing.takerAllowlistJson
+        : serializeAllowlist(takerAllowlist);
     await db
       .update(studyTemplates)
       .set({
@@ -122,6 +132,7 @@ export async function saveTemplate(
           apiKeyPayer === "creator" && materialUploader === "creator"
             ? null
             : existing.invitationShareToken,
+        takerAllowlistJson: nextAllowlistJson,
         updatedAt: now,
       })
       .where(eq(studyTemplates.id, existing.id))
@@ -149,6 +160,7 @@ export async function saveTemplate(
       apiKeyPayer,
       materialUploader,
       configJson,
+      takerAllowlistJson: serializeAllowlist(takerAllowlist ?? null),
       createdAt: now,
       updatedAt: now,
     });
@@ -207,8 +219,26 @@ export async function getTemplateByInvitationToken(token: string) {
     materialUploader: row.materialUploader as MaterialUploader,
     materialFileName: row.materialFileName,
     materialContributions: row.materialContributions,
+    takerAllowlist: readStoredAllowlist(row.takerAllowlistJson),
     config: studyTemplateConfigSchema.parse(JSON.parse(row.configJson)),
   };
+}
+
+export async function setTemplateAllowlist(
+  id: string,
+  ownerUserId: string,
+  allowlist: string[] | null,
+) {
+  const result = await db
+    .update(studyTemplates)
+    .set({
+      takerAllowlistJson: serializeAllowlist(allowlist),
+      updatedAt: new Date().toISOString(),
+    })
+    .where(and(eq(studyTemplates.id, id), eq(studyTemplates.ownerUserId, ownerUserId)))
+    .run();
+  if (result.changes !== 1) throw new Error("Template not found.");
+  return allowlist;
 }
 
 /** Backward-compatible names for existing `/conference` links and callers. */

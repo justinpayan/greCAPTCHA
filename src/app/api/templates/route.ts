@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { parseAllowlist } from "@/lib/allowlist";
 import {
   apiKeyPayerSchema,
   materialUploaderSchema,
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
       apiKeyPayer?: unknown;
       materialUploader?: unknown;
       templateId?: unknown;
+      allowlist?: unknown;
     };
     const config = studyTemplateConfigSchema.parse(body.config);
     const apiKeyPayer = apiKeyPayerSchema.parse(body.apiKeyPayer ?? "creator");
@@ -45,6 +47,7 @@ export async function POST(request: Request) {
       apiKeyPayer,
       materialUploader,
       body.templateId ? String(body.templateId) : null,
+      "allowlist" in body ? parseAllowlist(body.allowlist) : undefined,
     );
     return NextResponse.json({ template: saved }, { status: 201 });
   } catch (error) {

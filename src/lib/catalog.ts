@@ -4,6 +4,7 @@ import { and, count, desc, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { db } from "@/db";
 import { attemptAnswers, attempts, jobs, questionSets, studyTemplates } from "@/db/schema";
+import { readStoredAllowlist, serializeAllowlist } from "@/lib/allowlist";
 import { deleteManuscript } from "@/lib/manuscripts";
 import {
   isWarmup,
@@ -76,6 +77,7 @@ export async function getQuestionSetOverview(id: string, ownerUserId: string): P
     overallTimeLimitSeconds: set.overallTimeLimitSeconds,
     attemptCount: attemptTotal?.total ?? 0,
     createdAt: set.createdAt,
+    takerAllowlist: readStoredAllowlist(set.takerAllowlistJson),
     items: questions.map((question, index) => ({
       position: index + 1,
       questionId: question.id,
@@ -150,6 +152,20 @@ export async function setQuestionSetOverallLimit(
     .where(inArray(attempts.id, unstarted))
     .run();
   return { overallTimeLimitSeconds: seconds, attemptsUpdated: unstarted.length };
+}
+
+export async function setQuestionSetAllowlist(
+  id: string,
+  ownerUserId: string,
+  allowlist: string[] | null,
+) {
+  const result = await db
+    .update(questionSets)
+    .set({ takerAllowlistJson: serializeAllowlist(allowlist) })
+    .where(and(eq(questionSets.id, id), eq(questionSets.ownerUserId, ownerUserId)))
+    .run();
+  if (result.changes !== 1) throw new Error("Question set not found.");
+  return allowlist;
 }
 
 /**
@@ -408,6 +424,7 @@ export async function listCreatedTests(ownerUserId: string): Promise<CreatedTest
       invitationEnabled: Boolean(set.shareToken),
       invitationPath: set.shareToken ? `/take/${set.shareToken}` : null,
       createdAt: set.createdAt,
+      takerAllowlist: readStoredAllowlist(set.takerAllowlistJson),
       attempts: attemptsBySet.get(set.id) ?? [],
     }));
   const invitationTests: CreatedTestEntry[] = invitationTemplates.map((template) => {
@@ -424,6 +441,7 @@ export async function listCreatedTests(ownerUserId: string): Promise<CreatedTest
         ? `/invite/${template.invitationShareToken}`
         : null,
       createdAt: template.createdAt,
+      takerAllowlist: readStoredAllowlist(template.takerAllowlistJson),
       attempts: attemptsByTemplate.get(template.id) ?? [],
     };
   });

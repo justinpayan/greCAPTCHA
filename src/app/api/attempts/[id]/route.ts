@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { isAssessmentNotAllowedError } from "@/lib/allowlist";
 import { AttemptClosedError, requireOpenAttempt } from "@/lib/attempt-access";
 import { closeForTimeout, overallBudget } from "@/lib/attempt-close";
 import { getAttemptState } from "@/lib/attempts";
@@ -14,6 +15,12 @@ export const runtime = "nodejs";
  * session; the Start button on the plan page passes the guard.
  */
 function errorResponse(error: unknown, fallback: string) {
+  if (isAssessmentNotAllowedError(error)) {
+    return NextResponse.json(
+      { error: error.message, notAllowed: true, username: error.username },
+      { status: 403 },
+    );
+  }
   if (error instanceof AttemptClosedError) {
     return NextResponse.json(
       {

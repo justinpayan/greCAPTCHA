@@ -4,6 +4,11 @@ import { and, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/db";
 import { attempts, questionSets } from "@/db/schema";
+import {
+  AssessmentNotAllowedError,
+  isUsernameAllowed,
+  readStoredAllowlist,
+} from "@/lib/allowlist";
 import { currentUser } from "@/lib/session";
 
 /**
@@ -68,6 +73,7 @@ export async function requireOpenAttempt(
   const attempt = await db
     .select({
       ownerUserId: questionSets.ownerUserId,
+      takerAllowlistJson: questionSets.takerAllowlistJson,
       linkEnabled: attempts.linkEnabled,
       takerUserId: attempts.takerUserId,
       currentIndex: attempts.currentIndex,
@@ -89,6 +95,11 @@ export async function requireOpenAttempt(
   }
   // A taker keeps access so they can finish and return later from Tests I've Taken for results.
   if (attempt.takerUserId === user.id) return;
+  if (
+    !isUsernameAllowed(user.username, readStoredAllowlist(attempt.takerAllowlistJson))
+  ) {
+    throw new AssessmentNotAllowedError(user.username);
+  }
   if (!attempt.linkEnabled) {
     throw new AttemptClosedError(attempt.currentIndex > 0);
   }

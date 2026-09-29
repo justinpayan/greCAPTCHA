@@ -12,6 +12,11 @@ import { errorResponseBody } from "@/lib/openrouter-errors";
 import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
 import { templateMaterialPath } from "@/lib/manuscripts";
+import {
+  AssessmentNotAllowedError,
+  isAssessmentNotAllowedError,
+  isUsernameAllowed,
+} from "@/lib/allowlist";
 import { getTemplateByInvitationToken } from "@/lib/templates";
 import { loadManuscript, readManuscriptSource } from "@/lib/manuscript-input";
 
@@ -23,9 +28,15 @@ export async function GET(
   context: { params: Promise<{ token: string }> },
 ) {
   try {
-    await requireUser();
+    const user = await requireUser();
     const { token } = await context.params;
     const template = await getTemplateByInvitationToken(token);
+    if (
+      template.ownerUserId !== user.id &&
+      !isUsernameAllowed(user.username, template.takerAllowlist)
+    ) {
+      throw new AssessmentNotAllowedError(user.username);
+    }
     return NextResponse.json({
       template: {
         name: template.name,
@@ -38,6 +49,12 @@ export async function GET(
       },
     });
   } catch (error) {
+    if (isAssessmentNotAllowedError(error)) {
+      return NextResponse.json(
+        { error: error.message, notAllowed: true, username: error.username },
+        { status: 403 },
+      );
+    }
     const message = error instanceof Error ? error.message : "Unable to load the invitation.";
     return NextResponse.json({ error: message }, { status: 404 });
   }
@@ -53,6 +70,12 @@ export async function POST(
     const user = await requireUser();
     const { token } = await context.params;
     const template = await getTemplateByInvitationToken(token);
+    if (
+      template.ownerUserId !== user.id &&
+      !isUsernameAllowed(user.username, template.takerAllowlist)
+    ) {
+      throw new AssessmentNotAllowedError(user.username);
+    }
     if (!template.config.modelId || template.config.blocks.length === 0) {
       throw new Error("This invitation is not ready for generation.");
     }
@@ -108,9 +131,10 @@ export async function POST(
         contributions,
         modelId: template.config.modelId,
         pdfEngine: template.config.pdfEngine,
-        randomize: template.config.randomize,
+        randomize: false,
         overallTimeLimitSeconds: template.config.overallTimeLimitSeconds,
         blocks: template.config.blocks,
+        takerAllowlist: template.takerAllowlist,
       },
       apiKey,
     );
@@ -131,6 +155,12 @@ export async function POST(
         .run();
     } catch {
       // Preserve the original generation error if cleanup itself fails.
+    }
+    if (isAssessmentNotAllowedError(error)) {
+      return NextResponse.json(
+        { error: error.message, notAllowed: true, username: error.username },
+        { status: 403 },
+      );
     }
     return NextResponse.json(errorResponseBody(error, "Unable to generate the assessment."), {
       status: 400,

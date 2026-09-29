@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 
+import { parseAllowlist } from "@/lib/allowlist";
 import {
   deleteQuestionSet,
   getQuestionSetOverview,
   renameQuestionSet,
+  setQuestionSetAllowlist,
   setQuestionSetOverallLimit,
 } from "@/lib/catalog";
 import { requireUser } from "@/lib/session";
@@ -32,7 +34,7 @@ export async function GET(
 }
 
 /**
- * Updates a saved set's name, its overall time limit, or both.
+ * Updates a saved set's name, overall time limit, allowlist, or any combination.
  *
  * Each field is applied only when the request actually carries it, so saving one does not clear
  * the other. Questions, answers and attempts already under way are untouched; changing the limit
@@ -48,11 +50,13 @@ export async function PATCH(
     const body = (await request.json()) as {
       name?: unknown;
       overallTimeLimitSeconds?: unknown;
+      allowlist?: unknown;
     };
     const result: {
       name?: string;
       overallTimeLimitSeconds?: number | null;
       attemptsUpdated?: number;
+      allowlist?: string[] | null;
     } = {};
 
     if ("name" in body) {
@@ -66,6 +70,9 @@ export async function PATCH(
       const applied = await setQuestionSetOverallLimit(id, raw as number | null, user.id);
       result.overallTimeLimitSeconds = applied.overallTimeLimitSeconds;
       result.attemptsUpdated = applied.attemptsUpdated;
+    }
+    if ("allowlist" in body) {
+      result.allowlist = await setQuestionSetAllowlist(id, user.id, parseAllowlist(body.allowlist));
     }
     if (Object.keys(result).length === 0) throw new Error("Nothing to update.");
 

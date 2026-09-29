@@ -1750,6 +1750,18 @@ textarea.prompt-control {
   font-weight: 760;
 }
 
+.tested-material {
+  max-width: 42rem;
+  margin: 22px auto 0;
+  text-align: left;
+}
+
+.tested-material p {
+  margin: 6px 0 0;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
 .quiz-meta {
   color: var(--muted);
   font-size: 0.85rem;
@@ -2203,6 +2215,14 @@ button.option.selected {
 .result-navigation {
   display: flex;
   justify-content: flex-end;
+  margin-top: 24px;
+}
+
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
   margin-top: 24px;
 }
 

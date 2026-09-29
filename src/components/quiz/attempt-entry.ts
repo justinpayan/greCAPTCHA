@@ -15,7 +15,8 @@ export type AttemptEntry =
       paused: boolean;
       expired: boolean;
       claimed: boolean;
-    };
+    }
+  | { kind: "notAllowed"; message: string; username: string };
 
 async function readJson(response: Response) {
   return (await response.json()) as Record<string, unknown>;
@@ -34,6 +35,13 @@ export async function loadAttemptEntry(attemptId: string): Promise<AttemptEntry>
   const response = await fetch(`/api/attempts/${id}/intro`);
   const payload = await readJson(response);
 
+  if (response.status === 403 && payload.notAllowed) {
+    return {
+      kind: "notAllowed",
+      message: String(payload.error ?? "You aren't allowed to take this assessment."),
+      username: String(payload.username ?? ""),
+    };
+  }
   if (response.status === 403 && payload.locked) {
     return {
       kind: "closed",
@@ -55,6 +63,13 @@ export async function serveAttempt(attemptId: string): Promise<AttemptEntry> {
   const response = await fetch(`/api/attempts/${encodeURIComponent(attemptId)}`);
   const payload = await readJson(response);
 
+  if (response.status === 403 && payload.notAllowed) {
+    return {
+      kind: "notAllowed",
+      message: String(payload.error ?? "You aren't allowed to take this assessment."),
+      username: String(payload.username ?? ""),
+    };
+  }
   if (response.status === 403 && payload.locked) {
     return {
       kind: "closed",

@@ -31,8 +31,7 @@ const blockBase = {
   name: z.string().max(80).default(""),
   count: z.number().int().min(1).max(30),
   prompt: z.string().min(20).max(20_000),
-  // Warm-up items are graded and reviewed but excluded from the overall score, and they
-  // always lead the attempt in card order even when the rest is randomized.
+  // Warm-up items are graded and reviewed but excluded from the overall score.
   warmup: z.boolean().default(false),
 };
 
@@ -124,6 +123,7 @@ export type QuestionSetOverview = {
   overallTimeLimitSeconds: number | null;
   attemptCount: number;
   createdAt: string;
+  takerAllowlist: string[] | null;
   items: QuestionSetOverviewItem[];
 };
 
@@ -155,6 +155,7 @@ export type CreatedTestEntry = {
   invitationEnabled: boolean;
   invitationPath: string | null;
   createdAt: string;
+  takerAllowlist: string[] | null;
   attempts: AttemptListEntry[];
 };
 
@@ -582,6 +583,8 @@ export type AssessmentResult = {
   /** Username of the account that completed the attempt, when applicable. */
   takerUsername: string | null;
   paperName: string;
+  /** The “what is being tested” statement stored with the question set. */
+  contributions: string;
   /** Equal-weight average across scored questions only; warm-ups are excluded. */
   overallScore: number;
   scoredQuestionCount: number;
@@ -665,21 +668,37 @@ export function prepareFillQuestions(
   });
 }
 
+const QUESTION_TYPE_ORDER = {
+  multiple_choice: 0,
+  fill_blank: 1,
+  free_response: 2,
+} as const;
+
 /**
- * A question set in the order the paper presents its material: by the page each question draws
- * on, earliest first, so an attempt moves through the manuscript once instead of jumping between
- * sections. The sort is stable, so questions on the same page keep their generated order, and a
- * question with no reported page keeps its place after the paged ones. Randomized attempts still
- * shuffle this order when they are created.
+ * Attempt order: question type first (multiple choice, fill in the blank, free
+ * response), then the PDF page each item draws on. The sort is stable, so items
+ * of the same type on the same page keep their generated order, and a question
+ * with no reported page sits after the paged ones of that type.
  */
-export function orderQuestionsByPage<T extends { sourcePage?: number }>(questions: T[]): T[] {
+export function orderQuestions<T extends { type?: string; sourcePage?: number }>(
+  questions: T[],
+): T[] {
   return questions
     .map((question, index) => ({ question, index }))
-    .sort(
-      (a, b) =>
+    .sort((a, b) => {
+      const typeA =
+        QUESTION_TYPE_ORDER[a.question.type as keyof typeof QUESTION_TYPE_ORDER] ??
+        Number.POSITIVE_INFINITY;
+      const typeB =
+        QUESTION_TYPE_ORDER[b.question.type as keyof typeof QUESTION_TYPE_ORDER] ??
+        Number.POSITIVE_INFINITY;
+      return (
+        typeA - typeB ||
         (a.question.sourcePage ?? Number.POSITIVE_INFINITY) -
-          (b.question.sourcePage ?? Number.POSITIVE_INFINITY) || a.index - b.index,
-    )
+          (b.question.sourcePage ?? Number.POSITIVE_INFINITY) ||
+        a.index - b.index
+      );
+    })
     .map(({ question }) => question);
 }
 

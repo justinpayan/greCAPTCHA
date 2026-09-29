@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { AssessmentNotAllowed } from "@/components/quiz/assessment-not-allowed";
 import { loadAttemptEntry, serveAttempt } from "@/components/quiz/attempt-entry";
 import { AttemptIntroPage } from "@/components/quiz/attempt-intro";
 import {
@@ -30,6 +31,7 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
     expired: boolean;
     claimed: boolean;
   } | null>(null);
+  const [notAllowed, setNotAllowed] = useState<{ username: string } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -54,10 +56,17 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
         claimed: entry.claimed,
       });
     }
+    else if (entry.kind === "notAllowed") {
+      setNotAllowed({ username: entry.username });
+    }
     else if (entry.kind === "result") setResult(entry.result);
     else if (entry.kind === "pending") setPendingEvaluation(true);
     else if (entry.kind === "question") setAttempt(entry.attempt);
     else setIntro(entry.intro);
+  }
+
+  if (notAllowed) {
+    return <AssessmentNotAllowed username={notAllowed.username} />;
   }
 
   if (closed) {

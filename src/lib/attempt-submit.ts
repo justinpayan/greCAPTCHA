@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { attemptAnswers, attempts } from "@/db/schema";
 import { backupInBackground } from "@/lib/backup";
-import { loadAttemptContext } from "@/lib/attempts";
+import { hydrateAssessmentResult, loadAttemptContext } from "@/lib/attempts";
 import { noCreditFeedbackJson } from "@/lib/no-credit";
 import {
   draftHasAnswer,
@@ -79,7 +79,15 @@ function gradeDraft(question: StoredQuestion, answerJson: string | null) {
 export async function submitAttempt(attemptId: string, reason: SubmissionReason) {
   const quiz = await loadAttemptContext(attemptId);
   if (quiz.attempt.status === "graded" && quiz.attempt.gradingJson) {
-    return { result: JSON.parse(quiz.attempt.gradingJson) as AssessmentResult };
+    return {
+      result: hydrateAssessmentResult(
+        JSON.parse(quiz.attempt.gradingJson) as AssessmentResult,
+        {
+          takerUsername: quiz.attempt.takerUsername,
+          contributions: quiz.set.contributions,
+        },
+      ),
+    };
   }
   if (quiz.attempt.status !== "active") return { pendingEvaluation: true as const };
 

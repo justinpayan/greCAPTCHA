@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { isAssessmentNotAllowedError } from "@/lib/allowlist";
 import { AttemptClosedError, requireOpenAttempt } from "@/lib/attempt-access";
 import { getAttemptIntro } from "@/lib/attempts";
 
@@ -25,6 +26,12 @@ export async function GET(
     await requireOpenAttempt(id, { allowUnclaimed: true });
     return NextResponse.json({ intro: await getAttemptIntro(id) });
   } catch (error) {
+    if (isAssessmentNotAllowedError(error)) {
+      return NextResponse.json(
+        { error: error.message, notAllowed: true, username: error.username },
+        { status: 403 },
+      );
+    }
     if (error instanceof AttemptClosedError) {
       return NextResponse.json(
         {

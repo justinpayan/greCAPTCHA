@@ -119,6 +119,8 @@ export const studyTemplates = sqliteTable(
     materialFileName: text("material_file_name"),
     materialContributions: text("material_contributions"),
     configJson: text("config_json").notNull(),
+    /** Normalized usernames that may take an invitation. Null or empty means anyone. */
+    takerAllowlistJson: text("taker_allowlist_json"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -177,6 +179,8 @@ export const questionSets = sqliteTable(
     questionsJson: text("questions_json").notNull(),
     /** Unguessable capability used by the reusable, login-required assessment URL. */
     shareToken: text("share_token"),
+    /** Normalized usernames that may take this set. Null or empty means anyone. */
+    takerAllowlistJson: text("taker_allowlist_json"),
     createdAt: text("created_at").notNull(),
   },
   (table) => [

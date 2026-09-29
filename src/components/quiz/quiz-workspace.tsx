@@ -329,6 +329,14 @@ function ResultSections({
               result.warmupQuestionCount === 1 ? "question is" : "questions are"
             } shown below but not counted.`}
         </p>
+        <div className="tested-material">
+          <span className="review-label">What material was tested?</span>
+          <p>
+            {result.contributions?.trim()
+              ? result.contributions
+              : "No test-scope statement was provided."}
+          </p>
+        </div>
       </section>
 
       <section className="review-section">
@@ -780,32 +788,36 @@ export function PendingEvaluationView({
         <p className="eyebrow">Assessment submitted</p>
         <h1>{credentialRequired ? "Submit your key to grade the assessment." : status}</h1>
         {credentialRequired && (
-          <>
-            <OpenRouterKeyPanel
-              apiKey={apiKey}
-              source={keySource}
-              error={keyError}
-              onChange={(key, source) => {
-                setApiKey(key);
-                setKeySource(source);
-                setKeyError("");
-              }}
-            />
-            <button
-              className="primary"
-              type="button"
-              disabled={submittingKey}
-              onClick={() => void submitGradingKey()}
-            >
-              {submittingKey ? "Starting grading…" : "Grade assessment"}
-            </button>
-          </>
+          <OpenRouterKeyPanel
+            apiKey={apiKey}
+            source={keySource}
+            error={keyError}
+            onChange={(key, source) => {
+              setApiKey(key);
+              setKeySource(source);
+              setKeyError("");
+            }}
+          />
         )}
         {error && <p className="error" role="alert">{error}</p>}
-        {onBack && (
-          <button className="primary" type="button" onClick={onBack}>
-            Back to dashboard
-          </button>
+        {(credentialRequired || onBack) && (
+          <div className="result-actions">
+            {credentialRequired && (
+              <button
+                className="primary"
+                type="button"
+                disabled={submittingKey}
+                onClick={() => void submitGradingKey()}
+              >
+                {submittingKey ? "Starting grading…" : "Grade assessment"}
+              </button>
+            )}
+            {onBack && (
+              <button className="primary" type="button" onClick={onBack}>
+                Back to dashboard
+              </button>
+            )}
+          </div>
         )}
       </section>
     </main>

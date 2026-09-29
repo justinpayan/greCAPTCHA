@@ -11,20 +11,9 @@ import { and, eq, gt, lt } from "drizzle-orm";
 
 import { db } from "@/db";
 import { sessions, users } from "@/db/schema";
+import { normalizeUsername, validateUsername } from "@/lib/usernames";
 
 const SCRYPT_KEY_LENGTH = 64;
-
-function normalizeUsername(username: string) {
-  return username.normalize("NFKC").trim().toLowerCase();
-}
-
-function validateUsername(username: string) {
-  const trimmed = username.trim();
-  if (!/^[A-Za-z0-9_.-]{3,32}$/.test(trimmed)) {
-    throw new Error("Username must be 3–32 characters using letters, numbers, ., _, or -.");
-  }
-  return trimmed;
-}
 
 export function validatePassword(password: string) {
   if (password.length < 10) throw new Error("Password must be at least 10 characters.");

@@ -1,6 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 
 import { ConferenceInvitation } from "@/components/conference-invitation";
+import { AssessmentNotAllowed } from "@/components/quiz/assessment-not-allowed";
+import { isUsernameAllowed } from "@/lib/allowlist";
 import { currentUser } from "@/lib/session";
 import { getTemplateByInvitationToken } from "@/lib/templates";
 
@@ -15,6 +17,12 @@ export default async function ConferenceInvitationPage({
 
   try {
     const template = await getTemplateByInvitationToken(token);
+    if (
+      template.ownerUserId !== user.id &&
+      !isUsernameAllowed(user.username, template.takerAllowlist)
+    ) {
+      return <AssessmentNotAllowed username={user.username} />;
+    }
     return (
       <ConferenceInvitation
         token={token}

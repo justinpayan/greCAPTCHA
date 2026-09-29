@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 
+import { AssessmentNotAllowed } from "@/components/quiz/assessment-not-allowed";
+import { isAssessmentNotAllowedError } from "@/lib/allowlist";
 import { getOrCreateTakerAttempt } from "@/lib/attempts";
 import { currentUser } from "@/lib/session";
 
@@ -13,6 +15,14 @@ export default async function TakeAssessmentPage({
   if (!user) {
     redirect(`/login?next=${encodeURIComponent(`/take/${token}`)}`);
   }
-  const { attemptId } = await getOrCreateTakerAttempt(token, user);
+  let attemptId: string;
+  try {
+    ({ attemptId } = await getOrCreateTakerAttempt(token, user));
+  } catch (error) {
+    if (isAssessmentNotAllowedError(error)) {
+      return <AssessmentNotAllowed username={error.username || user.username} />;
+    }
+    throw error;
+  }
   redirect(`/attempt/${attemptId}`);
 }
