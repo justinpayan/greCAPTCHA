@@ -110,6 +110,13 @@ button {
   letter-spacing: -0.02em;
 }
 
+/* The wordmark inside a `.brand` row that also holds other items (the "Public demo" mark). */
+.brand-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
 /* The wordmark as a button: reset the chrome so it still reads as a wordmark, and let the mark
    itself carry the hover so the target is obvious without underlining the product name. */
 .brand-link {
@@ -612,16 +619,8 @@ textarea.control {
   border-top: 1px solid var(--line);
 }
 
-.get-started-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
 .get-started h2 {
-  margin-bottom: 0;
+  margin-bottom: 18px;
   font-size: 1.35rem;
 }
 

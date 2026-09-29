@@ -212,7 +212,7 @@ export function SetOverview({
 
   return (
     <main className="app-shell dashboard-shell">
-      <Brand onHome={onBack} />
+      <Brand onHome={onBack} demoBadge />
 
       <header className="quiz-header sequential-header">
         <div>

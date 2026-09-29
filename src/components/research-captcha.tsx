@@ -1369,15 +1369,15 @@ export function ResearchCaptcha({
         <span className="demo-badge">Public demo</span>
         <span className="account-name">Signed in as {username}</span>
         {/* The landing page, at an address that stays reachable while signed in. */}
-        {getStartedHidden && (
-          <button
-            className="sign-out account-action"
-            type="button"
-            onClick={() => changeGetStartedHidden(false)}
-          >
-            Show guide
-          </button>
-        )}
+        <button
+          className="sign-out account-action"
+          type="button"
+          aria-expanded={!getStartedHidden}
+          aria-controls="get-started-guide"
+          onClick={() => changeGetStartedHidden(!getStartedHidden)}
+        >
+          {getStartedHidden ? "Show guide" : "Hide guide"}
+        </button>
         <Link className="sign-out account-action account-link" href="/about">
           About
         </Link>
@@ -1394,18 +1394,12 @@ export function ResearchCaptcha({
       </div>
       {!getStartedHidden && (
         <>
-          <section className="card get-started" aria-labelledby="get-started-title">
-            <div className="get-started-head">
-              <h2 id="get-started-title">Get started</h2>
-              <button
-                className="collapse-button"
-                type="button"
-                title="Hide this guide. Show it again with “Show guide” at the top of the page."
-                onClick={() => changeGetStartedHidden(true)}
-              >
-                Hide
-              </button>
-            </div>
+          <section
+            className="card get-started"
+            id="get-started-guide"
+            aria-labelledby="get-started-title"
+          >
+            <h2 id="get-started-title">Get started</h2>
             <ol className="get-started-steps">
               <li>
                 <strong>Create.</strong> Generate a question set from a paper in the{" "}

@@ -10,12 +10,44 @@ import Link from "next/link";
  * *Back to dashboard* button rather than navigating to `/`, so the browser-history layer stack it
  * maintains stays in step — a plain link would push an entry and leave Back walking a stale stack.
  */
-export function Brand({ onHome, href }: { onHome?: () => void; href?: string }) {
+export function Brand({
+  onHome,
+  href,
+  demoBadge = false,
+}: {
+  onHome?: () => void;
+  href?: string;
+  /** Adds the "Public demo" mark beside the wordmark, as on every administrator screen. */
+  demoBadge?: boolean;
+}) {
+  if (demoBadge) {
+    // The mark sits outside the clickable wordmark, so only the logo itself navigates.
+    return (
+      <div className="brand">
+        <BrandMark onHome={onHome} href={href} nested />
+        <span className="demo-badge">Public demo</span>
+      </div>
+    );
+  }
+  return <BrandMark onHome={onHome} href={href} />;
+}
+
+function BrandMark({
+  onHome,
+  href,
+  nested = false,
+}: {
+  onHome?: () => void;
+  href?: string;
+  nested?: boolean;
+}) {
+  // Inside a `.brand` row the wordmark must not be a second `.brand` with its own margin.
+  const brand = nested ? "brand-inline" : "brand";
   // Pages outside the dashboard (sign-in, sign-up) have no history stack to keep in step, so a
   // plain link back to the landing page is enough.
   if (href) {
     return (
-      <Link className="brand brand-link" href={href} aria-label="greCAPTCHA home" title="Home">
+      <Link className={`${brand} brand-link`} href={href} aria-label="greCAPTCHA home" title="Home">
         <span className="brand-mark" aria-hidden="true">
           G
         </span>
@@ -26,7 +58,7 @@ export function Brand({ onHome, href }: { onHome?: () => void; href?: string }) 
 
   if (!onHome) {
     return (
-      <div className="brand">
+      <div className={brand}>
         <span className="brand-mark">G</span>
         greCAPTCHA
       </div>
@@ -35,7 +67,7 @@ export function Brand({ onHome, href }: { onHome?: () => void; href?: string }) 
 
   return (
     <button
-      className="brand brand-link"
+      className={`${brand} brand-link`}
       type="button"
       aria-label="greCAPTCHA — back to the dashboard"
       title="Back to the dashboard"
