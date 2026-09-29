@@ -109,6 +109,10 @@ review and export.
 ## Access and data
 
 Accounts use scrypt password hashes and revocable, opaque server-side sessions.
+Signed-in users can select **Change password** from the dashboard, confirm their
+current password, and choose a new password of at least 10 characters. A
+successful change revokes every existing session and immediately creates a new
+session for the browser that performed the change.
 Test-taker keys are never stored by the server. A pasted or
 browser-managed key is sent over HTTPS only for generation or grading, held in
 process memory for that job, and discarded. Test-creator keys connected through

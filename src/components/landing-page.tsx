@@ -83,7 +83,7 @@ function TryIt({ large = false, signedIn }: { large?: boolean; signedIn: boolean
       className={`primary button-link landing-try${large ? " landing-try-large" : ""}`}
       href={signedIn ? "/" : "/signup"}
     >
-      Try it
+      Sign up
     </Link>
   );
 }
