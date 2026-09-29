@@ -7,24 +7,24 @@ const CODE_URL = "https://github.com/justinpayan/greCAPTCHA";
 
 const STAGES = [
   {
-    name: "Decide who pays",
-    text: "Choose whether the test creator's saved OpenRouter credential or a key supplied by each test taker pays for generation and grading.",
+    name: "Structure your workflow",
+    text: "Test creators can upload source material, or allow test takers to upload their own. Test creators can pay all API costs, or have test takers pay.",
   },
   {
-    name: "Decide who uploads",
-    text: "Choose whether the test creator provides shared source material or each test taker provides the material their assessment should cover.",
+    name: "Create question prompts",
+    text: "Create prompts to generate personalized questions about source material.",
   },
   {
-    name: "Configure and share",
-    text: "Select a model and question configuration, then generate a reusable test or publish an invitation for test takers.",
+    name: "Share the link",
+    text: "Share a public link with your test takers.",
   },
   {
     name: "Take the assessment",
-    text: "The test taker answers the generated questions under the conditions selected by the test creator.",
+    text: "Test takers upload their source material and provide an API key (if the test creator hasn't already), and take their personalized test.",
   },
   {
     name: "Review the report",
-    text: "Responses are graded against the rubrics. The report gives overall and per-question scores, the responses, how they matched the rubric, any partial credit, and feedback.",
+    text: "Test creators and takers both receive a graded report immediately upon test completion.",
   },
 ];
 
@@ -195,7 +195,7 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
 
         <section className="landing-section">
           <p className="eyebrow">How it works</p>
-          <h2>Configure responsibility, then assess</h2>
+          <h2>Create question prompts, then share a link with your test takers</h2>
           <ol className="landing-stages">
             {STAGES.map((stage, index) => (
               <li className="card landing-card" key={stage.name}>
@@ -309,27 +309,24 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
             <p className="eyebrow">Public demo</p>
             <h2>Try the prototype</h2>
             <p>
-              This demo runs the prototype used in the study, without proctoring. The test creator
-              independently chooses who pays OpenRouter costs and who uploads source material.
+              First choose your workflow. The test creator can upload source material or have test takers upload their own. The test creator can pay all API costs, or have test takers pay. Example use cases include:
             </p>
             <ul className="landing-list">
               <li>
-                <strong>Conference or journal.</strong> Authors act as test takers: they upload their
+                <strong>Conference or journal.</strong> The venue creates question prompts; authors upload their
                 own manuscripts and pay with their own OpenRouter keys.
               </li>
               <li>
-                <strong>Class assignment.</strong> The instructor acts as test creator, uploads shared
+                <strong>Class assignment.</strong> The instructor uploads shared
                 course material, and pays for generation and grading.
               </li>
               <li>
-                <strong>Class project.</strong> The instructor pays, while each student uploads their
-                own project as the source material for a separately generated assessment.
+                <strong>Class project.</strong> Each student uploads their
+                own project report as source material, but the instructor pays for generation and grading.
               </li>
             </ul>
             <p>
-              Both start from the four question families used in the study. You can also customize
-              them or create your own, each with its own generation prompt, question format, and
-              number of questions.
+              You can use our default set of question prompts, or create your own.
             </p>
           </div>
           <div className="landing-cta-actions">

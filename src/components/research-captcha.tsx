@@ -1510,9 +1510,6 @@ export function ResearchCaptcha({
         <section className="dashboard-workflow" aria-labelledby="workflow-heading">
           <div>
             <span className="field-label" id="workflow-heading">Workflow choices</span>
-            <p className="hint">
-              Decide who pays OpenRouter costs and who provides the source material.
-            </p>
           </div>
           <div>
             <span className="field-label">Who pays OpenRouter costs?</span>
@@ -1525,7 +1522,6 @@ export function ResearchCaptcha({
                 onClick={() => changeWorkflow("creator", materialUploader)}
               >
                 Test creator
-                <small>Uses your saved key</small>
               </button>
               <button
                 type="button"
@@ -1535,7 +1531,6 @@ export function ResearchCaptcha({
                 onClick={() => changeWorkflow("taker", materialUploader)}
               >
                 Test taker
-                <small>Supplies a key when needed</small>
               </button>
             </div>
             <span className="field-label">Who uploads source material?</span>
@@ -1548,7 +1543,6 @@ export function ResearchCaptcha({
                 onClick={() => changeWorkflow(apiKeyPayer, "creator")}
               >
                 Test creator
-                <small>You provide it now</small>
               </button>
               <button
                 type="button"
@@ -1558,7 +1552,6 @@ export function ResearchCaptcha({
                 onClick={() => changeWorkflow(apiKeyPayer, "taker")}
               >
                 Test taker
-                <small>Provides it from the invitation</small>
               </button>
             </div>
           </div>
@@ -2009,7 +2002,7 @@ export function ResearchCaptcha({
                   <ManuscriptField id="paper" error={paperError} onError={setPaperError} />
                   <div className="field full">
                     <label htmlFor="contributions">
-                      What material are we testing the student on?
+                      What material can we test on?
                     </label>
                     {/* No length constraint, blank included: with no statement the generator is told
                         there is no declared scope and covers the whole manuscript. */}
@@ -2017,7 +2010,7 @@ export function ResearchCaptcha({
                       className="control"
                       id="contributions"
                       name="contributions"
-                      placeholder="Enter the sections of the lecture-notes PDF to cover, or describe which aspects of the course-project PDF the assessment should address."
+                      placeholder="Describe which sections or aspects of the source material the assessment should address."
                     />
                   </div>
                 </>
@@ -2450,12 +2443,12 @@ export function ResearchCaptcha({
           <span className="pill">{Math.min(savedSets.length, 5)} of 5</span>
         </div>
         {savedSets.length === 0 ? (
-          <p className="hint">Your five most recently generated question sets will appear here.</p>
+          <p className="hint">Recently generated question sets appear here.</p>
         ) : (
           <div className="recent-set-list">
             {savedSets.slice(0, 5).map((set) => (
               <article className="recent-set" key={set.id}>
-                <strong>{set.label}</strong>
+                <strong title={set.label}>{set.label}</strong>
                 <span>
                   {set.questionCount} {set.questionCount === 1 ? "question" : "questions"} ·{" "}
                   {new Date(set.createdAt).toLocaleDateString()}
