@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
@@ -6,10 +7,12 @@ import { db } from "@/db";
 import { conferenceSubmissions } from "@/db/schema";
 import { enqueueGenerationJob } from "@/lib/jobs";
 import { validateOpenRouterKey } from "@/lib/openrouter";
+import { requireOpenRouterCredential } from "@/lib/openrouter-credentials";
 import { errorResponseBody } from "@/lib/openrouter-errors";
 import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
-import { getConferenceTemplateByToken } from "@/lib/templates";
+import { templateMaterialPath } from "@/lib/manuscripts";
+import { getTemplateByInvitationToken } from "@/lib/templates";
 import { loadManuscript, readManuscriptSource } from "@/lib/manuscript-input";
 
 export const runtime = "nodejs";
@@ -22,13 +25,16 @@ export async function GET(
   try {
     await requireUser();
     const { token } = await context.params;
-    const template = await getConferenceTemplateByToken(token);
+    const template = await getTemplateByInvitationToken(token);
     return NextResponse.json({
       template: {
         name: template.name,
         modelId: template.config.modelId,
         pdfEngine: template.config.pdfEngine,
         questionCount: template.config.blocks.reduce((sum, block) => sum + block.count, 0),
+        apiKeyPayer: template.apiKeyPayer,
+        materialUploader: template.materialUploader,
+        materialFileName: template.materialFileName,
       },
     });
   } catch (error) {
@@ -46,20 +52,34 @@ export async function POST(
     assertSameOrigin(request);
     const user = await requireUser();
     const { token } = await context.params;
-    const template = await getConferenceTemplateByToken(token);
+    const template = await getTemplateByInvitationToken(token);
     if (!template.config.modelId || template.config.blocks.length === 0) {
-      throw new Error("This conference template is not ready for generation.");
+      throw new Error("This invitation is not ready for generation.");
     }
 
     const form = await request.formData();
-    const manuscript = readManuscriptSource(form);
-
-    const contributions = String(form.get("contributions") ?? "").trim();
-    const apiKey = String(form.get("openrouterApiKey") ?? "").trim();
-    const keySource = form.get("keySource") === "oauth" ? "oauth" : "paste";
-    await validateOpenRouterKey(apiKey, { requireSafeguards: keySource === "oauth" });
-    // Downloaded (for a link) only after the key has been accepted.
-    const file = await loadManuscript(manuscript);
+    const contributions =
+      template.materialUploader === "taker"
+        ? String(form.get("contributions") ?? "").trim()
+        : template.materialContributions ?? "";
+    let apiKey: string | undefined;
+    let credentialOwnerUserId: string | undefined;
+    if (template.apiKeyPayer === "taker") {
+      apiKey = String(form.get("openrouterApiKey") ?? "").trim();
+      const keySource = form.get("keySource") === "oauth" ? "oauth" : "paste";
+      await validateOpenRouterKey(apiKey, { requireSafeguards: keySource === "oauth" });
+    } else {
+      await requireOpenRouterCredential(template.ownerUserId);
+      credentialOwnerUserId = template.ownerUserId;
+    }
+    const file =
+      template.materialUploader === "taker"
+        ? await loadManuscript(readManuscriptSource(form))
+        : new File(
+            [fs.readFileSync(templateMaterialPath(template.id))],
+            template.materialFileName ?? "source-material.pdf",
+            { type: "application/pdf" },
+          );
 
     const now = new Date().toISOString();
     await db.insert(conferenceSubmissions).values({
@@ -79,7 +99,9 @@ export async function POST(
       {
         questionSetOwnerUserId: template.ownerUserId,
         sourceTemplateId: template.id,
-        workflowType: "conference",
+        apiKeyPayer: template.apiKeyPayer,
+        materialUploader: template.materialUploader,
+        credentialOwnerUserId,
         conferenceSubmissionId: submissionId,
         taker: { id: user.id, username: user.username },
         setName: file.name.replace(/\.pdf$/i, ""),

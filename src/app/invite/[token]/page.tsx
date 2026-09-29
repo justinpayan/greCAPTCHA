@@ -1,22 +1,22 @@
 import { notFound, redirect } from "next/navigation";
 
-import { ConferenceInvitation } from "@/components/conference-invitation";
+import { AssessmentInvitation } from "@/components/conference-invitation";
 import { currentUser } from "@/lib/session";
 import { getTemplateByInvitationToken } from "@/lib/templates";
 
-export default async function ConferenceInvitationPage({
+export default async function InvitationPage({
   params,
 }: {
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
   const user = await currentUser();
-  if (!user) redirect(`/login?next=${encodeURIComponent(`/conference/${token}`)}`);
+  if (!user) redirect(`/login?next=${encodeURIComponent(`/invite/${token}`)}`);
 
   try {
     const template = await getTemplateByInvitationToken(token);
     return (
-      <ConferenceInvitation
+      <AssessmentInvitation
         token={token}
         template={{
           name: template.name,

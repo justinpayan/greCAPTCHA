@@ -11,8 +11,9 @@ import {
 } from "@/lib/openrouter-browser-key";
 import { errorFromPayload, isOpenRouterError, OpenRouterError } from "@/lib/openrouter-errors";
 import { MAX_PDF_BYTES, pdfTooLargeMessage } from "@/lib/uploads";
+import type { ApiKeyPayer, MaterialUploader } from "@/lib/quiz";
 
-export function ConferenceInvitation({
+export function AssessmentInvitation({
   token,
   template,
 }: {
@@ -22,6 +23,9 @@ export function ConferenceInvitation({
     modelId: string;
     pdfEngine: string;
     questionCount: number;
+    apiKeyPayer: ApiKeyPayer;
+    materialUploader: MaterialUploader;
+    materialFileName: string | null;
   };
 }) {
   const [apiKey, setApiKey] = useState("");
@@ -34,11 +38,12 @@ export function ConferenceInvitation({
 
   function reportError(caught: unknown, fallback: string) {
     const message = caught instanceof Error ? caught.message : fallback;
-    if (isOpenRouterError(caught)) setKeyError(message);
+    if (isOpenRouterError(caught) && template.apiKeyPayer === "taker") setKeyError(message);
     else setError(message);
   }
 
   useEffect(() => {
+    if (template.apiKeyPayer !== "taker") return;
     void completeOpenRouterOAuth()
       .then((connected) => {
         if (connected && "key" in connected) {
@@ -47,27 +52,39 @@ export function ConferenceInvitation({
         }
       })
       .catch((caught) => reportError(caught, "Unable to connect OpenRouter."));
-  }, []);
+  }, [template.apiKeyPayer]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const paper = form.get("paper");
-    if (paper instanceof File && paper.size > MAX_PDF_BYTES) {
+    if (
+      template.materialUploader === "taker" &&
+      paper instanceof File &&
+      paper.size > MAX_PDF_BYTES
+    ) {
       setError(pdfTooLargeMessage(paper.size));
       return;
     }
     setWorking(true);
     setError("");
     setKeyError("");
-    setStatus(form.get("paperUrl") ? "Fetching manuscript…" : "Uploading manuscript…");
+    setStatus(
+      template.materialUploader === "creator"
+        ? "Preparing assessment…"
+        : form.get("paperUrl")
+          ? "Fetching source material…"
+          : "Uploading source material…",
+    );
     try {
-      const key =
-        keySource === "oauth" ? (await validateBrowserOpenRouterKey()).key : apiKey.trim();
-      if (!key) throw new OpenRouterError("Enter or connect an OpenRouter API key.");
-      form.set("openrouterApiKey", key);
-      form.set("keySource", keySource);
-      const response = await fetch(`/api/conference/${encodeURIComponent(token)}`, {
+      if (template.apiKeyPayer === "taker") {
+        const key =
+          keySource === "oauth" ? (await validateBrowserOpenRouterKey()).key : apiKey.trim();
+        if (!key) throw new OpenRouterError("Enter or connect an OpenRouter API key.");
+        form.set("openrouterApiKey", key);
+        form.set("keySource", keySource);
+      }
+      const response = await fetch(`/api/invitations/${encodeURIComponent(token)}`, {
         method: "POST",
         body: form,
       });
@@ -79,11 +96,11 @@ export function ConferenceInvitation({
       if (!response.ok || !payload.jobId) {
         throw errorFromPayload(payload, "Unable to start assessment generation.");
       }
-      if (keySource === "paste") setApiKey("");
+      if (template.apiKeyPayer === "taker" && keySource === "paste") setApiKey("");
       for (;;) {
         await new Promise((resolve) => window.setTimeout(resolve, 1_000));
         const jobResponse = await fetch(
-          `/api/conference/jobs/${encodeURIComponent(payload.jobId)}`,
+          `/api/invitations/jobs/${encodeURIComponent(payload.jobId)}`,
           { cache: "no-store" },
         );
         const jobPayload = (await jobResponse.json()) as {
@@ -132,38 +149,48 @@ export function ConferenceInvitation({
       <form className="card form-card" onSubmit={(event) => void submit(event)}>
         <div className="section-heading">
           <div>
-            <span className="eyebrow">Conference assessment</span>
+            <span className="eyebrow">Assessment invitation</span>
             <h1>{template.name}</h1>
             <p className="hint">
-              Upload or link to your manuscript and add your contribution statement. Your key
-              generates this assessment and is not saved by greCAPTCHA.
+              {template.materialUploader === "taker"
+                ? "Provide the source material for your assessment."
+                : `This assessment uses source material supplied by the test creator${
+                    template.materialFileName ? ` (${template.materialFileName})` : ""
+                  }.`}{" "}
+              {template.apiKeyPayer === "taker"
+                ? "Your OpenRouter key pays for generation and grading and is not saved."
+                : "The test creator pays for generation and grading."}
             </p>
           </div>
         </div>
-        <OpenRouterKeyPanel
-          apiKey={apiKey}
-          source={keySource}
-          error={keyError}
-          onChange={(key, source) => {
-            setApiKey(key);
-            setKeySource(source);
-            setKeyError("");
-          }}
-        />
-        <div className="form-grid">
-          <ManuscriptField id="conference-paper" />
-          <div className="field full">
-            <label htmlFor="conference-contributions">Your contribution statement</label>
-            <textarea
-              className="control"
-              id="conference-contributions"
-              name="contributions"
-              placeholder="Describe the research, theory, analysis, writing, or other work you contributed."
-            />
+        {template.apiKeyPayer === "taker" && (
+          <OpenRouterKeyPanel
+            apiKey={apiKey}
+            source={keySource}
+            error={keyError}
+            onChange={(key, source) => {
+              setApiKey(key);
+              setKeySource(source);
+              setKeyError("");
+            }}
+          />
+        )}
+        {template.materialUploader === "taker" && (
+          <div className="form-grid">
+            <ManuscriptField id="invitation-paper" />
+            <div className="field full">
+              <label htmlFor="invitation-contributions">Contribution or coverage statement</label>
+              <textarea
+                className="control"
+                id="invitation-contributions"
+                name="contributions"
+                placeholder="Describe the material or contributions this assessment should cover."
+              />
+            </div>
           </div>
-        </div>
+        )}
         <p className="hint">
-          {template.questionCount} questions · model selected by the conference administrator
+          {template.questionCount} questions · model selected by the test creator
         </p>
         {status && <p className="status-note">{status}</p>}
         {error && <p className="error" role="alert">{error}</p>}
@@ -174,3 +201,5 @@ export function ConferenceInvitation({
     </main>
   );
 }
+
+export const ConferenceInvitation = AssessmentInvitation;

@@ -23,7 +23,7 @@ If you use our work please cite it. A bibtex blurb is available [below](#please-
 ## Local setup
 
 Requirements: Node.js 20.9+. Set `OPENROUTER_CREDENTIAL_ENCRYPTION_KEY` to 32
-random base64-encoded bytes before connecting a professor OpenRouter account.
+random base64-encoded bytes before connecting a test creator's OpenRouter account.
 
 ```bash
 npm install
@@ -50,40 +50,32 @@ public demo.
 
 1. Create an account at `/signup` with a username and password, or return
    through `/login`.
-2. Choose **Course** or **Conference** with the workflow control above the
-   dashboard tabs. The selection applies to both the default and custom-template
-   creation forms.
-3. For a course, connect the professor's app-specific OpenRouter key with OAuth
-   PKCE or paste it directly, upload the course PDF, describe the material to
-   cover, choose a model, and generate the question set. Either connection
-   method stores one encrypted server credential for automatic grading.
-   Instead of uploading the PDF, you can paste a direct link to it; the server
-   downloads it (public addresses only, same size limit) and checks that it is a
-   real PDF before generating.
-4. For a conference, enter the test-set name and choose the required model and
-   question configuration. **Create and copy conference link** saves the
-   template and copies its reusable examinee invitation; the administrator does not
-   upload a manuscript or provide an OpenRouter key.
-5. Each conference examinee opens that invitation, uploads their manuscript and
-   contribution statement (or links to the PDF), and supplies a pasted or
-   browser-managed PKCE key to generate their assessment.
-6. Course question sets use `/take/...` links. Each signed-in account receives
-   one independent attempt for a shared course question set.
-7. Submission starts grading immediately. Course grading uses the professor's
-   encrypted registered key. Conference grading asks the examinee to supply
-   their key again. After the result appears, the examinee may leave optional
+2. Independently choose **who pays OpenRouter costs** and **who uploads source
+   material**. Both controls apply to the Default and Advanced creation forms.
+3. If the test creator pays, connect or paste an app-specific OpenRouter key.
+   It is encrypted on the server and used for generation and automatic grading.
+   If the test taker pays, their key is used transiently and is never stored.
+4. If the test creator uploads, provide the PDF (or a public PDF URL) and
+   contribution/coverage statement while creating the test. If the test taker
+   uploads, those fields appear on the invitation instead.
+5. Creator-pay/creator-upload generates one reusable question set with a
+   `/take/...` link. The other three combinations create a reusable `/invite/...`
+   link and generate a separate question set for each test taker.
+6. Submission starts grading immediately when the creator pays. When the test
+   taker pays, the completion screen asks them to provide their key again.
+   After the result appears, the test taker may leave optional
    feedback beneath each question and submit all comments once; the submission
    is then immutable.
-8. **Tests I've Created** lists Course tests and Conference invitations first.
+7. **Tests I've Created** lists generated tests and invitation templates first.
    Expand a test to manage its individual attempts and grading reports. Invitation
    links and whole-test deletion live on the parent; reset, report, and
    single-attempt deletion actions live on each child attempt. Deleting a
-   Conference test also deletes every generated manuscript, attempt, grade, and
+   template also deletes every generated manuscript, attempt, grade, and
    feedback record created from that invitation.
-9. Export responses with **Export all attempts as CSV**.
+8. Export responses with **Export all attempts as CSV**.
 
-Test names are unique per creator, case-insensitively, across generated Course
-sets and saved Conference templates.
+Test names are unique per creator, case-insensitively, across generated sets
+and saved invitation templates.
 
 The plan page is researcher-only and includes item descriptions and progress.
 The participant sees one question at a time plus a clickable overview of the
@@ -117,12 +109,12 @@ review and export.
 ## Access and data
 
 Accounts use scrypt password hashes and revocable, opaque server-side sessions.
-Conference examinee keys are never stored by the server. A pasted or
+Test-taker keys are never stored by the server. A pasted or
 browser-managed key is sent over HTTPS only for generation or grading, held in
-process memory for that job, and discarded. Professor keys connected through
+process memory for that job, and discarded. Test-creator keys connected through
 OAuth PKCE or direct paste are encrypted at rest with
-`OPENROUTER_CREDENTIAL_ENCRYPTION_KEY` so course submissions can be graded
-immediately even when the professor is offline. Every stored professor key must
+`OPENROUTER_CREDENTIAL_ENCRYPTION_KEY` so creator-funded submissions can be graded
+immediately even when the creator is offline. Every stored creator key must
 have a positive spending limit and future expiration date.
 Connected-key screens show only generic status and safeguard metadata, never a
 plaintext or shortened key value.
@@ -165,7 +157,7 @@ the replica count: SQLite and a Railway volume belong to one service instance.
    `BACKUP_DIR=./data/backups`, `RATE_LIMIT_SALT`, `PUBLIC_BASE_URL`, and
    `OPENROUTER_CREDENTIAL_ENCRYPTION_KEY`, plus the optional limits shown in
    `.env.example`. Keep both the salt and encryption key stable across deployments;
-   replacing the encryption key makes registered professor credentials unreadable.
+   replacing the encryption key makes registered creator credentials unreadable.
 4. Generate a Railway HTTPS domain or attach a custom domain, then set
    `PUBLIC_BASE_URL` to that exact `https://` origin.
 5. In the volume Backups tab, schedule daily, weekly, and monthly snapshots.
@@ -173,8 +165,8 @@ the replica count: SQLite and a Railway volume belong to one service instance.
 
 The `/api/health` readiness probe checks the database and volume directory.
 Question generation and free-response grading use SQLite-backed job metadata.
-A restart interrupts jobs using temporary conference keys, while course grading
-jobs resume from the encrypted professor credential. Run one Railway instance.
+A restart interrupts jobs using temporary test-taker keys, while creator-funded
+generation and grading jobs resume from the encrypted creator credential. Run one Railway instance.
 Two jobs run at once by default; adjust
 `JOB_CONCURRENCY` between 1 and 4 only after checking memory and OpenRouter limits.
 
@@ -199,8 +191,8 @@ npm test
 npm run test:watch
 ```
 
-Tests cover account/session security, encrypted professor credentials, ephemeral
-conference keys, course auto-grading, conference examinee-funded grading,
+Tests cover account/session security, encrypted creator credentials, ephemeral
+test-taker keys, all four payer/uploader combinations, automatic and taker-funded grading,
 immutable per-question feedback, generation, assessment stages, tenant
 isolation, duplicate job prevention, and bounded concurrent provider work.
 

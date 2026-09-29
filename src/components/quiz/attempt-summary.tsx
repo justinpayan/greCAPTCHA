@@ -78,7 +78,7 @@ export function AttemptSummary({
           })
         : await (async () => {
             const keyForJob =
-              outline.workflowType === "conference"
+              outline.apiKeyPayer === "taker"
                 ? keySource === "oauth"
                   ? (await validateBrowserOpenRouterKey()).key
                   : apiKey
@@ -113,7 +113,7 @@ export function AttemptSummary({
       const message = caught instanceof Error ? caught.message : "Unable to grade the attempt.";
       // The key panel is only on screen for a conference attempt that still needs grading.
       const panelShown =
-        outline.workflowType === "conference" && outline.gradable && !outline.graded;
+        outline.apiKeyPayer === "taker" && outline.gradable && !outline.graded;
       if (isOpenRouterError(caught) && panelShown) setKeyError(message);
       else setError(message);
     } finally {
@@ -176,7 +176,7 @@ export function AttemptSummary({
           type="button"
           disabled={
             working ||
-            (outline.workflowType === "conference" &&
+            (outline.apiKeyPayer === "taker" &&
               outline.gradable &&
               !outline.graded &&
               !apiKey)
@@ -204,7 +204,7 @@ export function AttemptSummary({
         </section>
       )}
 
-      {outline.workflowType === "conference" && outline.gradable && !outline.graded && (
+      {outline.apiKeyPayer === "taker" && outline.gradable && !outline.graded && (
         <OpenRouterKeyPanel
           apiKey={apiKey}
           source={keySource}

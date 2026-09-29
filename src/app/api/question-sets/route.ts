@@ -18,9 +18,10 @@ import { MAX_UPLOAD_BYTES, uploadTooLargeMessage } from "@/lib/uploads";
 import { requireUser } from "@/lib/session";
 import { assertSameOrigin } from "@/lib/security";
 import {
+  apiKeyPayerSchema,
   generationConfigSchema,
+  materialUploaderSchema,
   pdfEngineSchema,
-  workflowTypeSchema,
 } from "@/lib/quiz";
 import { getTemplate } from "@/lib/templates";
 
@@ -94,15 +95,21 @@ export async function POST(request: Request) {
     const manuscript = readManuscriptSource(form);
 
     const contributions = String(form.get("contributions") ?? "").trim();
-    const workflowType = workflowTypeSchema.parse(form.get("workflowType") ?? "course");
-    if (workflowType !== "course") {
-      throw new Error("Conference question sets must be created from an examinee invitation.");
+    const apiKeyPayer = apiKeyPayerSchema.parse(form.get("apiKeyPayer") ?? "creator");
+    const materialUploader = materialUploaderSchema.parse(
+      form.get("materialUploader") ?? "creator",
+    );
+    if (apiKeyPayer !== "creator" || materialUploader !== "creator") {
+      throw new Error("This workflow must be created as a test-taker invitation.");
     }
     const sourceTemplateId = String(form.get("sourceTemplateId") ?? "").trim() || null;
     if (sourceTemplateId) {
       const template = await getTemplate(sourceTemplateId, user.id);
-      if (template.workflowType !== workflowType) {
-        throw new Error("The selected template does not match this workflow.");
+      if (
+        template.apiKeyPayer !== apiKeyPayer ||
+        template.materialUploader !== materialUploader
+      ) {
+        throw new Error("The selected template does not match these workflow choices.");
       }
     }
     const setName = String(form.get("name") ?? "").trim().slice(0, 120);
@@ -114,7 +121,6 @@ export async function POST(request: Request) {
           .where(
             and(
               eq(questionSets.ownerUserId, user.id),
-              eq(questionSets.workflowType, "course"),
               sql`lower(${questionSets.name}) = lower(${setName})`,
             ),
           )
@@ -160,7 +166,9 @@ export async function POST(request: Request) {
     const created = await enqueueGenerationJob(user.id, file, {
       setName,
       sourceTemplateId,
-      workflowType,
+      apiKeyPayer,
+      materialUploader,
+      credentialOwnerUserId: user.id,
       contributions,
       modelId,
       pdfEngine,

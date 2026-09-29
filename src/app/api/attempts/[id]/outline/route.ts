@@ -50,7 +50,7 @@ export async function POST(
     await requireAttemptOwner(id, user.id);
     await enforceRateLimit(request, "evaluation", user.id, 20, 60 * 60);
     const outline = await getAttemptOutline(id);
-    if (outline.workflowType === "course") {
+    if (outline.apiKeyPayer === "creator") {
       const grading = await enqueueGradingJob(id, { credentialOwnerUserId: user.id });
       return NextResponse.json(grading, { status: "result" in grading ? 200 : 202 });
     }

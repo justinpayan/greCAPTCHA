@@ -183,7 +183,9 @@ export async function completeOpenRouterOAuth(): Promise<
     });
     const storedPayload = (await stored.json()) as { error?: string };
     if (!stored.ok) {
-      throw new OpenRouterError(storedPayload.error ?? "Unable to save the professor OpenRouter key.");
+      throw new OpenRouterError(
+        storedPayload.error ?? "Unable to save the test creator's OpenRouter key.",
+      );
     }
     window.dispatchEvent(new Event("grecaptcha:openrouter-credential-changed"));
     return { serverStored: true };

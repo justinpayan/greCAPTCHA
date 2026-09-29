@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 
 import { Brand } from "@/components/brand";
@@ -6,22 +5,25 @@ import { Brand } from "@/components/brand";
 const PAPER_URL = "https://arxiv.org/abs/2609.20481";
 const CODE_URL = "https://github.com/justinpayan/greCAPTCHA";
 
-// The four stages of Figure 1 / Section 3.1 of the paper.
 const STAGES = [
   {
-    name: "Submission",
-    text: "The examinee submits their manuscript and a statement describing their specific contributions.",
+    name: "Decide who pays",
+    text: "Choose whether the test creator's saved OpenRouter credential or a key supplied by each test taker pays for generation and grading.",
   },
   {
-    name: "Generation",
-    text: "The system parses the manuscript and generates questions and grading rubrics, guided by the contribution statement and the administrator's configuration.",
+    name: "Decide who uploads",
+    text: "Choose whether the test creator provides shared source material or each test taker provides the material their assessment should cover.",
   },
   {
-    name: "Examination",
-    text: "The examinee answers the questions under proctored conditions: in a testing center, at a conference, or through a certified at-home exam.",
+    name: "Configure and share",
+    text: "Select a model and question configuration, then generate a reusable test or publish an invitation for test takers.",
   },
   {
-    name: "Reporting",
+    name: "Take the assessment",
+    text: "The test taker answers the generated questions under the conditions selected by the test creator.",
+  },
+  {
+    name: "Review the report",
     text: "Responses are graded against the rubrics. The report gives overall and per-question scores, the responses, how they matched the rubric, any partial credit, and feedback.",
   },
 ];
@@ -131,20 +133,7 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
       </div>
 
       <main className="app-shell landing">
-        <figure className="landing-figure" id="overview">
-          <div className="landing-figure-scroll">
-            <Image
-              src="/figures/workflow.png"
-              alt="The greCAPTCHA process: submit a manuscript and contribution statement, generate an exam from the submission, take the exam at a proctored testing center, and generate a report based on rubrics. The report can then be used for peer review, job screening, admissions, or course projects."
-              width={2325}
-              height={567}
-              sizes="(max-width: 720px) 720px, 1080px"
-              priority
-            />
-          </div>
-        </figure>
-
-        <section className="landing-section" id="problem">
+        <section className="landing-section" id="overview">
           <p className="eyebrow">The problem</p>
           <h2>Authorship no longer guarantees understanding</h2>
           <div className="landing-prose">
@@ -191,7 +180,7 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
           </div>
           <div className="landing-prose">
             <p>
-              This capacity is a prerequisite for verification. Demonstrating it does not establish
+              This capacity is a prerequisite for verification, though it does not establish
               that verification occurred or that the work is correct.
             </p>
             <p>
@@ -206,7 +195,7 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
 
         <section className="landing-section">
           <p className="eyebrow">How it works</p>
-          <h2>From manuscript to report</h2>
+          <h2>Configure responsibility, then assess</h2>
           <ol className="landing-stages">
             {STAGES.map((stage, index) => (
               <li className="card landing-card" key={stage.name}>
@@ -228,7 +217,7 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
           <div className="landing-prose">
             <p>
               Informed by the revised Bloom&apos;s taxonomy, the prototype asks about factual,
-              conceptual, and procedural knowledge through tasks that ask examinees to identify errors,
+              conceptual, and procedural knowledge through tasks that ask test takers to identify errors,
               explain choices, demonstrate background understanding, and assess limitations. The
               examples below come from the study.
             </p>
@@ -315,43 +304,26 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
           </div>
         </section>
 
-        <section className="landing-section">
-          <p className="eyebrow">Limits</p>
-          <h2>What a score does and does not show</h2>
-          <ul className="landing-list landing-prose">
-            <li>
-              Responses may reflect manuscript-specific understanding, but also domain expertise,
-              question ambiguity, assessment conditions, or grading errors. An expert non-author may
-              answer correctly, while a contributing author may struggle with questions outside their
-              role.
-            </li>
-            <li>
-              The prototype&apos;s best false-positive rate was around 20%, mainly because of rigid
-              grading rubrics rather than question quality. Consequential use would need human
-              oversight, accommodations, and meaningful ways to contest questions, grades, and
-              decisions.
-            </li>
-          </ul>
-        </section>
-
         <section className="card landing-cta">
           <div>
             <p className="eyebrow">Public demo</p>
             <h2>Try the prototype</h2>
             <p>
-              This demo runs the prototype used in the study, without proctoring. It supports two
-              workflows:
+              This demo runs the prototype used in the study, without proctoring. The test creator
+              independently chooses who pays OpenRouter costs and who uploads source material.
             </p>
             <ul className="landing-list">
               <li>
-                <strong>Course.</strong> An instructor uploads a PDF, generates a question set, and
-                shares a link. Students&apos; answers are graded automatically with the
-                instructor&apos;s OpenRouter key.
+                <strong>Conference or journal.</strong> Authors act as test takers: they upload their
+                own manuscripts and pay with their own OpenRouter keys.
               </li>
               <li>
-                <strong>Conference.</strong> An organiser creates a reusable invitation. Each examinee
-                uploads their own manuscript and contribution statement and uses their own OpenRouter
-                key.
+                <strong>Class assignment.</strong> The instructor acts as test creator, uploads shared
+                course material, and pays for generation and grading.
+              </li>
+              <li>
+                <strong>Class project.</strong> The instructor pays, while each student uploads their
+                own project as the source material for a separately generated assessment.
               </li>
             </ul>
             <p>

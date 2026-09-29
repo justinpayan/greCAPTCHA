@@ -51,7 +51,7 @@ import { buildAnswerCsv } from "@/lib/export";
 import {
   enqueueGenerationJob,
   enqueueGradingJob,
-  getConferenceJob,
+  getInvitationJob,
   getAttemptGradingJob,
   getOwnedJob,
 } from "@/lib/jobs";
@@ -64,8 +64,9 @@ import { POST as submitAnswer } from "@/app/api/attempts/[id]/answers/route";
 import { POST as navigateAttempt } from "@/app/api/attempts/[id]/navigate/route";
 import { POST as runEvaluation } from "@/app/api/attempts/[id]/outline/route";
 import { POST as submitAttempt } from "@/app/api/attempts/[id]/submit/route";
-import { POST as createConferenceAssessment } from "@/app/api/conference/[token]/route";
-import { POST as gradeConferenceAttempt } from "@/app/api/attempts/[id]/grade/route";
+import { POST as createInvitationAssessment } from "@/app/api/invitations/[token]/route";
+import { POST as uploadTemplateMaterial } from "@/app/api/templates/[id]/material/route";
+import { POST as gradeTakerFundedAttempt } from "@/app/api/attempts/[id]/grade/route";
 import {
   GET as getOpenRouterCredentialStatus,
   POST as saveOpenRouterCredential,
@@ -77,7 +78,7 @@ import {
 import {
   deleteTemplate,
   saveTemplate,
-  setConferenceTemplateSharing,
+  setTemplateSharing,
 } from "@/lib/templates";
 
 let activeProviderCalls = 0;
@@ -218,6 +219,8 @@ async function enqueueSet(userId: string, suffix: string) {
     }),
     {
       setName: `Set ${suffix}`,
+      apiKeyPayer: "creator",
+      materialUploader: "creator",
       contributions: "All sections",
       modelId: "test/model",
       pdfEngine: "native",
@@ -473,7 +476,7 @@ describe("public demo account-to-grade flow", () => {
     const exportHeader = (await buildAnswerCsv(alice.id)).split(/\r?\n/, 1)[0].split(",");
     expect(exportHeader).toEqual([
       "attempt_id", "question_set_id", "set_name", "paper_name", "model_id",
-      "workflow_type", "attempt_status", "attempt_score", "randomize",
+      "api_key_payer", "material_uploader", "attempt_status", "attempt_score", "randomize",
       "attempt_created_at", "attempt_completed_at", "position",
       "question_id", "block_name", "question_type", "warmup",
       "started_at", "first_interaction_at", "first_interaction_ms", "submitted_at",
@@ -499,7 +502,7 @@ describe("public demo account-to-grade flow", () => {
     sessionState.token = "";
   });
 
-  it("runs the examinee-funded conference flow and locks post-grade feedback", async () => {
+  it("runs a test-taker-funded, test-taker-uploaded flow and locks post-grade feedback", async () => {
     const [alice, bob, carol] = await Promise.all([
       db.select().from(users).where(eq(users.usernameNormalized, "alice.test")).get(),
       db.select().from(users).where(eq(users.usernameNormalized, "bob.test")).get(),
@@ -517,10 +520,11 @@ describe("public demo account-to-grade flow", () => {
         randomize: false,
         overallTimeLimitSeconds: null,
       },
-      "conference",
+      "taker",
+      "taker",
     );
     await expect(
-      setConferenceTemplateSharing(incompleteTemplate.id, alice.id, true),
+      setTemplateSharing(incompleteTemplate.id, alice.id, true),
     ).rejects.toThrow("Choose a model");
 
     const template = await saveTemplate(
@@ -533,7 +537,8 @@ describe("public demo account-to-grade flow", () => {
         randomize: false,
         overallTimeLimitSeconds: null,
       },
-      "conference",
+      "taker",
+      "taker",
     );
     await expect(
       saveTemplate(
@@ -546,7 +551,8 @@ describe("public demo account-to-grade flow", () => {
           randomize: false,
           overallTimeLimitSeconds: null,
         },
-        "conference",
+        "taker",
+        "taker",
       ),
     ).rejects.toThrow("already have a test");
     await expect(
@@ -560,12 +566,13 @@ describe("public demo account-to-grade flow", () => {
           randomize: true,
           overallTimeLimitSeconds: null,
         },
-        "conference",
+        "taker",
+        "taker",
         template.id,
       ),
     ).resolves.toMatchObject({ id: template.id });
-    const sharing = await setConferenceTemplateSharing(template.id, alice.id, true);
-    if (!sharing.conferenceShareToken) throw new Error("Conference token missing.");
+    const sharing = await setTemplateSharing(template.id, alice.id, true);
+    if (!sharing.invitationShareToken) throw new Error("Invitation token missing.");
 
     sessionState.token = await createAccountSession(bob.id);
     const form = new FormData();
@@ -577,16 +584,16 @@ describe("public demo account-to-grade flow", () => {
     form.set("contributions", "Designed and evaluated the method.");
     form.set("openrouterApiKey", "sk-or-conference-generation-secret");
     form.set("keySource", "paste");
-    const generationResponse = await createConferenceAssessment(
-      new Request("http://localhost/api/conference/token", {
+    const generationResponse = await createInvitationAssessment(
+      new Request("http://localhost/api/invitations/token", {
         method: "POST",
         body: form,
       }),
-      { params: Promise.resolve({ token: sharing.conferenceShareToken }) },
+      { params: Promise.resolve({ token: sharing.invitationShareToken }) },
     );
     expect(generationResponse.status).toBe(202);
     const generation = await generationResponse.json() as { jobId: string };
-    expect((await getConferenceJob(generation.jobId, bob.id)).status).toMatch(
+    expect((await getInvitationJob(generation.jobId, bob.id)).status).toMatch(
       /queued|running|completed/,
     );
     const generated = await waitForJob(generation.jobId, bob.id);
@@ -672,7 +679,7 @@ describe("public demo account-to-grade flow", () => {
     });
     expect((await getAttemptGradingJob(attemptId)).status).toBe("not_started");
 
-    const gradeResponse = await gradeConferenceAttempt(
+    const gradeResponse = await gradeTakerFundedAttempt(
       new Request("http://localhost/api/attempts/grade", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -778,6 +785,127 @@ describe("public demo account-to-grade flow", () => {
     sessionState.token = "";
   });
 
+  it("supports both mixed payer and material-uploader combinations", async () => {
+    const [alice, bob] = await Promise.all([
+      db.select().from(users).where(eq(users.usernameNormalized, "alice.test")).get(),
+      db.select().from(users).where(eq(users.usernameNormalized, "bob.test")).get(),
+    ]);
+    if (!alice || !bob) throw new Error("Account fixtures missing.");
+
+    const directOnly = await saveTemplate(
+      alice.id,
+      "Creator pays and uploads",
+      {
+        modelId: "test/model",
+        pdfEngine: "native",
+        blocks,
+        randomize: false,
+        overallTimeLimitSeconds: null,
+      },
+      "creator",
+      "creator",
+    );
+    await expect(setTemplateSharing(directOnly.id, alice.id, true)).rejects.toThrow(
+      "Generate this test",
+    );
+
+    for (const dimensions of [
+      {
+        name: "Creator uploads taker pays",
+        apiKeyPayer: "taker" as const,
+        materialUploader: "creator" as const,
+      },
+      {
+        name: "Taker uploads creator pays",
+        apiKeyPayer: "creator" as const,
+        materialUploader: "taker" as const,
+      },
+    ]) {
+      const template = await saveTemplate(
+        alice.id,
+        dimensions.name,
+        {
+          modelId: "test/model",
+          pdfEngine: "native",
+          blocks,
+          randomize: false,
+          overallTimeLimitSeconds: null,
+        },
+        dimensions.apiKeyPayer,
+        dimensions.materialUploader,
+      );
+
+      sessionState.token = await createAccountSession(alice.id);
+      if (dimensions.materialUploader === "creator") {
+        const material = new FormData();
+        material.set(
+          "paper",
+          new Blob(["%PDF-1.7 creator material"], { type: "application/pdf" }),
+          "creator-material.pdf",
+        );
+        material.set("contributions", "Shared material selected by the creator.");
+        const uploaded = await uploadTemplateMaterial(
+          new Request("http://localhost/api/templates/id/material", {
+            method: "POST",
+            body: material,
+          }),
+          { params: Promise.resolve({ id: template.id }) },
+        );
+        expect(uploaded.status).toBe(200);
+      }
+      const sharing = await setTemplateSharing(template.id, alice.id, true);
+      if (!sharing.invitationShareToken) throw new Error("Invitation token missing.");
+
+      sessionState.token = await createAccountSession(bob.id);
+      const form = new FormData();
+      if (dimensions.materialUploader === "taker") {
+        form.set(
+          "paper",
+          new Blob(["%PDF-1.7 taker material"], { type: "application/pdf" }),
+          "taker-material.pdf",
+        );
+        form.set("contributions", "Material selected by the taker.");
+      }
+      if (dimensions.apiKeyPayer === "taker") {
+        form.set("openrouterApiKey", "sk-or-mixed-workflow");
+        form.set("keySource", "paste");
+      }
+      const response = await createInvitationAssessment(
+        new Request("http://localhost/api/invitations/token", {
+          method: "POST",
+          body: form,
+        }),
+        { params: Promise.resolve({ token: sharing.invitationShareToken }) },
+      );
+      expect(response.status).toBe(202);
+      const { jobId } = await response.json() as { jobId: string };
+      const jobRow = await db.select().from(jobs).where(eq(jobs.id, jobId)).get();
+      const jobPayload = JSON.parse(jobRow?.payloadJson ?? "{}") as {
+        credentialOwnerUserId?: string;
+      };
+      expect(jobPayload.credentialOwnerUserId).toBe(
+        dimensions.apiKeyPayer === "creator" ? alice.id : undefined,
+      );
+      const completed = await waitForJob(jobId, bob.id);
+      const attemptId = String(
+        (completed.result as { attemptId?: string } | null)?.attemptId ?? "",
+      );
+      const generated = await db
+        .select({ set: questionSets })
+        .from(attempts)
+        .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
+        .where(eq(attempts.id, attemptId))
+        .get();
+      expect(generated?.set).toMatchObject({
+        apiKeyPayer: dimensions.apiKeyPayer,
+        materialUploader: dimensions.materialUploader,
+      });
+      await deleteTemplate(template.id, alice.id);
+    }
+    await deleteTemplate(directOnly.id, alice.id);
+    sessionState.token = "";
+  });
+
   it("isolates tenants and bounds concurrent provider work", async () => {
     const [alice, bob] = await Promise.all([
       db.select().from(users).where(eq(users.usernameNormalized, "alice.test")).get(),
@@ -875,54 +1003,70 @@ describe("public demo account-to-grade flow", () => {
     if (!alice || !bob) throw new Error("Account fixtures missing.");
 
     const before = await listCreatedTests(alice.id);
-    const conference = before.find(
-      (test) => test.workflowType === "conference" && test.name === "Conference author check",
+    const invitation = before.find(
+      (test) =>
+        test.apiKeyPayer === "taker" &&
+        test.materialUploader === "taker" &&
+        test.name === "Conference author check",
     );
-    expect(conference?.invitationPath).toMatch(/^\/conference\//);
-    expect(conference?.attempts.length).toBeGreaterThan(0);
-    expect(before.some((test) => test.workflowType === "course" && test.attempts.length === 0))
-      .toBe(true);
+    expect(invitation?.invitationPath).toMatch(/^\/invite\//);
+    expect(invitation?.attempts.length).toBeGreaterThan(0);
+    expect(
+      before.some(
+        (test) =>
+          test.apiKeyPayer === "creator" &&
+          test.materialUploader === "creator" &&
+          test.attempts.length === 0,
+      ),
+    ).toBe(true);
 
-    const courseWithAttempt = before.find(
-      (test) => test.workflowType === "course" && test.attempts.length > 0,
+    const generatedWithAttempt = before.find(
+      (test) =>
+        test.apiKeyPayer === "creator" &&
+        test.materialUploader === "creator" &&
+        test.attempts.length > 0,
     );
-    if (!courseWithAttempt) throw new Error("Course test fixture missing.");
-    const removedAttempt = courseWithAttempt.attempts[0];
+    if (!generatedWithAttempt) throw new Error("Generated test fixture missing.");
+    const removedAttempt = generatedWithAttempt.attempts[0];
     await deleteAttempt(removedAttempt.id, alice.id);
     const afterAttemptDelete = await listCreatedTests(alice.id);
-    expect(afterAttemptDelete.find((test) => test.id === courseWithAttempt.id)).toBeTruthy();
+    expect(afterAttemptDelete.find((test) => test.id === generatedWithAttempt.id)).toBeTruthy();
     expect(
       afterAttemptDelete
-        .find((test) => test.id === courseWithAttempt.id)
+        .find((test) => test.id === generatedWithAttempt.id)
         ?.attempts.some((attempt) => attempt.id === removedAttempt.id),
     ).toBe(false);
 
-    const emptyCourse = afterAttemptDelete.find(
-      (test) => test.workflowType === "course" && test.attempts.length === 0,
+    const emptyGenerated = afterAttemptDelete.find(
+      (test) =>
+        test.apiKeyPayer === "creator" &&
+        test.materialUploader === "creator" &&
+        test.attempts.length === 0,
     );
-    if (!emptyCourse) throw new Error("Empty Course test fixture missing.");
-    await deleteQuestionSet(emptyCourse.id, alice.id);
-    expect((await listCreatedTests(alice.id)).some((test) => test.id === emptyCourse.id)).toBe(false);
+    if (!emptyGenerated) throw new Error("Empty generated test fixture missing.");
+    await deleteQuestionSet(emptyGenerated.id, alice.id);
+    expect((await listCreatedTests(alice.id)).some((test) => test.id === emptyGenerated.id))
+      .toBe(false);
 
-    if (!conference) throw new Error("Conference test fixture missing.");
-    const conferenceSetIds = conference.attempts.map((attempt) => attempt.questionSetId);
-    const conferenceAttemptIds = conference.attempts.map((attempt) => attempt.id);
+    if (!invitation) throw new Error("Invitation fixture missing.");
+    const invitationSetIds = invitation.attempts.map((attempt) => attempt.questionSetId);
+    const invitationAttemptIds = invitation.attempts.map((attempt) => attempt.id);
     const bobBefore = await listCreatedTests(bob.id);
-    await deleteTemplate(conference.id, alice.id);
+    await deleteTemplate(invitation.id, alice.id);
 
     expect(
-      await db.select().from(studyTemplates).where(eq(studyTemplates.id, conference.id)),
+      await db.select().from(studyTemplates).where(eq(studyTemplates.id, invitation.id)),
     ).toHaveLength(0);
     expect(
       await db
         .select()
         .from(conferenceSubmissions)
-        .where(eq(conferenceSubmissions.templateId, conference.id)),
+        .where(eq(conferenceSubmissions.templateId, invitation.id)),
     ).toHaveLength(0);
-    for (const setId of conferenceSetIds) {
+    for (const setId of invitationSetIds) {
       expect(await db.select().from(questionSets).where(eq(questionSets.id, setId))).toHaveLength(0);
     }
-    for (const attemptId of conferenceAttemptIds) {
+    for (const attemptId of invitationAttemptIds) {
       expect(await db.select().from(attempts).where(eq(attempts.id, attemptId))).toHaveLength(0);
       expect(await db.select().from(jobs).where(eq(jobs.attemptId, attemptId))).toHaveLength(0);
     }

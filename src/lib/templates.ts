@@ -12,13 +12,14 @@ import {
   questionSets,
   studyTemplates,
 } from "@/db/schema";
-import { deleteManuscript } from "@/lib/manuscripts";
+import { deleteManuscript, deleteTemplateMaterial } from "@/lib/manuscripts";
 import {
   generationConfigSchema,
   studyTemplateConfigSchema,
+  type ApiKeyPayer,
+  type MaterialUploader,
   type StudyTemplateConfig,
   type StudyTemplateSummary,
-  type WorkflowType,
 } from "@/lib/quiz";
 
 const DRAFT_KEY = "template_draft";
@@ -28,8 +29,9 @@ export async function listTemplates(ownerUserId: string): Promise<StudyTemplateS
     .select({
       id: studyTemplates.id,
       name: studyTemplates.name,
-      workflowType: studyTemplates.workflowType,
-      conferenceShareToken: studyTemplates.conferenceShareToken,
+      apiKeyPayer: studyTemplates.apiKeyPayer,
+      materialUploader: studyTemplates.materialUploader,
+      invitationShareToken: studyTemplates.invitationShareToken,
       updatedAt: studyTemplates.updatedAt,
     })
     .from(studyTemplates)
@@ -48,8 +50,11 @@ export async function getTemplate(id: string, ownerUserId: string) {
   return {
     id: row.id,
     name: row.name,
-    workflowType: row.workflowType as WorkflowType,
-    conferenceShareToken: row.conferenceShareToken,
+    apiKeyPayer: row.apiKeyPayer as ApiKeyPayer,
+    materialUploader: row.materialUploader as MaterialUploader,
+    invitationShareToken: row.invitationShareToken,
+    materialFileName: row.materialFileName,
+    materialContributions: row.materialContributions,
     updatedAt: row.updatedAt,
     config: studyTemplateConfigSchema.parse(JSON.parse(row.configJson)),
   };
@@ -59,7 +64,8 @@ export async function saveTemplate(
   ownerUserId: string,
   name: string,
   config: StudyTemplateConfig,
-  workflowType: WorkflowType,
+  apiKeyPayer: ApiKeyPayer,
+  materialUploader: MaterialUploader,
   templateId?: string | null,
 ) {
   const trimmed = name.trim();
@@ -79,18 +85,17 @@ export async function saveTemplate(
       ),
     )
     .get();
-  const duplicateCourseSet = await db
+  const duplicateSet = await db
     .select({ id: questionSets.id })
     .from(questionSets)
     .where(
       and(
         eq(questionSets.ownerUserId, ownerUserId),
-        eq(questionSets.workflowType, "course"),
         sql`lower(${questionSets.name}) = lower(${trimmed})`,
       ),
     )
     .get();
-  if (duplicateTemplate || duplicateCourseSet) {
+  if (duplicateTemplate || duplicateSet) {
     throw new Error(`You already have a test named “${trimmed}”. Choose a different name.`);
   }
 
@@ -111,9 +116,12 @@ export async function saveTemplate(
       .set({
         name: trimmed,
         configJson,
-        workflowType,
-        conferenceShareToken:
-          workflowType === "conference" ? existing.conferenceShareToken : null,
+        apiKeyPayer,
+        materialUploader,
+        invitationShareToken:
+          apiKeyPayer === "creator" && materialUploader === "creator"
+            ? null
+            : existing.invitationShareToken,
         updatedAt: now,
       })
       .where(eq(studyTemplates.id, existing.id))
@@ -121,9 +129,12 @@ export async function saveTemplate(
     return {
       id: existing.id,
       name: trimmed,
-      workflowType,
-      conferenceShareToken:
-        workflowType === "conference" ? existing.conferenceShareToken : null,
+      apiKeyPayer,
+      materialUploader,
+      invitationShareToken:
+        apiKeyPayer === "creator" && materialUploader === "creator"
+          ? null
+          : existing.invitationShareToken,
       updatedAt: now,
     };
   }
@@ -135,76 +146,82 @@ export async function saveTemplate(
       id,
       ownerUserId,
       name: trimmed,
-      workflowType,
+      apiKeyPayer,
+      materialUploader,
       configJson,
       createdAt: now,
       updatedAt: now,
     });
-  return { id, name: trimmed, workflowType, conferenceShareToken: null, updatedAt: now };
+  return {
+    id,
+    name: trimmed,
+    apiKeyPayer,
+    materialUploader,
+    invitationShareToken: null,
+    updatedAt: now,
+  };
 }
 
-export async function setConferenceTemplateSharing(
+export async function setTemplateSharing(
   id: string,
   ownerUserId: string,
   enabled: boolean,
 ) {
   const template = await getTemplate(id, ownerUserId);
-  if (template.workflowType !== "conference") {
-    throw new Error("Only conference templates can publish an examinee link.");
+  if (template.apiKeyPayer === "creator" && template.materialUploader === "creator") {
+    throw new Error("Generate this test before publishing its invitation.");
   }
   if (enabled) {
     if (!template.config.modelId.trim()) {
-      throw new Error("Choose a model before publishing the conference link.");
+      throw new Error("Choose a model before publishing the invitation.");
     }
     const blocks = generationConfigSchema.parse(template.config.blocks);
     if (blocks.reduce((total, block) => total + block.count, 0) > 50) {
-      throw new Error("A conference template may contain at most 50 questions.");
+      throw new Error("An invitation template may contain at most 50 questions.");
+    }
+    if (template.materialUploader === "creator" && !template.materialFileName) {
+      throw new Error("Upload the source material before publishing the invitation.");
     }
   }
-  const conferenceShareToken = enabled ? randomBytes(24).toString("base64url") : null;
+  const invitationShareToken = enabled ? randomBytes(24).toString("base64url") : null;
   await db
     .update(studyTemplates)
-    .set({ conferenceShareToken, updatedAt: new Date().toISOString() })
+    .set({ invitationShareToken, updatedAt: new Date().toISOString() })
     .where(and(eq(studyTemplates.id, id), eq(studyTemplates.ownerUserId, ownerUserId)))
     .run();
-  return { conferenceShareToken };
+  return { invitationShareToken };
 }
 
-export async function getConferenceTemplateByToken(token: string) {
+export async function getTemplateByInvitationToken(token: string) {
   const row = await db
     .select()
     .from(studyTemplates)
-    .where(
-      and(
-        eq(studyTemplates.conferenceShareToken, token),
-        eq(studyTemplates.workflowType, "conference"),
-      ),
-    )
+    .where(eq(studyTemplates.invitationShareToken, token))
     .get();
-  if (!row) throw new Error("Conference invitation not found.");
+  if (!row) throw new Error("Assessment invitation not found.");
   return {
     id: row.id,
     ownerUserId: row.ownerUserId,
     name: row.name,
+    apiKeyPayer: row.apiKeyPayer as ApiKeyPayer,
+    materialUploader: row.materialUploader as MaterialUploader,
+    materialFileName: row.materialFileName,
+    materialContributions: row.materialContributions,
     config: studyTemplateConfigSchema.parse(JSON.parse(row.configJson)),
   };
 }
 
+/** Backward-compatible names for existing `/conference` links and callers. */
+export const setConferenceTemplateSharing = setTemplateSharing;
+export const getConferenceTemplateByToken = getTemplateByInvitationToken;
+
 export async function deleteTemplate(id: string, ownerUserId: string) {
   const template = await db
-    .select({ id: studyTemplates.id, workflowType: studyTemplates.workflowType })
+    .select({ id: studyTemplates.id })
     .from(studyTemplates)
     .where(and(eq(studyTemplates.id, id), eq(studyTemplates.ownerUserId, ownerUserId)))
     .get();
   if (!template) throw new Error("Template not found.");
-
-  if (template.workflowType !== "conference") {
-    await db
-      .delete(studyTemplates)
-      .where(and(eq(studyTemplates.id, id), eq(studyTemplates.ownerUserId, ownerUserId)))
-      .run();
-    return { deletedQuestionSets: 0, deletedAttempts: 0 };
-  }
 
   const deleted = db.transaction((tx) => {
     const linkedSets = tx
@@ -266,6 +283,7 @@ export async function deleteTemplate(id: string, ownerUserId: string) {
   });
 
   for (const setId of deleted.setIds) deleteManuscript(setId);
+  deleteTemplateMaterial(id);
   return {
     deletedQuestionSets: deleted.setIds.length,
     deletedAttempts: deleted.attemptIds.length,

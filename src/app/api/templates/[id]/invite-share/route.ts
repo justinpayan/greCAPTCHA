@@ -19,7 +19,7 @@ export async function POST(
     return NextResponse.json({
       ...result,
       participantPath: result.invitationShareToken
-        ? `/conference/${result.invitationShareToken}`
+        ? `/invite/${result.invitationShareToken}`
         : null,
     });
   } catch (error) {

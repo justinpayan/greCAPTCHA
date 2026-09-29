@@ -25,7 +25,7 @@ export async function POST(
     const attempt = await db
       .select({
         status: attempts.status,
-        workflowType: questionSets.workflowType,
+        apiKeyPayer: questionSets.apiKeyPayer,
         takerUserId: attempts.takerUserId,
       })
       .from(attempts)
@@ -33,10 +33,10 @@ export async function POST(
       .where(eq(attempts.id, id))
       .get();
     if (!attempt || attempt.takerUserId !== user.id) {
-      throw new Error("Only the examinee can submit a conference grading key.");
+      throw new Error("Only the test taker can submit a grading key.");
     }
-    if (attempt.workflowType !== "conference") {
-      throw new Error("Course assessments use the professor's registered grading key.");
+    if (attempt.apiKeyPayer !== "taker") {
+      throw new Error("This assessment uses the test creator's registered grading key.");
     }
     if (attempt.status !== "submitted" && attempt.status !== "graded") {
       throw new Error("Finish the assessment before grading it.");

@@ -4,9 +4,13 @@ export const pdfEngines = ["cloudflare-ai", "mistral-ocr", "native"] as const;
 export const pdfEngineSchema = z.enum(pdfEngines);
 export type PdfEngine = z.infer<typeof pdfEngineSchema>;
 
-export const workflowTypes = ["course", "conference"] as const;
-export const workflowTypeSchema = z.enum(workflowTypes);
-export type WorkflowType = z.infer<typeof workflowTypeSchema>;
+export const apiKeyPayers = ["creator", "taker"] as const;
+export const apiKeyPayerSchema = z.enum(apiKeyPayers);
+export type ApiKeyPayer = z.infer<typeof apiKeyPayerSchema>;
+
+export const materialUploaders = ["creator", "taker"] as const;
+export const materialUploaderSchema = z.enum(materialUploaders);
+export type MaterialUploader = z.infer<typeof materialUploaderSchema>;
 
 export const DEFAULT_FILL_PROMPT = `Generate fill-in-the-blank questions that verify how well a claimed author understands the submitted manuscript.
 
@@ -143,7 +147,8 @@ export type AttemptListEntry = {
 
 export type CreatedTestEntry = {
   id: string;
-  workflowType: WorkflowType;
+  apiKeyPayer: ApiKeyPayer;
+  materialUploader: MaterialUploader;
   name: string;
   modelId: string;
   questionCount: number;
@@ -156,8 +161,9 @@ export type CreatedTestEntry = {
 export type StudyTemplateSummary = {
   id: string;
   name: string;
-  workflowType: WorkflowType;
-  conferenceShareToken: string | null;
+  apiKeyPayer: ApiKeyPayer;
+  materialUploader: MaterialUploader;
+  invitationShareToken: string | null;
   updatedAt: string;
 };
 
@@ -405,7 +411,8 @@ export type AttemptOutline = {
   setLabel: string;
   paperName: string;
   modelId: string;
-  workflowType: WorkflowType;
+  apiKeyPayer: ApiKeyPayer;
+  materialUploader: MaterialUploader;
   status: string;
   /**
    * Whether this individual response may currently be opened by its assigned taker.

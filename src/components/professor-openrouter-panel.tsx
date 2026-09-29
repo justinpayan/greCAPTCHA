@@ -92,8 +92,8 @@ export function ProfessorOpenRouterPanel({ error: pageError = "" }: { error?: st
         <strong>API Access</strong>
         <p>
           Connect with OpenRouter or paste an app-specific OpenRouter key once. Either credential is
-          encrypted on the server and used automatically when a student submits a course
-          assessment.
+          encrypted on the server and used automatically whenever the test creator pays for
+          generation or grading.
         </p>
         <p className="key-warning">
           OpenRouter requires a <strong>positive spending limit</strong> and{" "}
@@ -141,11 +141,11 @@ export function ProfessorOpenRouterPanel({ error: pageError = "" }: { error?: st
           </button>
         )}
         <div className="key-paste-control">
-          <label htmlFor="professorOpenRouterKey">
+          <label htmlFor="creatorOpenRouterKey">
             {status.connected ? "Or replace with a pasted key" : "Or paste an API key"}
           </label>
           <input
-            id="professorOpenRouterKey"
+            id="creatorOpenRouterKey"
             className="control"
             type="password"
             autoComplete="off"
