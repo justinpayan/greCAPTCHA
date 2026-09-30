@@ -2,6 +2,9 @@
 
 Authors: Justin Payan*, Bálint Gyevnár*, Atoosa Kasirzadeh, Nihar B. Shah; (* equal contribution)
 
+The `main` branch holds information about the research article, the code for running the experiments in the research article, and the anonymized data from the article.
+If you want to see the source code for [www.grecaptcha.com](http://www.grecaptcha.com), you should look in the `public_version` branch.
+
 ## Summary
 
 greCAPTCHA is a manuscript-specific assessment tool. Researchers upload a
@@ -15,6 +18,7 @@ the participant during an assessment.
 
 This repository provides supplementary material for the [paper](https://www.cs.cmu.edu/~nihars/preprints/greCAPTCHA.pdf) with the same title as the repo.
 There are two primary artefacts:
+
 1. **Prototype greCAPTCHA:** A web application to host a prototype greCAPTCHA assessment that elicits evidence about whether claimed authors understand their own paper and could take responsibility for them. See below for setup.
 2. **Anonymized Participant Data:** An anonymized dataset of 31 participants' experience interacting with this system, found in the `data_anonymized/` folder.
 
@@ -30,7 +34,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open <http://localhost:3000>. The database is created under `data/`, and
+Open [http://localhost:3000](http://localhost:3000). The database is created under `data/`, and
 checked-in Drizzle migrations run automatically on startup.
 
 Minimum `.env.local` configuration:
@@ -56,14 +60,14 @@ settings.
 1. Sign in at `/login`.
 2. Upload a PDF and enter the contribution statement.
 3. Choose a model and PDF extractor, then configure question cards. Cards can
-   be fill-in-the-blank, multiple-choice, or free response, with optional
+  be fill-in-the-blank, multiple-choice, or free response, with optional
    prompts, card names, warm-up status, and soft time limits.
 4. Generate and review the question set. Saved sets can be renamed, inspected,
-   reused, or deleted.
+  reused, or deleted.
 5. Create an attempt from a saved set, or create a paired experiment with an
-   own-paper and unfamiliar-paper block.
+  own-paper and unfamiliar-paper block.
 6. Use the assessment plan to start an in-person session or copy a participant
-   link. New participant links are disabled until they are ready to use.
+  link. New participant links are disabled until they are ready to use.
 7. Export responses with **Export all attempts as CSV**.
 
 The plan page is researcher-only and includes item descriptions and progress.
@@ -74,16 +78,18 @@ ordinary wrong answers in the review and export.
 ## Assessment behavior
 
 - A landing page appears before each question set. The first question's clock
-  starts only when the participant presses **Start**.
+starts only when the participant presses **Start**.
 - Per-question limits are soft: they record overruns but never cut off an
-  answer. An optional overall set limit is enforced server-side.
+answer. An optional overall set limit is enforced server-side.
 - Warm-up questions appear first and are excluded from the overall score.
 - Fill-in-the-blank and multiple-choice items are graded deterministically;
-  free responses are graded in grouped model calls using their rubrics.
+free responses are graded in grouped model calls using their rubrics.
 - Questions, options, rubrics, feedback, and answers support LaTeX through
-  KaTeX. Malformed math is shown as source text.
+KaTeX. Malformed math is shown as source text.
 - Experiments counterbalance paper order and unfamiliar-paper stratum. A
-  chained experiment link runs both blocks and reveals results together.
+chained experiment link runs both blocks and reveals results together.
+
+
 
 ## Access and data
 
@@ -112,6 +118,8 @@ manual local backup:
 ```bash
 sqlite3 data/research-captcha.db ".backup 'backup-$(date +%F).db'"
 ```
+
+
 
 ## Production and Cloudflare Tunnel
 
@@ -151,6 +159,7 @@ its `-wal` and `-shm` files. This permanently deletes saved sets, attempts, and
 answers.
 
 ## Please cite
+
 If you use our work please use the following citation:
 
 ```
@@ -165,3 +174,4 @@ If you use our work please use the following citation:
   note          = {Justin Payan and B{\'a}lint Gyevn{\'a}r contributed equally.}
 }
 ```
+
