@@ -1043,7 +1043,7 @@ export function ResearchCaptcha({
     if (payload.participantPath) {
       const link = `${window.location.origin}${payload.participantPath}`;
       await navigator.clipboard.writeText(link);
-      setTemplateStatus("Invitation saved, published, and copied.");
+      // No message here: creating the invitation shows its own "Assessment created" notice.
     } else {
       setTemplateStatus("Invitation revoked.");
     }
@@ -2440,9 +2440,31 @@ export function ResearchCaptcha({
           </div>
           {/* Beneath the button that produced it, so the result appears where the eye already is. */}
           {generationNotice && (
-            <p className="template-status dashboard-notice submit-notice" role="status">
-              {generationNotice}
-            </p>
+            <div className="template-status dashboard-notice submit-notice" role="status">
+              <p>
+                {generationNotice}{" "}
+                <button
+                  className="inline-link"
+                  type="button"
+                  onClick={() => {
+                    setMode("resume");
+                    // The tabs are at the top; the notice is at the foot of a long form.
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                >
+                  See Tests You&apos;ve Created
+                </button>
+              </p>
+              <button
+                className="notice-dismiss"
+                type="button"
+                aria-label="Dismiss this notice"
+                title="Dismiss"
+                onClick={() => setGenerationNotice("")}
+              >
+                ×
+              </button>
+            </div>
           )}
         </form>
       )}

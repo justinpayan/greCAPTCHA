@@ -775,8 +775,53 @@ textarea.control {
   background: var(--green-soft);
 }
 
+/* A button that reads as a link inside running text. */
+.inline-link {
+  border: 0;
+  padding: 0;
+  color: var(--green-dark);
+  background: none;
+  font: inherit;
+  font-weight: 720;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.inline-link:hover {
+  color: var(--green);
+}
+
 .dashboard-notice.submit-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
   margin: 16px 0 0;
+}
+
+.dashboard-notice.submit-notice > p {
+  flex: 1;
+  margin: 0;
+}
+
+/* The notice's close control, at its top right. */
+.notice-dismiss {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  padding: 0;
+  color: var(--green-dark);
+  background: transparent;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.notice-dismiss:hover,
+.notice-dismiss:focus-visible {
+  background: rgba(23, 107, 75, 0.12);
 }
 
 /* The heading, then the two questions side by side in equal columns across the full width. */

@@ -197,12 +197,14 @@ export function AssessmentInvitation({
           <div className="form-grid">
             <ManuscriptField id="invitation-paper" />
             <div className="field full">
-              <label htmlFor="invitation-contributions">What material can we test on?</label>
+              <label htmlFor="invitation-contributions">
+                Your contributions to the manuscript PDF
+              </label>
               <textarea
                 className="control"
                 id="invitation-contributions"
                 name="contributions"
-                placeholder="Describe which sections or aspects of the source material the assessment should address."
+                placeholder="Describe what sections or aspects of the manuscript PDF you have contributed to."
               />
             </div>
           </div>
