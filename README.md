@@ -151,7 +151,7 @@ its `-wal` and `-shm` files. This permanently deletes saved sets, attempts, and
 answers.
 
 ## Please cite
-If you use our work please use the following citation (details TBC):
+If you use our work please use the following citation:
 
 ```
 @misc{payan2026grecaptcha,
