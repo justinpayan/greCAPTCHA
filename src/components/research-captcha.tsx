@@ -1459,7 +1459,6 @@ export function ResearchCaptcha({
       <div className="brand">
         <span className="brand-mark">G</span>
         greCAPTCHA
-        <span className="demo-badge">Public demo</span>
         <span className="account-name">Signed in as {username}</span>
         {/* The landing page, at an address that stays reachable while signed in. */}
         <button

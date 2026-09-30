@@ -97,7 +97,6 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
           <header className="landing-header">
             <div className="landing-brand">
               <Brand />
-              <span className="demo-badge">Public demo</span>
             </div>
             <nav className="landing-nav" aria-label="Site">
               <ExternalLink href={PAPER_URL}>Paper</ExternalLink>
@@ -321,7 +320,6 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
 
         <section className="card landing-cta">
           <div>
-            <p className="eyebrow">Public demo</p>
             <h2>Try the prototype</h2>
             <p>
               First choose your workflow. The test creator can upload source material or have test takers upload their own. The test creator can pay all API costs, or have test takers pay. Example use cases include:

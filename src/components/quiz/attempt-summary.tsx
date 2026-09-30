@@ -128,7 +128,7 @@ export function AttemptSummary({
 
   return (
     <main className="app-shell dashboard-shell">
-      <Brand onHome={onBack} demoBadge />
+      <Brand onHome={onBack} />
 
       <header className="quiz-header sequential-header">
         <div>

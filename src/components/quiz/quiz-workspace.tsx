@@ -806,7 +806,7 @@ export function PendingEvaluationView({
 
   return (
     <main className="app-shell dashboard-shell">
-      <Brand href="/" demoBadge />
+      <Brand href="/" />
       <section className="card result neutral-result">
         <p className="eyebrow">Assessment submitted</p>
         <h1>{credentialRequired ? "Submit your API key to grade the assessment." : status}</h1>

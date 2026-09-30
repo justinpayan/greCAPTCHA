@@ -110,13 +110,6 @@ button {
   letter-spacing: -0.02em;
 }
 
-/* The wordmark inside a `.brand` row that also holds other items (the "Public demo" mark). */
-.brand-inline {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-}
-
 /* The wordmark as a button: reset the chrome so it still reads as a wordmark, and let the mark
    itself carry the hover so the target is obvious without underlining the product name. */
 .brand-link {
@@ -138,18 +131,6 @@ button {
 .brand-link:focus-visible .brand-mark {
   background: var(--green-dark);
   transform: translateY(-1px);
-}
-
-/* "Public demo" beside the wordmark; the landing page's green screen recolours it white. */
-.demo-badge {
-  border: 1px solid var(--green);
-  border-radius: 999px;
-  padding: 4px 11px;
-  color: var(--green);
-  font-size: 0.74rem;
-  font-weight: 760;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
 }
 
 .brand-mark {
@@ -3258,12 +3239,6 @@ mark.evidence:focus-visible {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 14px;
-}
-
-.landing-screen .demo-badge {
-  border-color: rgba(255, 255, 255, 0.5);
-  color: white;
-  background: #2b785b;
 }
 
 .landing-scroll {
