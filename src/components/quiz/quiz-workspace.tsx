@@ -744,7 +744,9 @@ export function PendingEvaluationView({
             : payload.status === "queued"
               ? "Your assessment is queued for grading…"
               : payload.status === "failed"
-                ? "Grading was interrupted. Supply your key again to retry."
+                ? payload.gradingCredentialRequired
+                  ? "Grading was interrupted. Supply your key again to retry."
+                  : "Grading could not be completed. The test creator can retry it from their dashboard."
                 : "Supply your OpenRouter key to grade this conference assessment.",
         );
         if (payload.status === "failed" && payload.error) {
