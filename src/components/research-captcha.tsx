@@ -461,7 +461,7 @@ export function ResearchCaptcha({
         setTemplates(stored.templates ?? []);
 
         // Preserve real edits, but replace the untouched starter used before the public
-        // eight-question template existed.
+        // default template existed.
         const legacyDraft = stored.draft && isLegacyStarterTemplate(stored.draft);
         const draft = legacyDraft
           ? createDefaultStudyTemplate(stored.draft?.modelId ?? "")
@@ -474,7 +474,7 @@ export function ResearchCaptcha({
         }
         if (legacyDraft) {
           setTemplateStatus(
-            "Updated the old starter configuration to the standard eight-question template.",
+            "Updated the old starter configuration to the standard default template.",
           );
         } else if (!stored.draft) {
           setTemplateStatus(
