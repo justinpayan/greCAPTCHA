@@ -158,10 +158,10 @@ If you use our work please use the following citation (details TBC):
   title         = {{greCAPTCHA}: Assessing Understanding as Evidence of Research Authorship Under Generative {AI}},
   author        = {Payan, Justin and Gyevn{\'a}r, B{\'a}lint and Kasirzadeh, Atoosa and Shah, Nihar B.},
   year          = {2026},
-  eprint        = {XXXX.XXXXX},
+  eprint        = {2609.20481},
   archivePrefix = {arXiv},
-  primaryClass  = {cs.XX},
-  url           = {https://arxiv.org/abs/XXXX.XXXXX},
+  primaryClass  = {cs.DL},
+  url           = {https://arxiv.org/abs/2609.20481},
   note          = {Justin Payan and B{\'a}lint Gyevn{\'a}r contributed equally.}
 }
 ```
