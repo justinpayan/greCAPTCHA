@@ -16,6 +16,7 @@ import { errorFromPayload, isOpenRouterError, OpenRouterError } from "@/lib/open
 import { MAX_PDF_BYTES, pdfTooLargeMessage } from "@/lib/uploads";
 import type { CostEstimate } from "@/lib/cost-estimate";
 import type { ApiKeyPayer, MaterialUploader } from "@/lib/quiz";
+import { userFacingMessage } from "@/lib/user-facing-error";
 
 export function AssessmentInvitation({
   token,
@@ -45,7 +46,7 @@ export function AssessmentInvitation({
   const [keyError, setKeyError] = useState("");
 
   function reportError(caught: unknown, fallback: string) {
-    const message = caught instanceof Error ? caught.message : fallback;
+    const message = userFacingMessage(caught, fallback);
     if (isOpenRouterError(caught) && template.apiKeyPayer === "taker") setKeyError(message);
     else setError(message);
   }

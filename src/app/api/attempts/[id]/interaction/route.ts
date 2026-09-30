@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { attemptAnswers } from "@/db/schema";
 import { AttemptClosedError, requireOpenAttempt } from "@/lib/attempt-access";
 import { getCurrentAnswer, loadAttemptContext } from "@/lib/attempts";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -59,7 +60,7 @@ export async function POST(
       return NextResponse.json({ recorded: false });
     }
     const message =
-      error instanceof Error ? error.message : "Unable to record interaction.";
+      publicErrorMessage(error, "Unable to record interaction.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

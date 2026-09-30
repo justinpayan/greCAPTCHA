@@ -8,6 +8,7 @@ import {
 } from "@/lib/quiz";
 import { requireUser } from "@/lib/session";
 import { getDraft, listTemplates, saveDraft, saveTemplate } from "@/lib/templates";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -18,7 +19,7 @@ export async function GET() {
     const [templates, draft] = await Promise.all([listTemplates(user.id), getDraft(user.id)]);
     return NextResponse.json({ templates, draft });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load templates.";
+    const message = publicErrorMessage(error, "Unable to load templates.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
@@ -51,7 +52,7 @@ export async function POST(request: Request) {
     );
     return NextResponse.json({ template: saved }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to save the template.";
+    const message = publicErrorMessage(error, "Unable to save the template.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
@@ -64,7 +65,7 @@ export async function PUT(request: Request) {
     await saveDraft(user.id, studyTemplateConfigSchema.parse(body.config));
     return NextResponse.json({ saved: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to save the draft.";
+    const message = publicErrorMessage(error, "Unable to save the draft.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

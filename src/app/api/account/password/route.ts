@@ -9,6 +9,7 @@ import {
   RateLimitError,
 } from "@/lib/security";
 import { requireUser } from "@/lib/session";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
     return response;
   } catch (error) {
     if (error instanceof RateLimitError) return rateLimitResponse(error);
-    const message = error instanceof Error ? error.message : "Unable to change password.";
+    const message = publicErrorMessage(error, "Unable to change password.");
     return NextResponse.json(
       { error: message },
       { status: message === "Not authorised." ? 401 : 400 },

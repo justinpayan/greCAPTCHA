@@ -11,6 +11,7 @@ import {
   ResultView,
 } from "@/components/quiz/quiz-workspace";
 import type { AssessmentResult, AttemptIntro, AttemptView } from "@/lib/quiz";
+import { userFacingMessage } from "@/lib/user-facing-error";
 
 /**
  * Loads an attempt straight from its ID and hands it to the assessment interface.
@@ -40,7 +41,10 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
         if (!active) return;
         applyEntry(entry);
       })
-      .catch((caught: Error) => active && setError(caught.message));
+      .catch(
+        (caught: unknown) =>
+          active && setError(userFacingMessage(caught, "Unable to open this assessment.")),
+      );
     return () => {
       active = false;
     };

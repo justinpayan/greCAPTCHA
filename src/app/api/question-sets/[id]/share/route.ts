@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createQuestionSetShareLink } from "@/lib/attempts";
 import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -18,7 +19,7 @@ export async function POST(
     return NextResponse.json(shared, { status: 201 });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Unable to create an assessment link.";
+      publicErrorMessage(error, "Unable to create an assessment link.");
     return NextResponse.json(
       { error: message },
       { status: message === "Question set not found." ? 404 : 400 },

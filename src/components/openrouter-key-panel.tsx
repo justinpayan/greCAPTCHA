@@ -10,6 +10,7 @@ import {
   type BrowserOpenRouterKey,
   type KeySource,
 } from "@/lib/openrouter-browser-key";
+import { userFacingMessage } from "@/lib/user-facing-error";
 
 export function OpenRouterKeyPanel({
   apiKey,
@@ -63,7 +64,7 @@ export function OpenRouterKeyPanel({
       onChange(checked.key, "oauth");
       onReady?.(checked.key, "oauth");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to verify the key.");
+      setError(userFacingMessage(caught, "Unable to verify the key."));
     } finally {
       setChecking(false);
     }
@@ -79,7 +80,7 @@ export function OpenRouterKeyPanel({
       onChange(checked.key, "oauth");
       onReady?.(checked.key, "oauth");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to start OpenRouter sign-in.");
+      setError(userFacingMessage(caught, "Unable to start OpenRouter sign-in."));
     } finally {
       setChecking(false);
     }

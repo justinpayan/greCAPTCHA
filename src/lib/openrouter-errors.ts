@@ -8,6 +8,8 @@
  * so a page's `catch` can route it with a single `instanceof`.
  */
 
+import { publicErrorMessage } from "@/lib/user-facing-error";
+
 export const OPENROUTER_ERROR_SOURCE = "openrouter";
 
 /** A problem with an OpenRouter key or credential, or a failure reported by OpenRouter itself. */
@@ -27,7 +29,7 @@ export function errorResponseBody(
   error: unknown,
   fallback: string,
 ): { error: string; errorSource?: typeof OPENROUTER_ERROR_SOURCE } {
-  const message = error instanceof Error ? error.message : fallback;
+  const message = publicErrorMessage(error, fallback);
   return isOpenRouterError(error)
     ? { error: message, errorSource: OPENROUTER_ERROR_SOURCE }
     : { error: message };

@@ -25,6 +25,7 @@ import {
   pdfEngineSchema,
 } from "@/lib/quiz";
 import { getTemplate } from "@/lib/templates";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -35,7 +36,7 @@ export async function GET() {
     const user = await requireUser();
     return NextResponse.json({ sets: await listQuestionSets(user.id) });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to list question sets.";
+    const message = publicErrorMessage(error, "Unable to list question sets.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

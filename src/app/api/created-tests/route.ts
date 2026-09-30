@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { listCreatedTests } from "@/lib/catalog";
 import { requireUser } from "@/lib/session";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -11,7 +12,7 @@ export async function GET() {
     const user = await requireUser();
     return NextResponse.json({ tests: await listCreatedTests(user.id) });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to list created tests.";
+    const message = publicErrorMessage(error, "Unable to list created tests.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

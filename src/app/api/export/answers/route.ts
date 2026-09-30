@@ -1,5 +1,6 @@
 import { buildAnswerCsv } from "@/lib/export";
 import { requireUser } from "@/lib/session";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -24,7 +25,7 @@ export async function GET() {
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to build the export.";
+    const message = publicErrorMessage(error, "Unable to build the export.");
     return Response.json({ error: message }, { status: 400 });
   }
 }

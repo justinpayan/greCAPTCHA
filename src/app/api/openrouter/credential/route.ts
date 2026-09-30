@@ -7,6 +7,7 @@ import {
 } from "@/lib/openrouter-credentials";
 import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -15,7 +16,7 @@ export async function GET() {
     const user = await requireUser();
     return NextResponse.json(await credentialStatus(user.id));
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load OpenRouter status.";
+    const message = publicErrorMessage(error, "Unable to load OpenRouter status.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
     );
     return NextResponse.json(status);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to connect OpenRouter.";
+    const message = publicErrorMessage(error, "Unable to connect OpenRouter.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
@@ -43,7 +44,7 @@ export async function DELETE(request: Request) {
     await deleteOpenRouterCredential(user.id);
     return NextResponse.json({ connected: false });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to disconnect OpenRouter.";
+    const message = publicErrorMessage(error, "Unable to disconnect OpenRouter.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

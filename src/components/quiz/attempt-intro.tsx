@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { Brand } from "@/components/brand";
 import type { AttemptIntro } from "@/lib/quiz";
+import { userFacingMessage } from "@/lib/user-facing-error";
 
 /**
  * The landing page shown before a question set.
@@ -31,7 +32,7 @@ export function AttemptIntroPage({
     try {
       await onStart();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to start.");
+      setError(userFacingMessage(caught, "Unable to start."));
       setStarting(false);
     }
   }

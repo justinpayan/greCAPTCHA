@@ -8,6 +8,7 @@ import {
   rateLimitResponse,
   RateLimitError,
 } from "@/lib/security";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
     return response;
   } catch (error) {
     if (error instanceof RateLimitError) return rateLimitResponse(error);
-    const message = error instanceof Error ? error.message : "Unable to create the account.";
+    const message = publicErrorMessage(error, "Unable to create the account.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

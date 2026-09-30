@@ -34,6 +34,7 @@ import {
   type QuestionTiming,
   type QuizChoice,
 } from "@/lib/quiz";
+import { userFacingMessage } from "@/lib/user-facing-error";
 
 const QUESTION_LABELS = {
   fill_blank: "Fill in the blank",
@@ -554,7 +555,7 @@ function ExamineeFeedbackReview({
       })
       .catch((caught) => {
         if (active) {
-          setError(caught instanceof Error ? caught.message : "Unable to load feedback.");
+          setError(userFacingMessage(caught, "Unable to load feedback."));
         }
       })
       .finally(() => {
@@ -585,7 +586,7 @@ function ExamineeFeedbackReview({
       setCommentsByQuestionId(payload.feedback?.commentsByQuestionId ?? {});
       setSubmitted(true);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to submit feedback.");
+      setError(userFacingMessage(caught, "Unable to submit feedback."));
     } finally {
       setSaving(false);
     }
@@ -757,7 +758,7 @@ export function PendingEvaluationView({
         }
       } catch (caught) {
         if (active) {
-          setError(caught instanceof Error ? caught.message : "Unable to check grading.");
+          setError(userFacingMessage(caught, "Unable to check grading."));
         }
       }
     }
@@ -793,7 +794,7 @@ export function PendingEvaluationView({
       setStatus("Your assessment is queued for grading…");
       if (payload.result) onResult(payload.result);
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "Unable to start grading.";
+      const message = userFacingMessage(caught, "Unable to start grading.");
       if (isOpenRouterError(caught)) setKeyError(message);
       else setError(message);
     } finally {
@@ -933,7 +934,7 @@ export function QuizWorkspace({
       })
       .catch((caught) => {
         setSaveState("error");
-        setError(caught instanceof Error ? caught.message : "Unable to save your answer.");
+        setError(userFacingMessage(caught, "Unable to save your answer."));
         throw caught;
       });
     saveChain.current = request;
@@ -980,7 +981,7 @@ export function QuizWorkspace({
       else if (payload.attempt) loadAttempt(payload.attempt as AttemptView);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to open that question.");
+      setError(userFacingMessage(caught, "Unable to open that question."));
     } finally {
       setSubmitting(false);
     }
@@ -1018,7 +1019,7 @@ export function QuizWorkspace({
         timeoutFired.current = false;
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to close the assessment.");
+      setError(userFacingMessage(caught, "Unable to close the assessment."));
     } finally {
       setSubmitting(false);
     }
@@ -1052,7 +1053,7 @@ export function QuizWorkspace({
       }
       setPendingEvaluation(true);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to submit assessment.");
+      setError(userFacingMessage(caught, "Unable to submit assessment."));
     } finally {
       setSubmitting(false);
     }

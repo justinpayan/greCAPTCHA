@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { isAssessmentNotAllowedError } from "@/lib/allowlist";
 import { AttemptClosedError, requireOpenAttempt } from "@/lib/attempt-access";
 import { getAttemptIntro } from "@/lib/attempts";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -44,7 +45,7 @@ export async function GET(
         { status: 403 },
       );
     }
-    const message = error instanceof Error ? error.message : "Unable to open this assessment.";
+    const message = publicErrorMessage(error, "Unable to open this assessment.");
     return NextResponse.json(
       { error: message },
       { status: message === "Attempt not found." ? 404 : 400 },

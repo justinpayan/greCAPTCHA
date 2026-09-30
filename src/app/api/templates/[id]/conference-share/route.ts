@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
 import { setTemplateSharing } from "@/lib/templates";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,7 @@ export async function POST(
         : null,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to update sharing.";
+    const message = publicErrorMessage(error, "Unable to update sharing.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { formatAllowlist } from "@/lib/allowlist";
+import { userFacingMessage } from "@/lib/user-facing-error";
 
 export function TakerAllowlistField({
   id,
@@ -62,7 +63,7 @@ export function CreatedTestAllowlistEditor({
       onSaved(next);
       setStatus(next?.length ? `Restricted to ${next.length} username${next.length === 1 ? "" : "s"}.` : "Anyone with the link can take this test.");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to update the allowlist.");
+      setError(userFacingMessage(caught, "Unable to update the allowlist."));
     } finally {
       setSaving(false);
     }

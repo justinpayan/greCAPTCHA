@@ -7,6 +7,7 @@ import {
   OPENROUTER_OAUTH_CHANNEL,
   readOpenRouterOAuthNonce,
 } from "@/lib/openrouter-browser-key";
+import { userFacingMessage } from "@/lib/user-facing-error";
 
 export default function OpenRouterCallbackPage() {
   const [error, setError] = useState("");
@@ -40,7 +41,7 @@ export default function OpenRouterCallbackPage() {
       })
       .catch((caught) => {
         const message =
-          caught instanceof Error ? caught.message : "Unable to complete OpenRouter authorization.";
+          userFacingMessage(caught, "Unable to complete OpenRouter authorization.");
         setError(message);
         notify({ type: "openrouter-oauth-result", nonce, ok: false, error: message });
       });

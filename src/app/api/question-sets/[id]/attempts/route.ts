@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { createAttempt } from "@/lib/attempts";
 import { requireUser } from "@/lib/session";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -23,7 +24,7 @@ export async function POST(
     });
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load question set.";
+    const message = publicErrorMessage(error, "Unable to load question set.");
     return NextResponse.json(
       { error: message },
       { status: message === "Question set not found." ? 404 : 400 },

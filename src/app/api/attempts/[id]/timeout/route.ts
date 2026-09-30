@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { AttemptClosedError, requireOpenAttempt } from "@/lib/attempt-access";
 import { closeForTimeout, overallBudget } from "@/lib/attempt-close";
 import { getAttemptState } from "@/lib/attempts";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -35,7 +36,7 @@ export async function POST(
         { status: 403 },
       );
     }
-    const message = error instanceof Error ? error.message : "Unable to close the attempt.";
+    const message = publicErrorMessage(error, "Unable to close the attempt.");
     return NextResponse.json(
       { error: message },
       { status: message === "Attempt not found." ? 404 : 400 },

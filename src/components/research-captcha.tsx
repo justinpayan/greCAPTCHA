@@ -51,6 +51,7 @@ import {
   type StudyTemplateConfig,
   type StudyTemplateSummary,
 } from "@/lib/quiz";
+import { userFacingMessage } from "@/lib/user-facing-error";
 
 type CatalogModel = {
   id: string;
@@ -61,8 +62,25 @@ type CatalogModel = {
 };
 
 const DEFAULT_MODEL_ID = "openai/gpt-6-sol";
-const ASSESSMENT_CREATED_NOTICE =
-  "Assessment created. A reusable assessment link has been copied to your clipboard.";
+/**
+ * Copies text to the clipboard, reporting rather than throwing when the browser refuses.
+ *
+ * Browsers allow clipboard writes only shortly after a click or key press. A link that becomes
+ * available once a long generation job finishes arrives well after that, so the write is refused
+ * ("Clipboard write was blocked due to lack of user activation") even though nothing went wrong;
+ * the caller then offers a Copy button, whose own click permits the write.
+ */
+async function tryCopyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The "Assessment created" notice: the new test's link, and whether it reached the clipboard. */
+type CreatedNotice = { link: string; copied: boolean; copyBlocked?: boolean };
 const FEATURED_MODEL_IDS = [
   "anthropic/claude-opus-5.5",
   DEFAULT_MODEL_ID,
@@ -313,7 +331,7 @@ export function ResearchCaptcha({
   const [loadingModels, setLoadingModels] = useState(false);
   const [working, setWorking] = useState(false);
   const [generationStatus, setGenerationStatus] = useState("");
-  const [generationNotice, setGenerationNotice] = useState("");
+  const [generationNotice, setGenerationNotice] = useState<CreatedNotice | null>(null);
   const [error, setError] = useState("");
   const [failedGenerationJobId, setFailedGenerationJobId] = useState("");
   // Which subtab of *New question set* was last open, so returning to the tab restores it.
@@ -465,7 +483,7 @@ export function ResearchCaptcha({
         }
       })
       .catch((caught) => {
-        if (active) setError(caught instanceof Error ? caught.message : "Unable to initialize.");
+        if (active) setError(userFacingMessage(caught, "Unable to initialize."));
       })
       .finally(() => {
         if (!active) return;
@@ -532,7 +550,7 @@ export function ResearchCaptcha({
       setSelectedModel(refreshedSelection);
       setModelSearch(refreshedSelection?.name ?? "");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load models.");
+      setError(userFacingMessage(caught, "Unable to load models."));
     } finally {
       setLoadingModels(false);
     }
@@ -657,19 +675,23 @@ export function ResearchCaptcha({
         }
         await refreshCatalog();
       }
-      await navigator.clipboard.writeText(
-        new URL(participantPath, window.location.origin).toString(),
-      );
-      setCopiedSetId(test.id);
-      window.setTimeout(() => setCopiedSetId(""), 2_000);
+      const link = new URL(participantPath, window.location.origin).toString();
+      if (await tryCopyToClipboard(link)) {
+        setCopiedSetId(test.id);
+        window.setTimeout(() => setCopiedSetId(""), 2_000);
+      } else {
+        // Refused because the click was too long ago by the time the link was ready; the link
+        // now exists, so pressing the button again copies it straight away.
+        setShareError(`The link is ready but could not be copied automatically: ${link}`);
+      }
     } catch (caught) {
-      setShareError(caught instanceof Error ? caught.message : "Unable to manage the invitation.");
+      setShareError(userFacingMessage(caught, "Unable to manage the invitation."));
     } finally {
       setSharingSetId("");
     }
   }
 
-  async function activateAndCopyQuestionSetLink(questionSetId: string) {
+  async function activateAndCopyQuestionSetLink(questionSetId: string): Promise<CreatedNotice> {
     const response = await fetch(
       `/api/question-sets/${encodeURIComponent(questionSetId)}/share`,
       { method: "POST" },
@@ -684,9 +706,8 @@ export function ResearchCaptcha({
     if (!payload.participantPath) {
       throw new Error("The assessment link was not returned.");
     }
-    await navigator.clipboard.writeText(
-      new URL(payload.participantPath, window.location.origin).toString(),
-    );
+    const link = new URL(payload.participantPath, window.location.origin).toString();
+    return { link, copied: await tryCopyToClipboard(link) };
   }
 
   async function deleteCreatedTest(test: CreatedTestEntry) {
@@ -730,7 +751,7 @@ export function ResearchCaptcha({
       });
       await refreshCatalog();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to delete the test.");
+      setError(userFacingMessage(caught, "Unable to delete the test."));
     }
   }
 
@@ -755,7 +776,7 @@ export function ResearchCaptcha({
       if (!response.ok) throw new Error(payload.error ?? "Unable to delete the attempt.");
       await refreshCatalog();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to delete the attempt.");
+      setError(userFacingMessage(caught, "Unable to delete the attempt."));
     }
   }
 
@@ -796,7 +817,7 @@ export function ResearchCaptcha({
       if (!response.ok) throw new Error(payload.error ?? "Unable to reset the attempt.");
       await refreshCatalog();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to reset the attempt.");
+      setError(userFacingMessage(caught, "Unable to reset the attempt."));
     } finally {
       setResettingId("");
     }
@@ -822,7 +843,7 @@ export function ResearchCaptcha({
         current.map((row) => (row.id === entry.id ? { ...row, linkEnabled } : row)),
       );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to update the link.");
+      setError(userFacingMessage(caught, "Unable to update the link."));
     } finally {
       setTogglingLinkId("");
     }
@@ -937,7 +958,7 @@ export function ResearchCaptcha({
       pushLayer("overview");
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load the set.");
+      setError(userFacingMessage(caught, "Unable to load the set."));
     } finally {
       setWorking(false);
     }
@@ -959,7 +980,7 @@ export function ResearchCaptcha({
     try {
       await showSummary(attemptId);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to open the attempt.");
+      setError(userFacingMessage(caught, "Unable to open the attempt."));
     } finally {
       setWorking(false);
     }
@@ -983,7 +1004,7 @@ export function ResearchCaptcha({
       setTemplateName("");
       setTemplateStatus(`Saved “${saved.name}”.`);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to save the template.");
+      setError(userFacingMessage(caught, "Unable to save the template."));
     }
   }
 
@@ -1005,7 +1026,7 @@ export function ResearchCaptcha({
           : `Loaded “${template.name}”. Its model is not in the current catalog, so the model selection was left unchanged.`,
       );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load the template.");
+      setError(userFacingMessage(caught, "Unable to load the template."));
     }
   }
 
@@ -1018,7 +1039,10 @@ export function ResearchCaptcha({
     setMaterialUploader(nextUploader);
   }
 
-  async function updateInvitationSharing(id: string, enabled: boolean) {
+  async function updateInvitationSharing(
+    id: string,
+    enabled: boolean,
+  ): Promise<CreatedNotice | null> {
     const response = await fetch(
       `/api/templates/${encodeURIComponent(id)}/invite-share`,
       {
@@ -1042,11 +1066,11 @@ export function ResearchCaptcha({
     );
     if (payload.participantPath) {
       const link = `${window.location.origin}${payload.participantPath}`;
-      await navigator.clipboard.writeText(link);
       // No message here: creating the invitation shows its own "Assessment created" notice.
-    } else {
-      setTemplateStatus("Invitation revoked.");
+      return { link, copied: await tryCopyToClipboard(link) };
     }
+    setTemplateStatus("Invitation revoked.");
+    return null;
   }
 
   async function createInvitationTemplate(
@@ -1060,7 +1084,7 @@ export function ResearchCaptcha({
     setWorking(true);
     setError("");
     setTemplateStatus("");
-    setGenerationNotice("");
+    setGenerationNotice(null);
     const form = new FormData(event.currentTarget);
     const paper = form.get("paper");
     if (
@@ -1104,11 +1128,10 @@ export function ResearchCaptcha({
           throw new Error(materialPayload.error ?? "Unable to save the source material.");
         }
       }
-      await updateInvitationSharing(saved.id, true);
-      setGenerationNotice(ASSESSMENT_CREATED_NOTICE);
+      setGenerationNotice(await updateInvitationSharing(saved.id, true));
     } catch (caught) {
       setError(
-        caught instanceof Error ? caught.message : "Unable to publish the invitation.",
+        userFacingMessage(caught, "Unable to publish the invitation."),
       );
     } finally {
       setWorking(false);
@@ -1133,7 +1156,7 @@ export function ResearchCaptcha({
       setTemplateStatus(`Deleted “${target.name}”. Your current setup is unchanged.`);
       await refreshCatalog();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to delete the template.");
+      setError(userFacingMessage(caught, "Unable to delete the template."));
     }
   }
 
@@ -1191,7 +1214,7 @@ export function ResearchCaptcha({
    * workflow, the only one that has it on this page), everything else below the form.
    */
   function reportError(caught: unknown, fallback: string) {
-    const message = caught instanceof Error ? caught.message : fallback;
+    const message = userFacingMessage(caught, fallback);
     if (isOpenRouterError(caught) && apiKeyPayer === "creator") setKeyError(message);
     else setError(message);
   }
@@ -1217,7 +1240,7 @@ export function ResearchCaptcha({
     setGenerationStatus(
       form.get("paperUrl") ? "Fetching the linked PDF…" : "Queued for generation…",
     );
-    setGenerationNotice("");
+    setGenerationNotice(null);
     setError("");
     setKeyError("");
     form.set("modelId", config.modelId);
@@ -1269,10 +1292,10 @@ export function ResearchCaptcha({
           }
         }
       }
-      await activateAndCopyQuestionSetLink(generatedQuestionSetId);
+      const created = await activateAndCopyQuestionSetLink(generatedQuestionSetId);
       await refreshCatalog();
       setFailedGenerationJobId("");
-      setGenerationNotice(ASSESSMENT_CREATED_NOTICE);
+      setGenerationNotice(created);
     } catch (caught) {
       if (jobId) setFailedGenerationJobId(jobId);
       reportError(caught, "Question generation failed.");
@@ -1287,7 +1310,7 @@ export function ResearchCaptcha({
     setWorking(true);
     setError("");
     setKeyError("");
-    setGenerationNotice("");
+    setGenerationNotice(null);
     try {
       const response = await fetch(
         `/api/jobs/${encodeURIComponent(failedGenerationJobId)}/retry`,
@@ -1321,9 +1344,9 @@ export function ResearchCaptcha({
           }
         }
       }
-      await activateAndCopyQuestionSetLink(generatedQuestionSetId);
+      const created = await activateAndCopyQuestionSetLink(generatedQuestionSetId);
       await refreshCatalog();
-      setGenerationNotice(ASSESSMENT_CREATED_NOTICE);
+      setGenerationNotice(created);
       setFailedGenerationJobId("");
     } catch (caught) {
       reportError(caught, "Unable to retry generation.");
@@ -1348,7 +1371,7 @@ export function ResearchCaptcha({
       if (!response.ok) throw new Error(payload.error ?? "Unable to load question set.");
       await showSummary(payload.attemptId as string);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load question set.");
+      setError(userFacingMessage(caught, "Unable to load question set."));
     } finally {
       setWorking(false);
     }
@@ -2442,7 +2465,36 @@ export function ResearchCaptcha({
           {generationNotice && (
             <div className="template-status dashboard-notice submit-notice" role="status">
               <p>
-                {generationNotice}{" "}
+                {generationNotice.copied ? (
+                  <>
+                    Assessment created. A reusable assessment link has been copied to your
+                    clipboard.
+                  </>
+                ) : (
+                  <>
+                    Assessment created. Its reusable assessment link is ready:{" "}
+                    <span className="notice-link">{generationNotice.link}</span>{" "}
+                    <button
+                      className="inline-link"
+                      type="button"
+                      onClick={async () => {
+                        // This click is the user activation the automatic copy lacked.
+                        const copied = await tryCopyToClipboard(generationNotice.link);
+                        setGenerationNotice({ ...generationNotice, copied, copyBlocked: !copied });
+                      }}
+                    >
+                      Copy link
+                    </button>
+                    .
+                    {generationNotice.copyBlocked && (
+                      <>
+                        {" "}
+                        Your browser did not allow copying to the clipboard, so select the link
+                        and copy it yourself.
+                      </>
+                    )}
+                  </>
+                )}{" "}
                 <button
                   className="inline-link"
                   type="button"
@@ -2460,7 +2512,7 @@ export function ResearchCaptcha({
                 type="button"
                 aria-label="Dismiss this notice"
                 title="Dismiss"
-                onClick={() => setGenerationNotice("")}
+                onClick={() => setGenerationNotice(null)}
               >
                 ×
               </button>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { AttemptClosedError, requireOpenAttempt } from "@/lib/attempt-access";
 import { attemptGradingCostEstimate } from "@/lib/cost-estimate";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -22,7 +23,7 @@ export async function GET(
     if (error instanceof AttemptClosedError) {
       return NextResponse.json({ error: error.message, locked: true }, { status: 403 });
     }
-    const message = error instanceof Error ? error.message : "Unable to estimate the cost.";
+    const message = publicErrorMessage(error, "Unable to estimate the cost.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

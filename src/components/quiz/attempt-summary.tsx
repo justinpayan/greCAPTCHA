@@ -12,6 +12,7 @@ import {
 } from "@/lib/openrouter-browser-key";
 import { errorFromPayload, isOpenRouterError } from "@/lib/openrouter-errors";
 import type { AssessmentResult, AttemptOutline } from "@/lib/quiz";
+import { userFacingMessage } from "@/lib/user-facing-error";
 
 const TYPE_LABELS = {
   fill_blank: "Fill in the blank",
@@ -65,7 +66,7 @@ export function AttemptSummary({
     try {
       await onStart(outline.attemptId);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to open the attempt.");
+      setError(userFacingMessage(caught, "Unable to open the attempt."));
     } finally {
       setWorking(false);
     }
@@ -114,7 +115,7 @@ export function AttemptSummary({
         }
       }
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "Unable to grade the attempt.";
+      const message = userFacingMessage(caught, "Unable to grade the attempt.");
       // The key panel is only on screen for a conference attempt that still needs grading.
       const panelShown =
         outline.apiKeyPayer === "taker" && outline.gradable && !outline.graded;

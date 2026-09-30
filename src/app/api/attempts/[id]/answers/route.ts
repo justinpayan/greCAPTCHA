@@ -6,6 +6,7 @@ import { attemptAnswers } from "@/db/schema";
 import { AttemptClosedError, requireOpenAttempt } from "@/lib/attempt-access";
 import { getCurrentAnswer, loadAttemptContext } from "@/lib/attempts";
 import { draftSubmissionSchema } from "@/lib/quiz";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -53,7 +54,7 @@ export async function POST(
         { status: 403 },
       );
     }
-    const message = error instanceof Error ? error.message : "Unable to save answer.";
+    const message = publicErrorMessage(error, "Unable to save answer.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

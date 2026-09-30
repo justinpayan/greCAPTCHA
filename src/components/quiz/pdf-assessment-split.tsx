@@ -4,6 +4,8 @@ import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from "reac
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 
+import { userFacingMessage } from "@/lib/user-facing-error";
+
 const PdfViewer = dynamic(
   () => import("@/components/quiz/pdf-viewer").then((module) => module.PdfViewer),
   {
@@ -53,7 +55,7 @@ export function PdfAssessmentSplit({
       .catch((caught) => {
         if (controller.signal.aborted) return;
         setPdfError(
-          caught instanceof Error ? caught.message : "The manuscript PDF could not be displayed.",
+          userFacingMessage(caught, "The manuscript PDF could not be displayed."),
         );
       });
 

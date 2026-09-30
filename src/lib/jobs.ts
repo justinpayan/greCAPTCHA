@@ -18,6 +18,7 @@ import {
 import { hydrateAssessmentResult } from "@/lib/attempts";
 import { requireOpenRouterCredential } from "@/lib/openrouter-credentials";
 import { decodeJobError, encodeJobError } from "@/lib/openrouter-errors";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 import type { AssessmentResult } from "@/lib/quiz";
 
 const ACTIVE_STATUSES = ["queued", "running"];
@@ -392,7 +393,14 @@ async function executeJob(job: typeof jobs.$inferSelect & { runCount: number }) 
       .run();
     deleteJobKey(job.id);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Background job failed.";
+    // Shown to the person who started the job, so a library's internal text (a validation dump
+    // of malformed model output, a database error) is replaced by a plain explanation.
+    const message = publicErrorMessage(
+      error,
+      job.type === "generation"
+        ? "Question generation failed. The model's response could not be used; run it again or choose a different model."
+        : "Grading failed. The model's response could not be used; run the evaluation again.",
+    );
     const interrupted = error instanceof JobKeyUnavailableError;
     const retry = !interrupted && job.runCount < MAX_RUNS;
     if (!retry && !interrupted && job.type === "generation") {

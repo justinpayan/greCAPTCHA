@@ -9,6 +9,7 @@ import {
   setQuestionSetOverallLimit,
 } from "@/lib/catalog";
 import { requireUser } from "@/lib/session";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -25,7 +26,7 @@ export async function GET(
     const { id } = await context.params;
     return NextResponse.json({ overview: await getQuestionSetOverview(id, user.id) });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load the set.";
+    const message = publicErrorMessage(error, "Unable to load the set.");
     return NextResponse.json(
       { error: message },
       { status: message === "Question set not found." ? 404 : 400 },
@@ -78,7 +79,7 @@ export async function PATCH(
 
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to update the set.";
+    const message = publicErrorMessage(error, "Unable to update the set.");
     return NextResponse.json(
       { error: message },
       { status: message === "Question set not found." ? 404 : 400 },
@@ -100,7 +101,7 @@ export async function DELETE(
     await deleteQuestionSet(id, user.id);
     return NextResponse.json({ deleted: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to delete the set.";
+    const message = publicErrorMessage(error, "Unable to delete the set.");
     return NextResponse.json(
       { error: message },
       { status: message === "Question set not found." ? 404 : 400 },

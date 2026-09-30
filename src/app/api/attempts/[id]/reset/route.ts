@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { resetAttempt } from "@/lib/catalog";
 import { requireUser } from "@/lib/session";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -22,7 +23,7 @@ export async function POST(
     const { id } = await context.params;
     return NextResponse.json(await resetAttempt(id, user.id));
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to reset the attempt.";
+    const message = publicErrorMessage(error, "Unable to reset the attempt.");
     return NextResponse.json(
       { error: message },
       { status: message === "Attempt not found." ? 404 : 400 },

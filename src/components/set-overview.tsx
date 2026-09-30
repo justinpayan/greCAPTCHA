@@ -7,6 +7,7 @@ import { TakerAllowlistField } from "@/components/taker-allowlist-field";
 import { MathText } from "@/components/quiz/math-text";
 import { formatAllowlist } from "@/lib/allowlist";
 import type { QuestionSetOverview, StoredQuestion } from "@/lib/quiz";
+import { userFacingMessage } from "@/lib/user-facing-error";
 
 const TYPE_LABELS = {
   fill_blank: "Fill in the blank",
@@ -231,7 +232,7 @@ export function SetOverview({
       }
       setStatus(notes.join(" "));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to update the set.");
+      setError(userFacingMessage(caught, "Unable to update the set."));
     } finally {
       setSaving(false);
     }

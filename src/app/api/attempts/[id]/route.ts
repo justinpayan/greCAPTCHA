@@ -6,6 +6,7 @@ import { closeForTimeout, overallBudget } from "@/lib/attempt-close";
 import { getAttemptState } from "@/lib/attempts";
 import { deleteAttempt, setAttemptLinkEnabled } from "@/lib/catalog";
 import { requireUser } from "@/lib/session";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -33,7 +34,7 @@ function errorResponse(error: unknown, fallback: string) {
       { status: 403 },
     );
   }
-  const message = error instanceof Error ? error.message : fallback;
+  const message = publicErrorMessage(error, fallback);
   return NextResponse.json(
     { error: message },
     { status: message === "Attempt not found." ? 404 : 400 },

@@ -803,6 +803,13 @@ textarea.control {
   margin: 0;
 }
 
+/* A link shown in full inside a notice, so it can be selected and copied by hand. */
+.notice-link {
+  font-family: var(--font-geist-mono);
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+
 /* The notice's close control, at its top right. */
 .notice-dismiss {
   display: grid;

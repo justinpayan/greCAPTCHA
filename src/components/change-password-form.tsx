@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 
 import { Brand } from "@/components/brand";
+import { userFacingMessage } from "@/lib/user-facing-error";
 
 export function ChangePasswordForm() {
   const [currentPassword, setCurrentPassword] = useState("");
@@ -30,7 +31,7 @@ export function ChangePasswordForm() {
       setPasswordConfirmation("");
       setChanged(true);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to change password.");
+      setError(userFacingMessage(caught, "Unable to change password."));
     } finally {
       setWorking(false);
     }

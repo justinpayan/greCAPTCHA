@@ -4,6 +4,7 @@ import { z } from "zod";
 import { setGetStartedHidden } from "@/lib/preferences";
 import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
     await setGetStartedHidden(user.id, getStartedHidden);
     return NextResponse.json({ getStartedHidden });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to save the preference.";
+    const message = publicErrorMessage(error, "Unable to save the preference.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

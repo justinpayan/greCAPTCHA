@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { listAttempts } from "@/lib/catalog";
 import { requireUser } from "@/lib/session";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -11,7 +12,7 @@ export async function GET() {
     const user = await requireUser();
     return NextResponse.json({ attempts: await listAttempts(user.id) });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to list attempts.";
+    const message = publicErrorMessage(error, "Unable to list attempts.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

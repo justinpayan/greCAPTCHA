@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { attempts } from "@/db/schema";
 import { requireOpenAttempt } from "@/lib/attempt-access";
 import { manuscriptPath } from "@/lib/manuscripts";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -38,7 +39,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load the manuscript PDF.";
+    const message = publicErrorMessage(error, "Unable to load the manuscript PDF.");
     return NextResponse.json(
       { error: message },
       { status: message === "Attempt not found." ? 404 : 403 },

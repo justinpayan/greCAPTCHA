@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { beginOpenRouterOAuth } from "@/lib/openrouter-browser-key";
+import { userFacingMessage } from "@/lib/user-facing-error";
 
 type CredentialStatus =
   | { connected: false }
@@ -32,7 +33,7 @@ export function ProfessorOpenRouterPanel({ error: pageError = "" }: { error?: st
 
   useEffect(() => {
     void refresh().catch((caught) =>
-      setError(caught instanceof Error ? caught.message : "Unable to load OpenRouter status."),
+      setError(userFacingMessage(caught, "Unable to load OpenRouter status.")),
     );
     const listener = () => void refresh();
     window.addEventListener("grecaptcha:openrouter-credential-changed", listener);
@@ -46,7 +47,7 @@ export function ProfessorOpenRouterPanel({ error: pageError = "" }: { error?: st
       await beginOpenRouterOAuth("server");
       await refresh();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to start OpenRouter sign-in.");
+      setError(userFacingMessage(caught, "Unable to start OpenRouter sign-in."));
     } finally {
       setBusy(null);
     }
@@ -61,7 +62,7 @@ export function ProfessorOpenRouterPanel({ error: pageError = "" }: { error?: st
       if (!response.ok) throw new Error(payload.error ?? "Unable to disconnect OpenRouter.");
       setStatus(payload);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to disconnect OpenRouter.");
+      setError(userFacingMessage(caught, "Unable to disconnect OpenRouter."));
     } finally {
       setBusy(null);
     }
@@ -84,7 +85,7 @@ export function ProfessorOpenRouterPanel({ error: pageError = "" }: { error?: st
       setStatus(payload);
       window.dispatchEvent(new Event("grecaptcha:openrouter-credential-changed"));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to save the OpenRouter key.");
+      setError(userFacingMessage(caught, "Unable to save the OpenRouter key."));
     } finally {
       setBusy(null);
     }

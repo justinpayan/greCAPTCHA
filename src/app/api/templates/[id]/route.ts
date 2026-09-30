@@ -4,11 +4,12 @@ import { parseAllowlist } from "@/lib/allowlist";
 import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
 import { deleteTemplate, getTemplate, setTemplateAllowlist } from "@/lib/templates";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
 function errorResponse(error: unknown, fallback: string) {
-  const message = error instanceof Error ? error.message : fallback;
+  const message = publicErrorMessage(error, fallback);
   return NextResponse.json(
     { error: message },
     { status: message === "Template not found." ? 404 : 400 },

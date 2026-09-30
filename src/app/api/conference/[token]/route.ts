@@ -19,6 +19,7 @@ import {
 } from "@/lib/allowlist";
 import { getTemplateByInvitationToken } from "@/lib/templates";
 import { loadManuscript, readManuscriptSource } from "@/lib/manuscript-input";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -54,7 +55,7 @@ export async function GET(
         { status: 403 },
       );
     }
-    const message = error instanceof Error ? error.message : "Unable to load the invitation.";
+    const message = publicErrorMessage(error, "Unable to load the invitation.");
     return NextResponse.json({ error: message }, { status: 404 });
   }
 }

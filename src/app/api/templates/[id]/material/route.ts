@@ -8,6 +8,7 @@ import { persistTemplateMaterial } from "@/lib/manuscripts";
 import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
 import { getTemplate } from "@/lib/templates";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -38,7 +39,7 @@ export async function POST(
       .run();
     return NextResponse.json({ saved: true, fileName: file.name });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to save source material.";
+    const message = publicErrorMessage(error, "Unable to save source material.");
     return NextResponse.json(
       { error: message },
       { status: error instanceof ManuscriptTooLargeError ? 413 : 400 },

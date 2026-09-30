@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 
 import { Brand } from "@/components/brand";
+import { userFacingMessage } from "@/lib/user-facing-error";
 
 export function LoginForm({ next, signup = false }: { next: string; signup?: boolean }) {
   const [username, setUsername] = useState("");
@@ -27,7 +28,7 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
       // A full navigation, so the new cookie is present for the next request.
       window.location.href = next;
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to sign in.");
+      setError(userFacingMessage(caught, "Unable to sign in."));
       setWorking(false);
     }
   }

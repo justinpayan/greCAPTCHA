@@ -11,6 +11,7 @@ import {
 import { requireOpenAttempt } from "@/lib/attempt-access";
 import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -67,7 +68,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load feedback.";
+    const message = publicErrorMessage(error, "Unable to load feedback.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
@@ -156,7 +157,7 @@ export async function POST(
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to submit feedback.";
+    const message = publicErrorMessage(error, "Unable to submit feedback.");
     const existing =
       error instanceof Error &&
       /unique|constraint/i.test(error.message);

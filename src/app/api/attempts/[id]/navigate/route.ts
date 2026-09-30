@@ -4,6 +4,7 @@ import { z } from "zod";
 import { AttemptClosedError, requireOpenAttempt } from "@/lib/attempt-access";
 import { closeForTimeout, overallBudget } from "@/lib/attempt-close";
 import { navigateAttempt } from "@/lib/attempts";
+import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
@@ -28,7 +29,7 @@ export async function POST(
         { status: 403 },
       );
     }
-    const message = error instanceof Error ? error.message : "Unable to open question.";
+    const message = publicErrorMessage(error, "Unable to open question.");
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
