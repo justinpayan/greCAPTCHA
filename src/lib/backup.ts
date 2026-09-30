@@ -135,6 +135,21 @@ async function writeBackup(trigger: BackupTrigger, now: Date): Promise<BackupOut
       });
       files += 1;
     }
+    fs.writeFileSync(
+      path.join(staging, "backup-manifest.json"),
+      JSON.stringify(
+        {
+          formatVersion: 1,
+          encrypted: Boolean(process.env.DATA_ENCRYPTION_KEY?.trim()),
+          trigger,
+          createdAt: now.toISOString(),
+        },
+        null,
+        2,
+      ),
+      { mode: 0o600 },
+    );
+    files += 1;
 
     fs.rmSync(destination, { recursive: true, force: true });
     fs.renameSync(staging, destination);

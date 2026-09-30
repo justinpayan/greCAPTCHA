@@ -31,6 +31,26 @@ function requestOrigin(request: NextRequest): string {
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const method = request.method;
+  const host = request.headers.get("host") ?? "";
+  const forwardedProto = request.headers
+    .get("x-forwarded-proto")
+    ?.split(",")[0]
+    ?.trim()
+    .toLowerCase();
+
+  // Railway terminates TLS before forwarding to the container. Only trust an explicit forwarded
+  // plaintext protocol in production; an absent header is also how the internal health probe
+  // reaches the service and must not be redirected.
+  if (
+    process.env.NODE_ENV === "production" &&
+    forwardedProto === "http" &&
+    pathname !== "/api/health" &&
+    !/^(localhost|127\.|\[::1\])/.test(host)
+  ) {
+    const target = request.nextUrl.clone();
+    target.protocol = "https";
+    return NextResponse.redirect(target, 308);
+  }
 
   if (ALWAYS_OPEN.has(pathname)) {
     logIncoming(method, pathname, "open");

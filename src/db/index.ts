@@ -8,6 +8,7 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 
 import { withMigrationLock } from "@/db/migration-lock";
 import * as schema from "@/db/schema";
+import { deriveDataKey } from "@/lib/data-encryption";
 
 const databasePath = process.env.DATABASE_URL ?? "./data/research-captcha.db";
 const absolutePath = path.resolve(/*turbopackIgnore: true*/ process.cwd(), databasePath);
@@ -15,7 +16,28 @@ const absolutePath = path.resolve(/*turbopackIgnore: true*/ process.cwd(), datab
 fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
 
 const sqlite = new Database(absolutePath, { timeout: 15_000 });
+const encryptedSqlite = sqlite as typeof sqlite & {
+  key(value: Buffer): number;
+  rekey(value: Buffer): number;
+};
+const databaseKey = deriveDataKey("database");
+if (databaseKey) {
+  sqlite.pragma("cipher = 'sqlcipher'");
+  sqlite.pragma("legacy = 4");
+  encryptedSqlite.key(databaseKey);
+  try {
+    sqlite.prepare("SELECT count(*) FROM sqlite_master").get();
+  } catch (error) {
+    sqlite.close();
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Unable to open the encrypted database. DATA_ENCRYPTION_KEY may be incorrect, or the database still needs the encryption migration. ${reason}`,
+    );
+  }
+}
 sqlite.pragma("busy_timeout = 15000");
+// Keep sort/join spill data out of plaintext OS temporary files.
+sqlite.pragma("temp_store = MEMORY");
 
 export const db = drizzle(sqlite, { schema });
 
@@ -34,7 +56,26 @@ export const databaseFile = absolutePath;
  * The raw connection stays private to this module — callers get the operation, not the handle.
  */
 export function snapshotDatabase(destination: string): Promise<unknown> {
-  return sqlite.backup(destination);
+  const backupKey = deriveDataKey("database-backup");
+  if (!backupKey) return sqlite.backup(destination);
+  // SQLite3MultipleCiphers preserves the source encryption when VACUUM writes to a normal path.
+  // URI filenames are not accepted by VACUUM on Windows, so create the consistent snapshot with
+  // the live database key and then rotate that still-encrypted file to the backup-specific key.
+  sqlite.prepare("VACUUM INTO ?").run(path.resolve(destination));
+  const backup = new Database(destination) as Database.Database & {
+    key(value: Buffer): number;
+    rekey(value: Buffer): number;
+  };
+  try {
+    backup.pragma("cipher = 'sqlcipher'");
+    backup.pragma("legacy = 4");
+    backup.key(databaseKey!);
+    backup.prepare("SELECT count(*) FROM sqlite_master").get();
+    backup.rekey(backupKey);
+  } finally {
+    backup.close();
+  }
+  return Promise.resolve({ remainingPages: 0, totalPages: 0 });
 }
 
 // `next build` imports this module from several worker processes at once. Every step below

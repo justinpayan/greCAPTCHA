@@ -26,7 +26,14 @@ Remove the live-test variables afterward. Before deploying:
    `material_uploader` are present.
 3. Set a stable `OPENROUTER_CREDENTIAL_ENCRYPTION_KEY` containing exactly 32 random bytes
    encoded as base64. Never rotate it without first disconnecting/reconnecting creator keys.
-4. Keep `RATE_LIMIT_SALT`, `PUBLIC_BASE_URL`, and the encryption key stable across deploys.
+4. Set a separate stable `DATA_ENCRYPTION_KEY` containing exactly 32 random bytes encoded
+   as base64 and set `DATA_ENCRYPTION_REQUIRED=true`. Keep a recovery copy in an
+   institution-approved secrets manager with MFA and access limited to the PI and designated
+   administrator.
+5. For an existing volume, stop normal traffic and run `npm run data:encrypt` exactly as
+   described in the README before starting the encrypted build. Do not let an app instance use
+   SQLite concurrently with the converter.
+6. Keep `RATE_LIMIT_SALT`, `PUBLIC_BASE_URL`, and both encryption keys stable across deploys.
 
 ## Deployment preflight
 
@@ -43,6 +50,12 @@ Remove the live-test variables afterward. Before deploying:
    preserving the original path in `next`.
 4. Confirm unauthenticated credential, invitation, grading, feedback, and question-set APIs
    return 401 without revealing whether a token, attempt, or template exists.
+5. Confirm an HTTP request to the public domain receives a permanent HTTPS redirect and all
+   authenticated API responses include `Cache-Control: private, no-store`.
+6. Inspect the database and one stored PDF on the volume. Neither should begin with a normal
+   SQLite or PDF header, and neither should be readable without `DATA_ENCRYPTION_KEY`.
+7. Create an app backup, confirm its manifest reports encryption, and restore it in an isolated
+   environment with the recovery key before relying on it.
 
 ## Workflow matrix
 

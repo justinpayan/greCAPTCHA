@@ -7,6 +7,7 @@ import { and, asc, count, desc, eq, inArray, lt } from "drizzle-orm";
 
 import { db, databaseFile } from "@/db";
 import { attempts, conferenceSubmissions, jobs, questionSets } from "@/db/schema";
+import { writeEncryptedFile } from "@/lib/data-encryption";
 import { executeGeneration, type GenerationJobPayload } from "@/lib/generation";
 import { deleteManuscript } from "@/lib/manuscripts";
 import {
@@ -70,7 +71,11 @@ export async function enqueueGenerationJob(
   const root = uploadRoot();
   fs.mkdirSync(root, { recursive: true });
   const filePath = path.join(root, `${id}.pdf`);
-  fs.writeFileSync(filePath, Buffer.from(await file.arrayBuffer()), { flag: "wx" });
+  writeEncryptedFile(
+    filePath,
+    Buffer.from(await file.arrayBuffer()),
+    "job-upload",
+  );
   const payload: GenerationJobPayload = {
     ...input,
     questionSetId: randomUUID(),

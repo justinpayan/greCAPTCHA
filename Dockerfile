@@ -6,7 +6,9 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
+# Build workers import server modules without access to runtime secrets. They use an ephemeral,
+# ignored build database; the runtime image defaults back to required production encryption.
+RUN DATA_ENCRYPTION_REQUIRED=false npm run build && rm -rf /app/data
 RUN npm prune --omit=dev
 
 FROM node:22-bookworm-slim AS runtime

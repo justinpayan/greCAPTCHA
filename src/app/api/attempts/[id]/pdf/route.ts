@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { attempts } from "@/db/schema";
 import { requireOpenAttempt } from "@/lib/attempt-access";
-import { manuscriptPath } from "@/lib/manuscripts";
+import { manuscriptPath, readManuscript } from "@/lib/manuscripts";
 import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
@@ -29,7 +29,7 @@ export async function GET(
     if (!fs.existsSync(filePath)) {
       return NextResponse.json({ error: "The manuscript PDF is unavailable." }, { status: 404 });
     }
-    const bytes = fs.readFileSync(filePath);
+    const bytes = readManuscript(attempt.questionSetId);
     return new NextResponse(new Uint8Array(bytes), {
       headers: {
         "Cache-Control": "private, no-store",
