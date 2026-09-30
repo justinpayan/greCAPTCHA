@@ -1,11 +1,11 @@
 import "server-only";
 
-import fs from "node:fs";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { attempts, conferenceSubmissions, questionSets } from "@/db/schema";
 import { createAttempt } from "@/lib/attempts";
+import { readEncryptedFile } from "@/lib/data-encryption";
 import { serializeAllowlist } from "@/lib/allowlist";
 import { persistManuscript } from "@/lib/manuscripts";
 import { extractPdfTitle } from "@/lib/pdf-title";
@@ -99,8 +99,10 @@ export async function executeGeneration(
     throw new Error("The selected model does not advertise native PDF support.");
   }
 
-  const bytes = fs.readFileSync(payload.filePath);
-  const file = new File([bytes], payload.fileName, { type: "application/pdf" });
+  const bytes = readEncryptedFile(payload.filePath, "job-upload");
+  const file = new File([new Uint8Array(bytes)], payload.fileName, {
+    type: "application/pdf",
+  });
   const questions: StoredQuestion[] = [];
   for (let index = 0; index < payload.blocks.length; index += 1) {
     const block = payload.blocks[index];

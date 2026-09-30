@@ -23,7 +23,9 @@ export function logIncoming(method: string, pathname: string, outcome: string) {
   if (!requestLoggingOn) return;
   const redacted = pathname
     .replace(/(\/attempt\/)[^/]+/g, "$1[id]")
-    .replace(/(\/api\/(?:attempts|jobs|question-sets)\/)[^/]+/g, "$1[id]");
+    .replace(/(\/(?:take|invite|conference)\/)[^/]+/g, "$1[token]")
+    .replace(/(\/api\/(?:attempts|jobs|question-sets)\/)[^/]+/g, "$1[id]")
+    .replace(/(\/api\/(?:invitations|conference)\/)[^/]+/g, "$1[token]");
   console.log(`${stamp()}  in   ${method.padEnd(6)} ${redacted}  → ${outcome}`);
 }
 
