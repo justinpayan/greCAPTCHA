@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import {
   beginOpenRouterOAuth,
@@ -17,6 +17,7 @@ export function OpenRouterKeyPanel({
   onChange,
   onReady,
   error: pageError = "",
+  notice,
 }: {
   apiKey: string;
   source: KeySource;
@@ -24,6 +25,8 @@ export function OpenRouterKeyPanel({
   onReady?: (apiKey: string, source: KeySource) => void;
   /** An OpenRouter problem the page ran into elsewhere, shown under the key controls. */
   error?: string;
+  /** A page-specific note shown across the bottom of the panel. */
+  notice?: ReactNode;
 }) {
   const [browserKey, setBrowserKey] = useState<BrowserOpenRouterKey | null>(null);
   const [checking, setChecking] = useState(false);
@@ -170,6 +173,7 @@ export function OpenRouterKeyPanel({
             </p>
           ))}
       </aside>
+      {notice}
     </section>
   );
 }

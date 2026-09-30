@@ -102,7 +102,9 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
             <nav className="landing-nav" aria-label="Site">
               <ExternalLink href={PAPER_URL}>Paper</ExternalLink>
               <ExternalLink href={CODE_URL}>Code &amp; data</ExternalLink>
-              <Link href={account.href}>{account.label}</Link>
+              <Link className="landing-account" href={account.href}>
+                {account.label}
+              </Link>
               <TryIt signedIn={signedIn} />
             </nav>
           </header>
@@ -159,11 +161,11 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
               He reported the results in a{" "}
               <a
                 className="landing-inline-link"
-                href="https://medium.com/@TmlrOrg/asking-authors-about-their-own-papers-3d2e04e5dee0"
+                href="https://blog.tmlr.org/2026/asking-authors-about-their-own-papers/"
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                post on Medium
+                post on TMLR
               </a>.
               Only 1 of the 10 papers' authors was able to answer substantial questions about their own paper! 
               greCAPTCHA aims to scale these interviews, allowing anyone to reliably assess authors' understanding of their own work.
@@ -359,7 +361,9 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
         <footer className="landing-footer">
           <ExternalLink href={PAPER_URL}>Paper (arXiv:2609.20481)</ExternalLink>
           <ExternalLink href={CODE_URL}>Code and anonymized study data</ExternalLink>
-          <Link href={account.href}>{account.label}</Link>
+          <Link className="landing-account" href={account.href}>
+                {account.label}
+              </Link>
         </footer>
       </main>
     </>

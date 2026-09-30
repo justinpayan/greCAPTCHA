@@ -24,7 +24,6 @@ import {
   CreatedTestAllowlistEditor,
   TakerAllowlistField,
 } from "@/components/taker-allowlist-field";
-import { formatAllowlist } from "@/lib/allowlist";
 import {
   loadAttemptEntry,
   serveAttempt,
@@ -37,6 +36,7 @@ import {
   DEFAULT_FILL_PROMPT,
   DEFAULT_FREE_RESPONSE_PROMPT,
   DEFAULT_MULTIPLE_CHOICE_PROMPT,
+  isInvitationTemplate,
   type AssessmentResult,
   type AttemptIntro,
   type AttemptListEntry,
@@ -338,6 +338,7 @@ export function ResearchCaptcha({
   const [togglingLinkId, setTogglingLinkId] = useState("");
   const [resettingId, setResettingId] = useState("");
   const [expandedTestIds, setExpandedTestIds] = useState<Set<string>>(new Set());
+  const [allowlistOpenTestIds, setAllowlistOpenTestIds] = useState<Set<string>>(new Set());
   const [paperError, setPaperError] = useState("");
   // OpenRouter problems, shown under the key controls in the API Access panel rather than at the
   // bottom of the form.
@@ -364,6 +365,9 @@ export function ResearchCaptcha({
   const layers = useRef<Array<"overview" | "outline" | "assessment">>([]);
   const [templates, setTemplates] = useState<StudyTemplateSummary[]>([]);
   const [templateId, setTemplateId] = useState("");
+  // Invitations share the templates table but are tests, managed under Tests You've Created; the
+  // template card only offers saved question configurations.
+  const questionTemplates = templates.filter((template) => !isInvitationTemplate(template));
   const [templateName, setTemplateName] = useState("");
   const [apiKeyPayer, setApiKeyPayer] = useState<ApiKeyPayer>("creator");
   const [materialUploader, setMaterialUploader] =
@@ -719,6 +723,11 @@ export function ResearchCaptcha({
         next.delete(test.id);
         return next;
       });
+      setAllowlistOpenTestIds((current) => {
+        const next = new Set(current);
+        next.delete(test.id);
+        return next;
+      });
       await refreshCatalog();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to delete the test.");
@@ -963,13 +972,8 @@ export function ResearchCaptcha({
       const response = await fetch("/api/templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: templateName,
-          config: currentConfig,
-          apiKeyPayer,
-          materialUploader,
-          allowlist: takerAllowlistText,
-        }),
+        // Only the question configuration: a saved template carries no workflow or allowed users.
+        body: JSON.stringify({ name: templateName, config: currentConfig }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to save the template.");
@@ -992,19 +996,8 @@ export function ResearchCaptcha({
       const response = await fetch(`/api/templates/${encodeURIComponent(id)}`);
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to load the template.");
-      const template = payload.template as {
-        name: string;
-        apiKeyPayer: ApiKeyPayer;
-        materialUploader: MaterialUploader;
-        config: StudyTemplateConfig;
-        takerAllowlist?: string[] | null;
-      };
-      setApiKeyPayer(template.apiKeyPayer);
-      setMaterialUploader(template.materialUploader);
-      setTakerAllowlistText(formatAllowlist(template.takerAllowlist));
-      if (template.apiKeyPayer === "taker" || template.materialUploader === "taker") {
-        setSetName(template.name);
-      }
+      // Only the question configuration: the workflow choices and allowed users stay as they are.
+      const template = payload.template as { name: string; config: StudyTemplateConfig };
       const matchedModel = applyConfig(template.config, models);
       setTemplateStatus(
         matchedModel
@@ -1021,16 +1014,8 @@ export function ResearchCaptcha({
     nextUploader: MaterialUploader = materialUploader,
   ) {
     if (nextPayer === apiKeyPayer && nextUploader === materialUploader) return;
-    const selected = templates.find((template) => template.id === templateId);
     setApiKeyPayer(nextPayer);
     setMaterialUploader(nextUploader);
-    if (
-      selected &&
-      (selected.apiKeyPayer !== nextPayer || selected.materialUploader !== nextUploader)
-    ) {
-      setTemplateId("");
-      setTemplateStatus(`Cleared “${selected.name}” because it uses different workflow choices.`);
-    }
   }
 
   async function updateInvitationSharing(id: string, enabled: boolean) {
@@ -1061,17 +1046,6 @@ export function ResearchCaptcha({
       setTemplateStatus("Invitation saved, published, and copied.");
     } else {
       setTemplateStatus("Invitation revoked.");
-    }
-  }
-
-  async function setInvitationSharing(enabled: boolean) {
-    if (!templateId) return;
-    setError("");
-    setTemplateStatus("");
-    try {
-      await updateInvitationSharing(templateId, enabled);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to update sharing.");
     }
   }
 
@@ -1106,7 +1080,7 @@ export function ResearchCaptcha({
           config,
           apiKeyPayer,
           materialUploader,
-          templateId: templateId || undefined,
+          // Always a new invitation: a loaded question configuration is only its starting point.
           allowlist: takerAllowlistText,
         }),
       });
@@ -1119,7 +1093,6 @@ export function ResearchCaptcha({
       }
       const saved = payload.template;
       setTemplates((current) => [saved, ...current.filter((one) => one.id !== saved.id)]);
-      setTemplateId(saved.id);
       setSetName(saved.name);
       if (materialUploader === "creator") {
         const materialResponse = await fetch(
@@ -1143,25 +1116,9 @@ export function ResearchCaptcha({
   }
 
   async function deleteTemplate() {
-    const target = templates.find((one) => one.id === templateId);
+    const target = questionTemplates.find((one) => one.id === templateId);
     if (!target) return;
-    const createdTest = createdTests.find(
-      (test) =>
-        (test.apiKeyPayer !== "creator" || test.materialUploader !== "creator") &&
-        test.id === target.id,
-    );
-    const consequence =
-      (target.apiKeyPayer !== "creator" || target.materialUploader !== "creator") &&
-      createdTest?.attempts.length
-        ? ` This also permanently deletes its ${createdTest.attempts.length} ${
-            createdTest.attempts.length === 1 ? "attempt" : "attempts"
-          } and all associated manuscripts, answers, grades, timings, and feedback.`
-        : "";
-    if (
-      !window.confirm(
-        `Delete the template “${target.name}”?${consequence} This cannot be undone.`,
-      )
-    ) {
+    if (!window.confirm(`Delete the template “${target.name}”? This cannot be undone.`)) {
       return;
     }
     setError("");
@@ -1195,7 +1152,7 @@ export function ResearchCaptcha({
     const plural = blocks.length === 1 ? "card" : "cards";
     if (
       !window.confirm(
-        `Remove all ${blocks.length} question family ${plural}?\n\nTheir prompts, counts, limits and warm-up flags are lost, and the autosaved draft updates immediately. Reload a saved study set template to get a configuration back.\n\nThis cannot be undone.`,
+        `Remove all ${blocks.length} question family ${plural}?\n\nTheir prompts, counts, limits and warm-up flags are lost, and the autosaved draft updates immediately. Reload a saved question configuration template to get a configuration back.\n\nThis cannot be undone.`,
       )
     ) {
       return;
@@ -1404,6 +1361,7 @@ export function ResearchCaptcha({
         submittedFeedback={
           outline?.attemptId === result.attemptId ? outline.examineeFeedback : null
         }
+        pdfLabel={outline?.attemptId === result.attemptId ? outline.setLabel : undefined}
         onBack={exitToDashboard}
       />
     );
@@ -1567,10 +1525,8 @@ export function ResearchCaptcha({
       </div>
       {(mode === "default" || mode === "custom") && (
         <section className="dashboard-workflow" aria-labelledby="workflow-heading">
-          <div>
-            <span className="field-label" id="workflow-heading">Workflow choices</span>
-          </div>
-          <div>
+          <span className="field-label" id="workflow-heading">Workflow choices</span>
+          <div className="workflow-choice">
             <span className="field-label">Who pays OpenRouter costs?</span>
             <div className="workflow-toggle" role="radiogroup" aria-label="OpenRouter payer">
               <button
@@ -1592,6 +1548,8 @@ export function ResearchCaptcha({
                 Test taker
               </button>
             </div>
+          </div>
+          <div className="workflow-choice">
             <span className="field-label">Who uploads source material?</span>
             <div className="workflow-toggle" role="radiogroup" aria-label="Material uploader">
               <button
@@ -1651,11 +1609,10 @@ export function ResearchCaptcha({
         <section className="card template-card">
           <div className="template-heading">
             <div>
-              <span className="field-label">Study set template</span>
+              <span className="field-label">Question configuration template</span>
               <p className="hint">
-                {apiKeyPayer === "taker" || materialUploader === "taker"
-                  ? "Load an existing invitation template or configure a new one below."
-                  : "Everything below except the PDF and the contribution statement. Your current setup is saved automatically and restored on the next visit."}
+                Saves the model, PDF text extractor, time limit, and question families below, for
+                either workflow. Your current setup also autosaves between visits.
               </p>
             </div>
           </div>
@@ -1669,31 +1626,29 @@ export function ResearchCaptcha({
                 onChange={(event) => loadTemplate(event.target.value)}
               >
                 <option value="">
-                  {templates.length ? "Select a template to load…" : "No saved templates"}
+                  {questionTemplates.length ? "Select a template to load…" : "No saved templates"}
                 </option>
-                {templates.map((template) => (
+                {questionTemplates.map((template) => (
                   <option key={template.id} value={template.id}>
                     {template.name}
                   </option>
                 ))}
               </select>
             </div>
-            {apiKeyPayer === "creator" && materialUploader === "creator" && (
-              <div className="field">
-                <label htmlFor="templateName">
-                  Save current setup as
-                  <FieldHint text="Test and template names must be unique within your account." />
-                </label>
-                <input
-                  className="control"
-                  id="templateName"
-                  value={templateName}
-                  placeholder="Template name"
-                  maxLength={120}
-                  onChange={(event) => setTemplateName(event.target.value)}
-                />
-              </div>
-            )}
+            <div className="field">
+              <label htmlFor="templateName">
+                Save current setup as
+                <FieldHint text="Test and template names must be unique within your account." />
+              </label>
+              <input
+                className="control"
+                id="templateName"
+                value={templateName}
+                placeholder="Template name"
+                maxLength={120}
+                onChange={(event) => setTemplateName(event.target.value)}
+              />
+            </div>
             <div className="template-buttons">
               <button
                 className="secondary"
@@ -1702,16 +1657,14 @@ export function ResearchCaptcha({
               >
                 Reset to default template
               </button>
-              {apiKeyPayer === "creator" && materialUploader === "creator" && (
-                <button
-                  className="secondary"
-                  type="button"
-                  disabled={!templateName.trim()}
-                  onClick={saveTemplate}
-                >
-                  Save template
-                </button>
-              )}
+              <button
+                className="secondary"
+                type="button"
+                disabled={!templateName.trim()}
+                onClick={saveTemplate}
+              >
+                Save template
+              </button>
               <button
                 className="secondary"
                 type="button"
@@ -1720,23 +1673,6 @@ export function ResearchCaptcha({
               >
                 Delete selected
               </button>
-              {(apiKeyPayer === "taker" || materialUploader === "taker") && templateId && (
-                <button
-                  className="secondary"
-                  type="button"
-                  onClick={() =>
-                    void setInvitationSharing(
-                      !templates.find((template) => template.id === templateId)
-                        ?.invitationShareToken,
-                    )
-                  }
-                >
-                  {templates.find((template) => template.id === templateId)
-                    ?.invitationShareToken
-                    ? "Revoke invitation"
-                    : "Publish and copy invitation"}
-                </button>
-              )}
             </div>
           </div>
           {templateStatus && <p className="template-status">{templateStatus}</p>}
@@ -1847,6 +1783,9 @@ export function ResearchCaptcha({
                 )}
                 {visibleCreatedTests.map((test) => {
                   const expanded = expandedTestIds.has(test.id);
+                  const hasInvitation =
+                    test.apiKeyPayer !== "creator" || test.materialUploader !== "creator";
+                  const allowlistOpen = hasInvitation && allowlistOpenTestIds.has(test.id);
                   return (
                     <article className="created-test" key={test.id}>
                       <div className="catalog-row created-test-parent">
@@ -1916,6 +1855,23 @@ export function ResearchCaptcha({
                               Overview
                             </button>
                           )}
+                          {hasInvitation && (
+                            <button
+                              className="secondary"
+                              type="button"
+                              aria-expanded={allowlistOpen}
+                              onClick={() =>
+                                setAllowlistOpenTestIds((current) => {
+                                  const next = new Set(current);
+                                  if (next.has(test.id)) next.delete(test.id);
+                                  else next.add(test.id);
+                                  return next;
+                                })
+                              }
+                            >
+                              {allowlistOpen ? "Hide users" : "Allowed users"}
+                            </button>
+                          )}
                           <button
                             className="secondary"
                             type="button"
@@ -1940,23 +1896,24 @@ export function ResearchCaptcha({
                           </button>
                         </div>
                       </div>
+                      {allowlistOpen && (
+                        <div className="created-test-panel">
+                          <CreatedTestAllowlistEditor
+                            key={test.id}
+                            testId={test.id}
+                            allowlist={test.takerAllowlist}
+                            onSaved={(next) =>
+                              setCreatedTests((current) =>
+                                current.map((row) =>
+                                  row.id === test.id ? { ...row, takerAllowlist: next } : row,
+                                ),
+                              )
+                            }
+                          />
+                        </div>
+                      )}
                       {expanded && (
-                        <div className="created-test-attempts">
-                          {(test.apiKeyPayer !== "creator" ||
-                            test.materialUploader !== "creator") && (
-                            <CreatedTestAllowlistEditor
-                              key={test.id}
-                              testId={test.id}
-                              allowlist={test.takerAllowlist}
-                              onSaved={(next) =>
-                                setCreatedTests((current) =>
-                                  current.map((row) =>
-                                    row.id === test.id ? { ...row, takerAllowlist: next } : row,
-                                  ),
-                                )
-                              }
-                            />
-                          )}
+                        <div className="created-test-panel">
                           {test.attempts.length === 0 ? (
                             <p className="hint catalog-empty">
                               No one has started this test yet. Copy the invitation to share it.
@@ -2034,6 +1991,10 @@ export function ResearchCaptcha({
       ) : (
         <form
           className="card form-card"
+          // Stops Firefox restoring control state on reload: it would re-enable the submit button
+          // in the server HTML before hydration, which React then reports as a mismatch against
+          // the disabled button it renders while no model is selected.
+          autoComplete="off"
           onSubmit={(event) => {
             const config = currentConfig;
             return apiKeyPayer === "creator" && materialUploader === "creator"
@@ -2043,17 +2004,6 @@ export function ResearchCaptcha({
         >
           {apiKeyPayer === "creator" && <ProfessorOpenRouterPanel error={keyError} />}
           <div className="form-section">
-            {mode !== "default" && materialUploader === "creator" && (
-              <div className="section-heading">
-                <div>
-                  <span className="field-label">This paper</span>
-                  <p className="hint">
-                    Specific to one manuscript and one claimed author. Everything below is
-                    reusable, so the same question configuration can be run against any paper.
-                  </p>
-                </div>
-              </div>
-            )}
             <div className="form-grid">
               <div className="field full">
                 <label htmlFor="setName">
@@ -2061,8 +2011,8 @@ export function ResearchCaptcha({
                   <FieldHint
                     text={
                       apiKeyPayer === "taker" || materialUploader === "taker"
-                        ? "Names the reusable test shown to test takers who open its invitation link."
-                        : "Identifies this set in the saved-set list. Leave blank to use the PDF filename. You can rename it later."
+                        ? "Identifies this test on your dashboard. Test takers don't see it."
+                        : "Identifies this test on your dashboard. Test takers don't see it. Leave blank to use the PDF filename; you can rename it later."
                     }
                   />
                 </label>
@@ -2094,7 +2044,7 @@ export function ResearchCaptcha({
                 </>
               )}
               {mode === "default" && (
-                <div className="field basic-time-limit">
+                <div className="field">
                   <label htmlFor="basicOverallLimit">
                     Overall time limit
                     <span className="label-note">minutes</span>
@@ -2122,7 +2072,7 @@ export function ResearchCaptcha({
               <div>
                 <span className="field-label">Question configuration</span>
                 <p className="hint">
-                  Saved and restored by a study set template, independent of the manuscript.
+                  Saved and restored by a question configuration template, independent of the manuscript.
                 </p>
               </div>
             </div>
@@ -2130,7 +2080,7 @@ export function ResearchCaptcha({
             <div className="field full">
               <span className="field-label field-label-row">
                 Generator and Evaluator model
-                <FieldHint text="This model generates questions and grades free-response answers. Choose a featured model, select See more, or click the magnifying glass to clear the field and search the full catalog." />
+                <FieldHint text="Choose a featured model, select See more, or click the magnifying glass to clear the field and search the full catalog." />
               </span>
               <ModelPicker
                 models={models}
@@ -2428,7 +2378,7 @@ export function ResearchCaptcha({
               <div className="field">
                 <span className="field-label field-label-row">
                   Generator and Evaluator model
-                  <FieldHint text="This model generates questions and grades free-response answers. Choose a featured model, select See more, or click the magnifying glass to clear the field and search the full catalog." />
+                  <FieldHint text="Choose a featured model, select See more, or click the magnifying glass to clear the field and search the full catalog." />
                 </span>
                 <ModelPicker
                   models={models}

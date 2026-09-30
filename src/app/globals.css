@@ -247,10 +247,6 @@ h2 {
   align-content: start;
 }
 
-.basic-time-limit .control {
-  width: min(100%, 10rem);
-}
-
 .field label,
 .field-label {
   font-size: 0.88rem;
@@ -338,6 +334,16 @@ h2 {
   color: var(--muted);
   font-size: 0.79rem;
   line-height: 1.45;
+}
+
+/* An assessment invitation's submit button, set apart from the fields above it, with the
+   question count and model line just beneath. */
+.invitation-submit {
+  margin-top: 28px;
+}
+
+.invitation-summary {
+  margin: 14px 0 0;
 }
 
 .control,
@@ -773,13 +779,12 @@ textarea.control {
   margin: 16px 0 0;
 }
 
+/* The heading, then the two questions side by side in equal columns across the full width. */
 .dashboard-workflow {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  width: fit-content;
-  max-width: 100%;
-  gap: 18px;
+  display: grid;
+  grid-template-columns: auto repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 12px 24px;
   margin-bottom: 14px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -788,8 +793,14 @@ textarea.control {
 }
 
 #workflow-heading {
+  align-self: center;
   font-size: 1rem;
   font-weight: 800;
+}
+
+.workflow-choice {
+  display: grid;
+  gap: 6px;
 }
 
 .dashboard-workflow .hint {
@@ -798,12 +809,23 @@ textarea.control {
 
 .workflow-toggle {
   display: grid;
-  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 5px;
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 4px;
   background: white;
+}
+
+/* Too narrow for all three side by side: the heading takes its own row above the questions. */
+@media (max-width: 1100px) {
+  .dashboard-workflow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #workflow-heading {
+    grid-column: 1 / -1;
+  }
 }
 
 .workflow-toggle button {
@@ -856,6 +878,8 @@ textarea.control {
   border-radius: 12px;
   padding: 16px;
   background: var(--paper);
+  /* Left-aligned even inside a centred card, such as the submitted-assessment screen. */
+  text-align: left;
 }
 
 /* The professor's API Access panel opens the new-question-set form; keep clear of the first field. */
@@ -886,8 +910,10 @@ textarea.control {
   font-weight: 680;
 }
 
+/* Spans both columns of the API Access panel it sits in. */
 .pasted-key-grading-warning {
-  margin: 14px 0 24px;
+  grid-column: 1 / -1;
+  margin: 0;
   border: 1px solid #dfbd78;
   border-left: 4px solid var(--amber);
   border-radius: 10px;
@@ -1011,6 +1037,12 @@ textarea.control {
   margin: 4px 0 0;
 }
 
+/* As a span the eyebrow is inline, which would ignore its bottom margin and sit flush on the
+   title beneath it. */
+.section-heading .eyebrow {
+  display: block;
+}
+
 /* Title and hint on one line, the actions on their own line beneath. */
 .section-heading-stacked {
   align-items: flex-start;
@@ -1127,21 +1159,48 @@ textarea.control {
   padding: 18px 20px;
 }
 
-.attempt-start-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
+/* The grading report's one summary card: the attempt's status and action, then the tested
+   material and any examinee feedback, each set off by a divider. */
+.report-card {
   margin-bottom: 24px;
   padding: 20px;
 }
 
-.attempt-start-card p {
+.attempt-start-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.attempt-start-row p {
   margin: 5px 0 0;
 }
 
-.attempt-start-card .primary {
+.attempt-start-row .primary {
   flex-shrink: 0;
+}
+
+.report-card-section {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.report-card-section p:last-child {
+  margin-bottom: 0;
+}
+
+/* The key panel an ungraded, taker-funded attempt shows beneath the report card, spaced like the
+   card so the question list below does not butt against it. */
+.report-card + .key-source-panel {
+  margin-top: 0;
+  margin-bottom: 24px;
+}
+
+/* Keeps the line breaks of the contribution statement as the creator or taker wrote it. */
+.report-contributions {
+  white-space: pre-wrap;
 }
 
 .participant-link-row {
@@ -1224,17 +1283,31 @@ textarea.control {
 .overall-timer {
   display: grid;
   justify-items: end;
-  gap: 2px;
+  gap: 6px;
 }
 
-/* The remainder is the one being counted down to zero, so it carries the weight. */
+/* The remainder is the one being counted down to zero, so it carries the weight: a pill large
+   enough to read at a glance from the answer field. */
 .overall-timer .overall-remaining {
-  font-weight: 780;
-  color: var(--ink);
+  border: 1px solid #9dc6b2;
+  border-radius: 10px;
+  padding: 6px 16px;
+  color: var(--green-dark);
+  background: var(--green-soft);
+  font-size: 0.95rem;
+  font-weight: 720;
+}
+
+.overall-remaining-clock {
+  font-size: 1.35rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 
 .overall-timer .overall-remaining.over {
+  border-color: var(--danger);
   color: var(--danger);
+  background: #fbeaea;
 }
 
 /* Landing page before a question set. Nothing is timed while this is on screen. */
@@ -1358,7 +1431,8 @@ textarea.control {
   border-radius: 0;
 }
 
-.created-test-attempts {
+/* A drop-down section beneath a created test: its allowed users or its attempts. */
+.created-test-panel {
   display: grid;
   gap: 8px;
   padding: 12px 16px 16px 32px;
@@ -1829,6 +1903,38 @@ textarea.prompt-control {
   gap: 8px;
 }
 
+/* How much of the overall time budget has been used, beneath the question buttons. */
+.question-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.question-progress-track {
+  flex: 1;
+  height: 10px;
+  overflow: hidden;
+  border: 1px solid #b9cbc1;
+  border-radius: 999px;
+  background: #e3ebe6;
+}
+
+.question-progress-label {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.question-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+  transition: width 1s linear;
+}
+
 .question-nav-item {
   min-height: 42px;
   border: 1px solid var(--line);
@@ -2211,6 +2317,12 @@ button.option.selected {
   margin-inline: auto;
 }
 
+/* The key panel on the submitted-assessment screen sits a little in from the card's edges. */
+.result > .key-source-panel {
+  max-width: 90%;
+  margin-inline: auto;
+}
+
 /* Back to dashboard, after the whole review. */
 .result-navigation {
   display: flex;
@@ -2315,6 +2427,37 @@ button.option.selected {
 
 .feedback-submit-card {
   margin-top: 20px;
+}
+
+/* The feedback card closes the results page, so the pane ends just below it rather than
+   leaving the pane's usual tall bottom gap. */
+.pdf-assessment-content:has(.feedback-submit-card) {
+  padding-bottom: 28px;
+}
+
+.feedback-submit-card h2 {
+  margin-bottom: 12px;
+}
+
+/* Room between the explanation and the submit button beneath it. */
+.feedback-submit-card .hint {
+  margin-bottom: 24px;
+}
+
+.feedback-submit-card .hint:last-child {
+  margin-bottom: 0;
+}
+
+/* Submit on the left, the way back to the dashboard at the far end. */
+.feedback-submit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.feedback-submit-actions > .secondary:only-child {
+  margin-left: auto;
 }
 
 .summary-question-feedback {
@@ -2791,7 +2934,7 @@ mark.evidence:focus-visible {
     margin-left: 0;
   }
 
-  .attempt-start-card {
+  .attempt-start-row {
     align-items: stretch;
     flex-direction: column;
   }
@@ -2815,9 +2958,7 @@ mark.evidence:focus-visible {
   }
 
   .dashboard-workflow {
-    align-items: stretch;
-    flex-direction: column;
-    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .workflow-toggle {
@@ -2940,6 +3081,21 @@ mark.evidence:focus-visible {
   color: white;
 }
 
+.landing-screen .landing-nav .landing-account {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 8px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 12px;
+  background: #2b785b;
+}
+
+.landing-screen .landing-nav .landing-account:hover {
+  border-color: white;
+  background: #358565;
+}
+
 /* On green, the primary button inverts to white so it stays the strongest element. */
 .landing-screen .primary,
 .landing-screen a.primary {
@@ -3002,6 +3158,7 @@ mark.evidence:focus-visible {
 .landing-screen .demo-badge {
   border-color: rgba(255, 255, 255, 0.5);
   color: white;
+  background: #2b785b;
 }
 
 .landing-scroll {

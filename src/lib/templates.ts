@@ -19,6 +19,7 @@ import {
 } from "@/lib/allowlist";
 import {
   generationConfigSchema,
+  isInvitationTemplate,
   studyTemplateConfigSchema,
   type ApiKeyPayer,
   type MaterialUploader,
@@ -117,6 +118,11 @@ export async function saveTemplate(
       )
       .get();
     if (!existing) throw new Error("Template not found.");
+    if (!isInvitationTemplate(existing)) {
+      // Publishing an invitation from a loaded configuration must add a test, not replace the
+      // configuration with it.
+      throw new Error("A saved question configuration cannot be turned into an invitation.");
+    }
     const nextAllowlistJson =
       takerAllowlist === undefined
         ? existing.takerAllowlistJson

@@ -1,10 +1,13 @@
+import { Brand } from "@/components/brand";
+
 /**
  * Shown when a signed-in account is not on a test's allowlist.
  * Does not name anyone who is allowed.
  */
 export function AssessmentNotAllowed({ username }: { username: string }) {
   return (
-    <main className="app-shell">
+    <main className="app-shell dashboard-shell">
+      <Brand href="/" demoBadge />
       <section>
         <p className="eyebrow">Not allowed</p>
         <h1>You aren&apos;t allowed to take this assessment.</h1>

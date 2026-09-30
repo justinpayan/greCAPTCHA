@@ -19,6 +19,33 @@ import {
 
 const LIST_LIMIT = 200;
 
+/**
+ * The name a creator knows a set's test by. A set generated for one taker from an invitation
+ * template is filed under that template on the dashboard, and is itself named after the uploaded
+ * file, so it takes the template's name. Any other set uses its own name.
+ */
+export async function questionSetTestLabel(questionSetId: string): Promise<string> {
+  const row = await db
+    .select({
+      name: questionSets.name,
+      paperName: questionSets.paperName,
+      templateName: studyTemplates.name,
+      templateApiKeyPayer: studyTemplates.apiKeyPayer,
+      templateMaterialUploader: studyTemplates.materialUploader,
+    })
+    .from(questionSets)
+    .leftJoin(studyTemplates, eq(studyTemplates.id, questionSets.sourceTemplateId))
+    .where(eq(questionSets.id, questionSetId))
+    .get();
+  if (!row) return "";
+  const fromInvitation =
+    row.templateName !== null &&
+    (row.templateApiKeyPayer !== "creator" || row.templateMaterialUploader !== "creator");
+  return fromInvitation && row.templateName?.trim()
+    ? row.templateName.trim()
+    : questionSetLabel(row.name, row.paperName);
+}
+
 /** A set always has something readable to show, even when it was never named. */
 export function questionSetLabel(name: string | null, paperName: string) {
   return name?.trim() || paperName;

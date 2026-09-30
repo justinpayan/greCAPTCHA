@@ -27,7 +27,6 @@ export default async function ConferenceInvitationPage({
       <ConferenceInvitation
         token={token}
         template={{
-          name: template.name,
           modelId: template.config.modelId,
           pdfEngine: template.config.pdfEngine,
           questionCount: template.config.blocks.reduce((sum, block) => sum + block.count, 0),

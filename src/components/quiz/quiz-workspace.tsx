@@ -12,6 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 
+import { Brand } from "@/components/brand";
 import { GradedFreeResponse } from "@/components/quiz/graded-response";
 import { MathText } from "@/components/quiz/math-text";
 import { OpenRouterKeyPanel } from "@/components/openrouter-key-panel";
@@ -222,14 +223,14 @@ function formatClock(durationMs: number) {
 }
 
 /**
- * Both clocks for the whole set: how long has been spent and how much is left.
+ * The countdown for the whole set. How much has been spent is shown by the time-elapsed bar
+ * under the question overview.
  *
  * Only shown when a set carries an overall limit. Reaching zero asks the server to close the
  * attempt; the server checks the budget itself and is free to disagree.
  *
  * Elapsed is the sum of the time each question was open, not wall-clock, so it holds still while a
- * session is paused. That is the same figure the limit is enforced against, which is what keeps the
- * two lines adding up to the budget.
+ * session is paused. That is the same figure the limit is enforced against.
  */
 function OverallTimer({
   elapsedMs,
@@ -240,8 +241,7 @@ function OverallTimer({
   remainingMs: number;
   limitSeconds: number;
 }) {
-  // The remainder is derived from the figure shown above it, not rounded independently, so the two
-  // always add up to the budget. Someone watching a clock does that arithmetic.
+  // The remainder is derived from rounded elapsed time, so it ticks in step with the elapsed bar.
   const usedSeconds = Math.min(limitSeconds, Math.max(0, Math.round(elapsedMs / 1000)));
   const leftSeconds = limitSeconds - usedSeconds;
   // Enforcement still runs off the unrounded remainder, so display rounding cannot end an
@@ -249,11 +249,8 @@ function OverallTimer({
   const low = remainingMs <= 60_000;
   return (
     <div className="overall-timer">
-      <div className="question-timer">
-        {formatClock(usedSeconds * 1000)} of {formatDuration(limitSeconds * 1000)} used
-      </div>
-      <div className={`question-timer overall-remaining ${low ? "over" : ""}`}>
-        {formatClock(leftSeconds * 1000)} left for the set
+      <div className={`overall-remaining ${low ? "over" : ""}`}>
+        <span className="overall-remaining-clock">{formatClock(leftSeconds * 1000)}</span> left
       </div>
     </div>
   );
@@ -524,7 +521,13 @@ function ResultSections({
   );
 }
 
-function ExamineeFeedbackReview({ result }: { result: AssessmentResult }) {
+function ExamineeFeedbackReview({
+  result,
+  onBack,
+}: {
+  result: AssessmentResult;
+  onBack?: () => void;
+}) {
   const [commentsByQuestionId, setCommentsByQuestionId] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -615,19 +618,28 @@ function ExamineeFeedbackReview({ result }: { result: AssessmentResult }) {
             : "Each question comment is optional. Submit them together once when you are finished; they cannot be edited afterward."}
         </p>
         {error && <p className="error" role="alert">{error}</p>}
-        {!submitted && (
-          <button
-            className="primary"
-            type="button"
-            disabled={loading || saving}
-            onClick={() => void submit()}
-          >
-            {saving
-              ? "Submitting…"
-              : hasComment
-                ? "Submit feedback"
-                : "Submit without comments"}
-          </button>
+        {(!submitted || onBack) && (
+          <div className="feedback-submit-actions">
+            {!submitted && (
+              <button
+                className="primary"
+                type="button"
+                disabled={loading || saving}
+                onClick={() => void submit()}
+              >
+                {saving
+                  ? "Submitting…"
+                  : hasComment
+                    ? "Submit feedback"
+                    : "Submit without comments"}
+              </button>
+            )}
+            {onBack && (
+              <button className="secondary" type="button" onClick={onBack}>
+                Back to dashboard
+              </button>
+            )}
+          </div>
         )}
       </section>
     </>
@@ -639,17 +651,20 @@ export function ResultView({
   collectFeedback = false,
   submittedFeedback = null,
   onBack,
+  pdfLabel,
 }: {
   result: AssessmentResult;
   collectFeedback?: boolean;
   submittedFeedback?: ExamineeFeedback | null;
   onBack?: () => void;
+  /** The creator's report passes the test name; a test taker only ever sees the PDF name. */
+  pdfLabel?: string;
 }) {
   return (
-    <PdfAssessmentSplit attemptId={result.attemptId} pdfLabel={result.paperName}>
+    <PdfAssessmentSplit attemptId={result.attemptId} pdfLabel={pdfLabel || result.paperName}>
       <main className="app-shell">
         {collectFeedback ? (
-          <ExamineeFeedbackReview result={result} />
+          <ExamineeFeedbackReview result={result} onBack={onBack} />
         ) : (
           <ResultSections
             result={result}
@@ -666,7 +681,8 @@ export function ResultView({
             }
           />
         )}
-        {onBack && (
+        {/* With feedback to collect, the way back sits in the feedback card instead. */}
+        {onBack && !collectFeedback && (
           <div className="result-navigation">
             <button className="secondary" type="button" onClick={onBack}>
               Back to dashboard
@@ -783,10 +799,11 @@ export function PendingEvaluationView({
   }
 
   return (
-    <main className="app-shell">
+    <main className="app-shell dashboard-shell">
+      <Brand href="/" demoBadge />
       <section className="card result neutral-result">
         <p className="eyebrow">Assessment submitted</p>
-        <h1>{credentialRequired ? "Submit your key to grade the assessment." : status}</h1>
+        <h1>{credentialRequired ? "Submit your API key to grade the assessment." : status}</h1>
         {credentialRequired && (
           <OpenRouterKeyPanel
             apiKey={apiKey}
@@ -1095,6 +1112,32 @@ export function QuizWorkspace({
             );
           })}
         </div>
+        {/* Only a set with an overall limit has a budget for the bar to fill toward. */}
+        {overallClock && (
+          <div className="question-progress">
+            <span className="question-progress-label" id="time-elapsed-label">
+              Time elapsed:
+            </span>
+            <div
+              className="question-progress-track"
+              role="progressbar"
+              aria-labelledby="time-elapsed-label"
+              aria-valuemin={0}
+              aria-valuemax={overallClock.limitSeconds}
+              aria-valuenow={Math.min(
+                overallClock.limitSeconds,
+                Math.round(overallElapsedMs / 1000),
+              )}
+            >
+              <div
+                className="question-progress-fill"
+                style={{
+                  width: `${Math.min(100, (overallElapsedMs / (overallClock.limitSeconds * 1000)) * 100)}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
       </nav>
 
       {/*

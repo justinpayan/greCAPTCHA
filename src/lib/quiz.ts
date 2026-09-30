@@ -159,6 +159,17 @@ export type CreatedTestEntry = {
   attempts: AttemptListEntry[];
 };
 
+/**
+ * A template with a taker side is an invitation test, which keeps its workflow. One with neither is
+ * a saved question configuration, which carries no workflow of its own and loads into any.
+ */
+export function isInvitationTemplate(template: {
+  apiKeyPayer: ApiKeyPayer | string;
+  materialUploader: MaterialUploader | string;
+}) {
+  return template.apiKeyPayer !== "creator" || template.materialUploader !== "creator";
+}
+
 export type StudyTemplateSummary = {
   id: string;
   name: string;
@@ -411,6 +422,8 @@ export type AttemptOutline = {
   /** The set's name, falling back to the PDF filename when it was never named. */
   setLabel: string;
   paperName: string;
+  /** The contribution statement the questions were scoped to; empty when none was given. */
+  contributions: string;
   modelId: string;
   apiKeyPayer: ApiKeyPayer;
   materialUploader: MaterialUploader;

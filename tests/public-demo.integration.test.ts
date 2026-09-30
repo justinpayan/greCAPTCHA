@@ -600,6 +600,38 @@ describe("public demo account-to-grade flow", () => {
       setTemplateSharing(incompleteTemplate.id, alice.id, true),
     ).rejects.toThrow("Choose a model");
 
+    // A saved question configuration stays one: publishing an invitation from it must not
+    // overwrite it.
+    const questionTemplate = await saveTemplate(
+      alice.id,
+      "Reusable question configuration",
+      {
+        modelId: "test/model",
+        pdfEngine: "native",
+        blocks,
+        randomize: false,
+        overallTimeLimitSeconds: null,
+      },
+      "creator",
+      "creator",
+    );
+    await expect(
+      saveTemplate(
+        alice.id,
+        "Invitation from a configuration",
+        {
+          modelId: "test/model",
+          pdfEngine: "native",
+          blocks,
+          randomize: false,
+          overallTimeLimitSeconds: null,
+        },
+        "taker",
+        "taker",
+        questionTemplate.id,
+      ),
+    ).rejects.toThrow("cannot be turned into an invitation");
+
     const template = await saveTemplate(
       alice.id,
       "Conference author check",

@@ -152,57 +152,69 @@ export function AttemptSummary({
         </div>
       </header>
 
-      <section className="card attempt-start-card">
-        <div>
-          <strong>
-            {outline.graded
-              ? "Completed attempt"
-              : outline.gradable
-                ? "Awaiting evaluation"
-              : started
-                ? "Continue where you left off"
-                : "Attempt not yet started"}
-          </strong>
-          <p className="hint">
-            {complete
-              ? outline.graded
-                ? "Open the completed attempt to see its score and question-by-question results."
-                : "Provide an OpenRouter API key below, then run the evaluation."
-              : "Open the attempt when you are ready. Timing begins after you confirm on the start screen."}
+      {/* Status, tested material, and examinee feedback share one card, divided into sections. */}
+      <section className="card report-card">
+        <div className="attempt-start-row">
+          <div>
+            <strong>
+              {outline.graded
+                ? "Completed attempt"
+                : outline.gradable
+                  ? "Awaiting evaluation"
+                : started
+                  ? "Continue where you left off"
+                  : "Attempt not yet started"}
+            </strong>
+            <p className="hint">
+              {complete
+                ? outline.graded
+                  ? "Open the completed attempt to see its score and question-by-question results."
+                  : "Provide an OpenRouter API key below, then run the evaluation."
+                : "Open the attempt when you are ready. Timing begins after you confirm on the start screen."}
+            </p>
+          </div>
+          <button
+            className="primary"
+            type="button"
+            disabled={
+              working ||
+              (outline.apiKeyPayer === "taker" &&
+                outline.gradable &&
+                !outline.graded &&
+                !apiKey)
+            }
+            onClick={complete ? showGrading : beginOrResume}
+          >
+            {actionLabel}
+          </button>
+        </div>
+
+        <div className="report-card-section">
+          <p className="eyebrow">What material was tested?</p>
+          <p className="report-contributions">
+            {outline.contributions.trim()
+              ? outline.contributions
+              : "No test-scope statement was provided, so questions covered the whole manuscript."}
           </p>
         </div>
-        <button
-          className="primary"
-          type="button"
-          disabled={
-            working ||
-            (outline.apiKeyPayer === "taker" &&
-              outline.gradable &&
-              !outline.graded &&
-              !apiKey)
-          }
-          onClick={complete ? showGrading : beginOrResume}
-        >
-          {actionLabel}
-        </button>
-      </section>
 
-      {outline.examineeFeedback && (
-        <section className="card">
-          <p className="eyebrow">Examinee feedback</p>
-          <h2>
-            Submitted {new Date(outline.examineeFeedback.submittedAt).toLocaleString()}
-          </h2>
-          <p>
-            {feedbackCommentCount > 0
-              ? `${feedbackCommentCount} question ${
-                  feedbackCommentCount === 1 ? "comment" : "comments"
-                } submitted below.`
-              : "The examinee submitted without comments."}
-          </p>
-          <p className="hint">This feedback is locked and cannot be edited.</p>
-        </section>
-      )}
+        {outline.examineeFeedback && (
+          <div className="report-card-section">
+            <p className="eyebrow">Examinee feedback</p>
+            <h2>
+              Submitted {new Date(outline.examineeFeedback.submittedAt).toLocaleString()}
+            </h2>
+            <p>
+              {feedbackCommentCount > 0
+                ? `${feedbackCommentCount} question ${
+                    feedbackCommentCount === 1 ? "comment" : "comments"
+                  } submitted below.`
+                : "The examinee submitted without comments."}
+            </p>
+            <p className="hint">This feedback is locked and cannot be edited.</p>
+          </div>
+        )}
+      </section>
 
       {outline.apiKeyPayer === "taker" && outline.gradable && !outline.graded && (
         <OpenRouterKeyPanel

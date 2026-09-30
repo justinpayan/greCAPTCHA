@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 
+import { Brand } from "@/components/brand";
 import { AssessmentNotAllowed } from "@/components/quiz/assessment-not-allowed";
 import { ManuscriptField } from "@/components/manuscript-field";
 import { OpenRouterKeyPanel } from "@/components/openrouter-key-panel";
@@ -19,8 +20,8 @@ export function AssessmentInvitation({
   template,
 }: {
   token: string;
+  /** Deliberately without the test name, which is only ever shown to the creator. */
   template: {
-    name: string;
     modelId: string;
     pdfEngine: string;
     questionCount: number;
@@ -153,38 +154,36 @@ export function AssessmentInvitation({
   }
 
   return (
-    <main className="app-shell">
-      <div className="brand">
-        <span className="brand-mark">G</span>
-        greCAPTCHA
-      </div>
+    <main className="app-shell dashboard-shell">
+      <Brand href="/" demoBadge />
       <form className="card form-card" onSubmit={(event) => void submit(event)}>
         <div className="section-heading">
           <div>
             <span className="eyebrow">Assessment invitation</span>
-            <h1>{template.name}</h1>
+            {/* The taker knows the test by its paper; before they upload one there is none. */}
+            <h1>{template.materialFileName ?? "Upload your paper"}</h1>
           </div>
         </div>
         {template.apiKeyPayer === "taker" && (
-          <>
-            <OpenRouterKeyPanel
-              apiKey={apiKey}
-              source={keySource}
-              error={keyError}
-              onChange={(key, source) => {
-                setApiKey(key);
-                setKeySource(source);
-                setKeyError("");
-              }}
-            />
-            {keySource === "paste" && (
-              <p className="pasted-key-grading-warning">
-                <strong>Important:</strong> A pasted key is used only to generate this assessment
-                and is not stored. When you finish, you will need to paste an OpenRouter API key
-                again to grade the assessment.
-              </p>
-            )}
-          </>
+          <OpenRouterKeyPanel
+            apiKey={apiKey}
+            source={keySource}
+            error={keyError}
+            onChange={(key, source) => {
+              setApiKey(key);
+              setKeySource(source);
+              setKeyError("");
+            }}
+            notice={
+              keySource === "paste" && (
+                <p className="pasted-key-grading-warning">
+                  <strong>Important:</strong> A pasted key is used only to generate this assessment
+                  and is not stored. When you finish, you will need to paste an OpenRouter API key
+                  again to grade the assessment.
+                </p>
+              )
+            }
+          />
         )}
         {template.materialUploader === "taker" && (
           <div className="form-grid">
@@ -200,14 +199,13 @@ export function AssessmentInvitation({
             </div>
           </div>
         )}
-        <p className="hint">
+        {error && <p className="error" role="alert">{error}</p>}
+        <button className="primary invitation-submit" type="submit" disabled={working}>
+          {working ? status || "Generating assessment…" : "Generate my assessment"}
+        </button>
+        <p className="hint invitation-summary">
           {template.questionCount} questions · model selected by the test creator
         </p>
-        {status && <p className="status-note">{status}</p>}
-        {error && <p className="error" role="alert">{error}</p>}
-        <button className="primary" type="submit" disabled={working}>
-          {working ? "Generating assessment…" : "Generate my assessment"}
-        </button>
       </form>
     </main>
   );

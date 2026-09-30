@@ -45,14 +45,6 @@ export function AttemptIntroPage({
         </h1>
         <ul className="intro-facts">
           <li>
-            {intro.totalQuestions} {intro.totalQuestions === 1 ? "question" : "questions"} in total.
-            Use the question overview to move between them at any time.
-          </li>
-          <li>
-            Your work saves automatically. You can skip a question and return to it before you
-            submit the assessment.
-          </li>
-          <li>
             {intro.overallTimeLimitSeconds === null ? (
               <>There is no time limit for this assessment; you will have unlimited time.</>
             ) : (
@@ -61,6 +53,14 @@ export function AttemptIntroPage({
                 set. When time runs out, all saved work is submitted automatically as-is.
               </>
             )}
+          </li>
+          <li>
+            {intro.totalQuestions} {intro.totalQuestions === 1 ? "question" : "questions"} in total.
+            Use the question overview to move between them at any time.
+          </li>
+          <li>
+            Your work saves automatically. You can skip a question and return to it before you
+            submit the assessment.
           </li>
           <li>
             Submit the assessment when you are finished. Nothing begins until you press Start, so

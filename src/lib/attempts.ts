@@ -5,7 +5,7 @@ import { and, count, desc, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/db";
 import { AssessmentNotAllowedError, isUsernameAllowed, readStoredAllowlist } from "@/lib/allowlist";
-import { questionSetLabel } from "@/lib/catalog";
+import { questionSetTestLabel } from "@/lib/catalog";
 import {
   attemptAnswers,
   attemptFeedback,
@@ -460,8 +460,9 @@ export async function getAttemptOutline(attemptId: string): Promise<AttemptOutli
     attemptId,
     questionSetId: quiz.set.id,
     takerUsername: quiz.attempt.takerUsername,
-    setLabel: questionSetLabel(quiz.set.name, quiz.set.paperName),
+    setLabel: await questionSetTestLabel(quiz.set.id),
     paperName: quiz.set.paperName,
+    contributions: quiz.set.contributions,
     modelId: quiz.set.modelId,
     apiKeyPayer: quiz.set.apiKeyPayer === "taker" ? "taker" : "creator",
     materialUploader: quiz.set.materialUploader === "taker" ? "taker" : "creator",
