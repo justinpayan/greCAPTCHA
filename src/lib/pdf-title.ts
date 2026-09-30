@@ -56,3 +56,23 @@ export async function extractPdfTitle(bytes: Uint8Array): Promise<string | null>
     await loading?.destroy().catch(() => undefined);
   }
 }
+
+/** How many pages a PDF has, or null when it cannot be read. */
+export async function countPdfPages(bytes: Uint8Array): Promise<number | null> {
+  let loading: { destroy(): Promise<void> } | null = null;
+  try {
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const task = pdfjs.getDocument({
+      data: new Uint8Array(bytes),
+      disableFontFace: true,
+      useSystemFonts: false,
+      verbosity: 0,
+    });
+    loading = task;
+    return (await task.promise).numPages;
+  } catch {
+    return null;
+  } finally {
+    await loading?.destroy().catch(() => undefined);
+  }
+}

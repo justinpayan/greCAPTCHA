@@ -869,6 +869,59 @@ textarea.control {
   background: white;
 }
 
+/* The model and estimated cost a taker's key will be charged: a section across the bottom of the
+   API Access panel, in its colours, rather than a box of its own. */
+.cost-estimate {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.cost-estimate p {
+  margin: 0;
+}
+
+.cost-estimate-model {
+  line-height: 1.5;
+}
+
+.cost-estimate-id {
+  color: var(--muted);
+  font-family: var(--font-geist-mono);
+  font-size: 0.82rem;
+}
+
+.cost-estimate-lines {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.cost-estimate-lines > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+
+.cost-estimate-lines dt {
+  font-weight: 700;
+}
+
+.cost-estimate-lines dd {
+  margin: 0;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+}
+
+.cost-estimate-note {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
 .key-source-panel {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(260px, 0.75fr);

@@ -18,6 +18,7 @@ export function OpenRouterKeyPanel({
   onReady,
   error: pageError = "",
   notice,
+  estimate,
 }: {
   apiKey: string;
   source: KeySource;
@@ -27,6 +28,8 @@ export function OpenRouterKeyPanel({
   error?: string;
   /** A page-specific note shown across the bottom of the panel. */
   notice?: ReactNode;
+  /** The model and estimated cost the key will be used for, shown as part of this panel. */
+  estimate?: ReactNode;
 }) {
   const [browserKey, setBrowserKey] = useState<BrowserOpenRouterKey | null>(null);
   const [checking, setChecking] = useState(false);
@@ -173,6 +176,7 @@ export function OpenRouterKeyPanel({
             </p>
           ))}
       </aside>
+      {estimate}
       {notice}
     </section>
   );

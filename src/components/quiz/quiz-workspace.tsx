@@ -13,6 +13,7 @@ import {
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 
 import { Brand } from "@/components/brand";
+import { CostEstimateNotice, useGradingCostEstimate } from "@/components/cost-estimate-notice";
 import { GradedFreeResponse } from "@/components/quiz/graded-response";
 import { MathText } from "@/components/quiz/math-text";
 import { OpenRouterKeyPanel } from "@/components/openrouter-key-panel";
@@ -706,6 +707,8 @@ export function PendingEvaluationView({
   const [apiKey, setApiKey] = useState("");
   const [keySource, setKeySource] = useState<KeySource>("paste");
   const [credentialRequired, setCredentialRequired] = useState(false);
+  // Fetched once the page asks for a key, so the taker sees the model and cost first.
+  const gradingEstimate = useGradingCostEstimate(attemptId, credentialRequired);
   const [status, setStatus] = useState("Waiting for the evaluator…");
   const [error, setError] = useState("");
   // OpenRouter problems, shown under the key controls rather than below the grading button.
@@ -806,6 +809,11 @@ export function PendingEvaluationView({
         <h1>{credentialRequired ? "Submit your API key to grade the assessment." : status}</h1>
         {credentialRequired && (
           <OpenRouterKeyPanel
+            estimate={
+              gradingEstimate && (
+                <CostEstimateNotice estimate={gradingEstimate} includeGeneration={false} />
+              )
+            }
             apiKey={apiKey}
             source={keySource}
             error={keyError}

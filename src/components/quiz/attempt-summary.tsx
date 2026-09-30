@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Brand } from "@/components/brand";
+import { CostEstimateNotice, useGradingCostEstimate } from "@/components/cost-estimate-notice";
 import { OpenRouterKeyPanel } from "@/components/openrouter-key-panel";
 import { MathText } from "@/components/quiz/math-text";
 import {
@@ -37,6 +38,9 @@ export function AttemptSummary({
   const [keyError, setKeyError] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [keySource, setKeySource] = useState<KeySource>("paste");
+  const takerPaysForGrading =
+    outline.apiKeyPayer === "taker" && outline.gradable && !outline.graded;
+  const gradingEstimate = useGradingCostEstimate(outline.attemptId, takerPaysForGrading);
 
   const started = outline.answeredCount > 0;
   const complete = outline.graded || outline.gradable;
@@ -216,8 +220,13 @@ export function AttemptSummary({
         )}
       </section>
 
-      {outline.apiKeyPayer === "taker" && outline.gradable && !outline.graded && (
+      {takerPaysForGrading && (
         <OpenRouterKeyPanel
+          estimate={
+            gradingEstimate && (
+              <CostEstimateNotice estimate={gradingEstimate} includeGeneration={false} />
+            )
+          }
           apiKey={apiKey}
           source={keySource}
           error={keyError}

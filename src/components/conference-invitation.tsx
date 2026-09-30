@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 
 import { Brand } from "@/components/brand";
+import { CostEstimateNotice } from "@/components/cost-estimate-notice";
 import { AssessmentNotAllowed } from "@/components/quiz/assessment-not-allowed";
 import { ManuscriptField } from "@/components/manuscript-field";
 import { OpenRouterKeyPanel } from "@/components/openrouter-key-panel";
@@ -13,13 +14,17 @@ import {
 } from "@/lib/openrouter-browser-key";
 import { errorFromPayload, isOpenRouterError, OpenRouterError } from "@/lib/openrouter-errors";
 import { MAX_PDF_BYTES, pdfTooLargeMessage } from "@/lib/uploads";
+import type { CostEstimate } from "@/lib/cost-estimate";
 import type { ApiKeyPayer, MaterialUploader } from "@/lib/quiz";
 
 export function AssessmentInvitation({
   token,
   template,
+  costEstimate = null,
 }: {
   token: string;
+  /** The model and estimated OpenRouter cost, when the taker's own key pays. */
+  costEstimate?: CostEstimate | null;
   /** Deliberately without the test name, which is only ever shown to the creator. */
   template: {
     modelId: string;
@@ -166,6 +171,9 @@ export function AssessmentInvitation({
         </div>
         {template.apiKeyPayer === "taker" && (
           <OpenRouterKeyPanel
+            estimate={
+              costEstimate && <CostEstimateNotice estimate={costEstimate} includeGeneration />
+            }
             apiKey={apiKey}
             source={keySource}
             error={keyError}

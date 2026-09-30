@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { ConferenceInvitation } from "@/components/conference-invitation";
 import { AssessmentNotAllowed } from "@/components/quiz/assessment-not-allowed";
 import { isUsernameAllowed } from "@/lib/allowlist";
+import { invitationCostEstimate } from "@/lib/cost-estimate";
 import { currentUser } from "@/lib/session";
 import { getTemplateByInvitationToken } from "@/lib/templates";
 
@@ -23,6 +24,8 @@ export default async function ConferenceInvitationPage({
     ) {
       return <AssessmentNotAllowed username={user.username} />;
     }
+    const costEstimate =
+      template.apiKeyPayer === "taker" ? await invitationCostEstimate(template) : null;
     return (
       <ConferenceInvitation
         token={token}
@@ -34,6 +37,7 @@ export default async function ConferenceInvitationPage({
           materialUploader: template.materialUploader,
           materialFileName: template.materialFileName,
         }}
+        costEstimate={costEstimate}
       />
     );
   } catch {

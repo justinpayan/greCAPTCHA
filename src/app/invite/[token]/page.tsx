@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { AssessmentInvitation } from "@/components/conference-invitation";
 import { AssessmentNotAllowed } from "@/components/quiz/assessment-not-allowed";
 import { isUsernameAllowed } from "@/lib/allowlist";
+import { invitationCostEstimate } from "@/lib/cost-estimate";
 import { currentUser } from "@/lib/session";
 import { getTemplateByInvitationToken } from "@/lib/templates";
 
@@ -23,6 +24,9 @@ export default async function InvitationPage({
     ) {
       return <AssessmentNotAllowed username={user.username} />;
     }
+    // Shown only when the taker's own key pays, so they know the model and cost before using it.
+    const costEstimate =
+      template.apiKeyPayer === "taker" ? await invitationCostEstimate(template) : null;
     return (
       <AssessmentInvitation
         token={token}
@@ -34,6 +38,7 @@ export default async function InvitationPage({
           materialUploader: template.materialUploader,
           materialFileName: template.materialFileName,
         }}
+        costEstimate={costEstimate}
       />
     );
   } catch {
