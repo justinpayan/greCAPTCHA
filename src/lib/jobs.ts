@@ -17,7 +17,7 @@ import {
   requireJobKey,
 } from "@/lib/openrouter-key-store";
 import { hydrateAssessmentResult } from "@/lib/attempts";
-import { requireOpenRouterCredential } from "@/lib/openrouter-credentials";
+import { credentialStatus, requireOpenRouterCredential } from "@/lib/openrouter-credentials";
 import { decodeJobError, encodeJobError } from "@/lib/openrouter-errors";
 import { publicErrorMessage } from "@/lib/user-facing-error";
 import type { AssessmentResult } from "@/lib/quiz";
@@ -278,6 +278,7 @@ export async function getAttemptGradingJob(attemptId: string) {
       gradingJson: attempts.gradingJson,
       takerUsername: attempts.takerUsername,
       apiKeyPayer: questionSets.apiKeyPayer,
+      ownerUserId: questionSets.ownerUserId,
       contributions: questionSets.contributions,
     })
     .from(attempts)
@@ -301,16 +302,23 @@ export async function getAttemptGradingJob(attemptId: string) {
     .where(and(eq(jobs.attemptId, attemptId), eq(jobs.type, "grading")))
     .orderBy(desc(jobs.createdAt))
     .get();
-  return job
-    ? {
-        ...publicJob(job),
-        gradingCredentialRequired:
-          attempt.apiKeyPayer === "taker" && job.status === "failed",
-      }
-    : {
-        status: "not_started",
-        gradingCredentialRequired: attempt.apiKeyPayer === "taker",
-      };
+  if (!job) {
+    return {
+      status: "not_started",
+      gradingCredentialRequired: attempt.apiKeyPayer === "taker",
+    };
+  }
+  let creatorCredentialUnavailable = false;
+  if (attempt.apiKeyPayer === "creator" && job.status === "failed") {
+    const credential = await credentialStatus(attempt.ownerUserId);
+    creatorCredentialUnavailable =
+      !credential.connected || new Date(credential.expiresAt).getTime() <= Date.now();
+  }
+  return {
+    ...publicJob(job),
+    gradingCredentialRequired: attempt.apiKeyPayer === "taker" && job.status === "failed",
+    creatorCredentialUnavailable,
+  };
 }
 
 function publicJob(job: typeof jobs.$inferSelect) {

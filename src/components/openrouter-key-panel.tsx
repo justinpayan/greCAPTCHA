@@ -17,6 +17,7 @@ export function OpenRouterKeyPanel({
   source,
   onChange,
   onReady,
+  onAvailabilityChange,
   error: pageError = "",
   notice,
   estimate,
@@ -25,6 +26,7 @@ export function OpenRouterKeyPanel({
   source: KeySource;
   onChange: (apiKey: string, source: KeySource) => void;
   onReady?: (apiKey: string, source: KeySource) => void;
+  onAvailabilityChange?: (available: boolean) => void;
   /** An OpenRouter problem the page ran into elsewhere, shown under the key controls. */
   error?: string;
   /** A page-specific note shown across the bottom of the panel. */
@@ -42,9 +44,14 @@ export function OpenRouterKeyPanel({
       .then((session: { username?: string }) => {
         const stored = session.username ? readBrowserOpenRouterKey(session.username) : null;
         setBrowserKey(stored);
+        onAvailabilityChange?.(Boolean(stored));
         if (stored && source === "oauth") onChange(stored.key, "oauth");
+      })
+      .catch(() => {
+        setBrowserKey(null);
+        onAvailabilityChange?.(false);
       });
-  }, []); // The parent callback is intentionally not a subscription.
+  }, []); // The parent callbacks are intentionally not subscriptions.
 
   // OAuth completion is handled by the dashboard because it owns the callback URL. Reflect the
   // newly stored key as soon as that async exchange updates the controlled selection, without
@@ -61,6 +68,7 @@ export function OpenRouterKeyPanel({
     try {
       const checked = await validateBrowserOpenRouterKey();
       setBrowserKey(checked);
+      onAvailabilityChange?.(true);
       onChange(checked.key, "oauth");
       onReady?.(checked.key, "oauth");
     } catch (caught) {
@@ -77,6 +85,7 @@ export function OpenRouterKeyPanel({
       await beginOpenRouterOAuth();
       const checked = await validateBrowserOpenRouterKey();
       setBrowserKey(checked);
+      onAvailabilityChange?.(true);
       onChange(checked.key, "oauth");
       onReady?.(checked.key, "oauth");
     } catch (caught) {
@@ -132,6 +141,7 @@ export function OpenRouterKeyPanel({
                 onClick={() => {
                   disconnectBrowserOpenRouterKey();
                   setBrowserKey(null);
+                  onAvailabilityChange?.(false);
                   onChange("", "paste");
                 }}
               >
