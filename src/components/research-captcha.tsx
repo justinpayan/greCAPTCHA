@@ -1166,7 +1166,7 @@ export function ResearchCaptcha({
     setTemplateId("");
     setError("");
     setTemplateStatus(
-      "Reset to the standard eight-question template. Your selected model was retained.",
+      "Reset to the standard ten-question template. Your selected model was retained.",
     );
   }
 
