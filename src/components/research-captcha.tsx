@@ -1807,7 +1807,7 @@ export function ResearchCaptcha({
                   const expanded = expandedTestIds.has(test.id);
                   const hasInvitation =
                     test.apiKeyPayer !== "creator" || test.materialUploader !== "creator";
-                  const allowlistOpen = hasInvitation && allowlistOpenTestIds.has(test.id);
+                  const allowlistOpen = allowlistOpenTestIds.has(test.id);
                   return (
                     <article className="created-test" key={test.id}>
                       <div className="catalog-row created-test-parent">
@@ -1877,23 +1877,21 @@ export function ResearchCaptcha({
                               Overview
                             </button>
                           )}
-                          {hasInvitation && (
-                            <button
-                              className="secondary"
-                              type="button"
-                              aria-expanded={allowlistOpen}
-                              onClick={() =>
-                                setAllowlistOpenTestIds((current) => {
-                                  const next = new Set(current);
-                                  if (next.has(test.id)) next.delete(test.id);
-                                  else next.add(test.id);
-                                  return next;
-                                })
-                              }
-                            >
-                              {allowlistOpen ? "Hide users" : "Allowed users"}
-                            </button>
-                          )}
+                          <button
+                            className="secondary"
+                            type="button"
+                            aria-expanded={allowlistOpen}
+                            onClick={() =>
+                              setAllowlistOpenTestIds((current) => {
+                                const next = new Set(current);
+                                if (next.has(test.id)) next.delete(test.id);
+                                else next.add(test.id);
+                                return next;
+                              })
+                            }
+                          >
+                            {allowlistOpen ? "Hide users" : "Allowed users"}
+                          </button>
                           <button
                             className="secondary"
                             type="button"
@@ -1923,6 +1921,7 @@ export function ResearchCaptcha({
                           <CreatedTestAllowlistEditor
                             key={test.id}
                             testId={test.id}
+                            resource={hasInvitation ? "template" : "question-set"}
                             allowlist={test.takerAllowlist}
                             onSaved={(next) =>
                               setCreatedTests((current) =>

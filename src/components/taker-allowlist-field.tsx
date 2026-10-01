@@ -34,10 +34,12 @@ export function TakerAllowlistField({
 
 export function CreatedTestAllowlistEditor({
   testId,
+  resource,
   allowlist,
   onSaved,
 }: {
   testId: string;
+  resource: "question-set" | "template";
   allowlist: string[] | null;
   onSaved: (next: string[] | null) => void;
 }) {
@@ -51,7 +53,11 @@ export function CreatedTestAllowlistEditor({
     setError("");
     setStatus("");
     try {
-      const response = await fetch(`/api/templates/${encodeURIComponent(testId)}`, {
+      const endpoint =
+        resource === "question-set"
+          ? `/api/question-sets/${encodeURIComponent(testId)}`
+          : `/api/templates/${encodeURIComponent(testId)}`;
+      const response = await fetch(endpoint, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ allowlist: text }),
