@@ -7,7 +7,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { attemptAnswers } from "@/db/schema";
 import { loadAttemptContext } from "@/lib/attempts";
-import { templateMaterialPath } from "@/lib/manuscripts";
+import { readTemplateMaterial, templateMaterialPath } from "@/lib/manuscripts";
 import { getOpenRouterModels } from "@/lib/openrouter";
 import { countPdfPages } from "@/lib/pdf-title";
 import type { PdfEngine, QuestionBlockConfig, StoredQuestion } from "@/lib/quiz";
@@ -177,7 +177,9 @@ export async function invitationCostEstimate(template: {
   let pages: number | null = null;
   if (template.materialUploader === "creator") {
     const materialPath = templateMaterialPath(template.id);
-    if (fs.existsSync(materialPath)) pages = await countPdfPages(fs.readFileSync(materialPath));
+    if (fs.existsSync(materialPath)) {
+      pages = await countPdfPages(readTemplateMaterial(template.id));
+    }
   }
   const pageCount = pages ?? TYPICAL_PAGE_COUNT;
   const freeResponseBlocks = template.config.blocks

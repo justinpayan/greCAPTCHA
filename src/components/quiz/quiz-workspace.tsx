@@ -729,6 +729,7 @@ export function PendingEvaluationView({
           error?: string;
           errorSource?: string;
           gradingCredentialRequired?: boolean;
+          creatorCredentialUnavailable?: boolean;
           result?: AssessmentResult;
         };
         if (!response.ok) throw new Error(payload.error ?? "Unable to check grading.");
@@ -744,10 +745,17 @@ export function PendingEvaluationView({
             : payload.status === "queued"
               ? "Your assessment is queued for grading…"
               : payload.status === "failed"
-                ? "Grading was interrupted. Supply your key again to retry."
+                ? payload.creatorCredentialUnavailable
+                  ? "This assessment cannot be evaluated because the test creator's API key has been disconnected or expired. Contact the test creator for assistance."
+                  : payload.gradingCredentialRequired
+                  ? "Grading was interrupted. Supply your key again to retry."
+                  : "Grading could not be completed. The test creator can retry it from their dashboard."
                 : "Supply your OpenRouter key to grade this conference assessment.",
         );
-        if (payload.status === "failed" && payload.error) {
+        if (payload.creatorCredentialUnavailable) {
+          setError("");
+          setKeyError("");
+        } else if (payload.status === "failed" && payload.error) {
           // The key panel is on screen exactly when a key is required, so a key problem goes there.
           const failure = errorFromPayload(payload, "Grading failed.");
           if (isOpenRouterError(failure) && payload.gradingCredentialRequired) {
@@ -804,7 +812,7 @@ export function PendingEvaluationView({
 
   return (
     <main className="app-shell dashboard-shell">
-      <Brand href="/" demoBadge />
+      <Brand href="/" />
       <section className="card result neutral-result">
         <p className="eyebrow">Assessment submitted</p>
         <h1>{credentialRequired ? "Submit your API key to grade the assessment." : status}</h1>

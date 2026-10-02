@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { databaseFile } from "@/db";
+import { readEncryptedFile, writeEncryptedFile } from "@/lib/data-encryption";
 
 function safeQuestionSetId(questionSetId: string): string {
   if (!/^[a-zA-Z0-9_-]+$/.test(questionSetId)) {
@@ -29,14 +30,15 @@ export function persistManuscript(sourcePath: string, questionSetId: string): vo
   const root = manuscriptRoot();
   fs.mkdirSync(root, { recursive: true });
   const destination = manuscriptPath(questionSetId);
-  const staging = `${destination}.partial`;
-  fs.rmSync(staging, { force: true });
-  try {
-    fs.copyFileSync(sourcePath, staging);
-    fs.renameSync(staging, destination);
-  } finally {
-    fs.rmSync(staging, { force: true });
-  }
+  writeEncryptedFile(
+    destination,
+    readEncryptedFile(sourcePath, "job-upload"),
+    "manuscript",
+  );
+}
+
+export function readManuscript(questionSetId: string): Buffer {
+  return readEncryptedFile(manuscriptPath(questionSetId), "manuscript");
 }
 
 export function deleteManuscript(questionSetId: string): void {
@@ -54,14 +56,15 @@ export async function persistTemplateMaterial(
   const root = templateMaterialRoot();
   fs.mkdirSync(root, { recursive: true });
   const destination = templateMaterialPath(templateId);
-  const staging = `${destination}.partial`;
-  fs.rmSync(staging, { force: true });
-  try {
-    fs.writeFileSync(staging, Buffer.from(await source.arrayBuffer()), { flag: "wx" });
-    fs.renameSync(staging, destination);
-  } finally {
-    fs.rmSync(staging, { force: true });
-  }
+  writeEncryptedFile(
+    destination,
+    Buffer.from(await source.arrayBuffer()),
+    "template-material",
+  );
+}
+
+export function readTemplateMaterial(templateId: string): Buffer {
+  return readEncryptedFile(templateMaterialPath(templateId), "template-material");
 }
 
 export function deleteTemplateMaterial(templateId: string): void {

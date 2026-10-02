@@ -7,7 +7,7 @@ import { Brand } from "@/components/brand";
 export function AssessmentNotAllowed({ username }: { username: string }) {
   return (
     <main className="app-shell dashboard-shell">
-      <Brand href="/" demoBadge />
+      <Brand href="/" />
       <section>
         <p className="eyebrow">Not allowed</p>
         <h1>You aren&apos;t allowed to take this assessment.</h1>

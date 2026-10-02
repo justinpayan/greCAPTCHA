@@ -24,6 +24,8 @@ If you use our work please cite it. A bibtex blurb is available [below](#please-
 
 Requirements: Node.js 20.9+. Set `OPENROUTER_CREDENTIAL_ENCRYPTION_KEY` to 32
 random base64-encoded bytes before connecting a test creator's OpenRouter account.
+Production also requires a separate 32-byte `DATA_ENCRYPTION_KEY`. Disposable local
+development may set `DATA_ENCRYPTION_REQUIRED=false`, as shown in `.env.example`.
 
 ```bash
 npm install
@@ -128,10 +130,24 @@ Participant links are capability URLs, so treat them as sensitive. The server
 keeps API keys and answer keys private, and timing is recorded authoritatively
 on the server.
 
-The app stores research data in SQLite at `DATABASE_URL`. Exports contain
-submitted responses, scores, answer keys, and timing data; handle them under
-the study's retention and privacy requirements. Signup and login are throttled,
-and per-account set/attempt limits are configurable. The app does not provide
+The app stores research data in SQLite at `DATABASE_URL`. In production the complete
+database is encrypted at the page level with SQLCipher-compatible AES-256 encryption.
+That includes generated questions and answer keys, drafts and submitted answers, grades,
+rubrics, timing records, contribution statements, and participant feedback. Manuscripts,
+template materials, temporary generation uploads, and app-created backups are encrypted
+separately with authenticated AES-256-GCM envelopes. Decryption occurs only in the
+authorized server process's memory.
+
+TLS protects browser/API traffic when the app is served from its Railway HTTPS domain,
+and plaintext HTTP PDF links are rejected. OpenRouter requests also use HTTPS. Generation
+and free-response grading necessarily disclose relevant manuscript, question, answer,
+grade, or feedback content to OpenRouter for processing; configure OpenRouter retention
+and privacy controls under the study's data-processing requirements.
+
+Exports contain submitted responses, scores, answer keys, and timing data. Downloads are
+plaintext on the researcher's device and leave the server-side encryption boundary, so
+handle them under the study's retention and privacy requirements. Signup and login are
+throttled, and per-account set/attempt limits are configurable. The app does not provide
 email recovery or an audit log.
 
 Enable backups with:
@@ -142,12 +158,20 @@ BACKUP_INTERVAL_MINUTES=60
 BACKUP_KEEP=48
 ```
 
-Backups include a consistent database snapshot. For a quick
-manual local backup:
+Backups include a consistent encrypted database snapshot and encrypted companion files.
+Do not use the stock `sqlite3` CLI's `.backup` command: it does not configure this
+application's cipher or key. Use the app-created backup directory or a Railway volume
+snapshot, both of which retain ciphertext at rest.
+
+With the app stopped, restore an app-created backup using the same master key:
 
 ```bash
-sqlite3 data/public-grecaptcha.db ".backup 'backup-$(date +%F).db'"
+npm run data:restore -- ./data/backups/<backup-folder>
 ```
+
+The restore command verifies the backup key, re-encrypts the restored database under the
+live database subkey, restores encrypted companion files, and retains the previous encrypted
+data in a timestamped rollback directory until the operator removes it after verification.
 
 ## Production on Railway
 
@@ -160,9 +184,12 @@ the replica count: SQLite and a Railway volume belong to one service instance.
 2. Add a 1–5 GB volume mounted at `/app/data`.
 3. Set `DATABASE_URL=./data/public-grecaptcha.db`,
    `BACKUP_DIR=./data/backups`, `RATE_LIMIT_SALT`, `PUBLIC_BASE_URL`, and
-   `OPENROUTER_CREDENTIAL_ENCRYPTION_KEY`, plus the optional limits shown in
-   `.env.example`. Keep both the salt and encryption key stable across deployments;
-   replacing the encryption key makes registered creator credentials unreadable.
+   both `DATA_ENCRYPTION_KEY` and `OPENROUTER_CREDENTIAL_ENCRYPTION_KEY`, plus the
+   optional limits shown in `.env.example`. Set `DATA_ENCRYPTION_REQUIRED=true`.
+   Keep the salt and both encryption keys stable across deployments. Replacing
+   `DATA_ENCRYPTION_KEY` without a controlled rekey makes all research data and
+   backups unreadable; replacing the credential key makes registered creator
+   credentials unreadable.
 4. Generate a Railway HTTPS domain or attach a custom domain, then set
    `PUBLIC_BASE_URL` to that exact `https://` origin.
 5. In the volume Backups tab, schedule daily, weekly, and monthly snapshots.
@@ -179,6 +206,34 @@ Railway volume snapshots can be restored from the Backups tab. To take an
 off-platform copy, use Railway's volume file browser/CLI to download the newest
 database backup directory. A volume wipe also removes Railway-hosted snapshots,
 so retain occasional off-platform copies for important data.
+
+### One-time encryption of an existing volume
+
+Do this during a maintenance window, with the app unavailable to users:
+
+1. Create a final pre-migration recovery copy and restrict access to it.
+2. Generate `DATA_ENCRYPTION_KEY` with `openssl rand -base64 32`; store it as a
+   Railway secret and place one recovery copy in an institution-approved secrets
+   manager with MFA and limited access.
+3. Set `DATA_ENCRYPTION_REQUIRED=true`.
+4. For one deployment only, override the service start command with
+   `npm run data:encrypt && npm start`. The converter is resumable: it verifies and
+   skips already-encrypted data.
+5. Verify health, login, PDF viewing, an assessment, grading, feedback, export, and
+   backup restoration. Restore the normal `npm start` command afterward.
+6. Securely delete the pre-migration plaintext recovery copy and any plaintext
+   Railway snapshots after an encrypted recovery point has been verified.
+
+Never run the converter while another app instance is using the SQLite database.
+Losing `DATA_ENCRYPTION_KEY` permanently loses access to the database, stored files,
+and backups.
+
+To rotate the key, stop the app, leave `DATA_ENCRYPTION_KEY` set to the old key, set
+`NEW_DATA_ENCRYPTION_KEY` to a newly generated 32-byte base64 key, and run
+`npm run data:encrypt`. After it verifies and re-encrypts the live data and retained
+backups, replace `DATA_ENCRYPTION_KEY` with the new value, remove
+`NEW_DATA_ENCRYPTION_KEY`, and restart. Retain the old key only until an encrypted
+recovery point under the new key has been restored successfully.
 
 This single-replica design is appropriate for roughly 5–50 concurrent demo
 users. If write contention, high-availability requirements, or hundreds of
@@ -237,6 +292,8 @@ npm run start        # run a production build
 npm run db:generate  # generate a migration after changing the schema
 npm run db:migrate   # apply pending migrations explicitly
 npm run db:push      # push the Drizzle schema manually
+npm run data:encrypt # one-time offline conversion of existing persistent data
+npm run data:restore -- <backup-folder> # offline encrypted backup restore
 npm test             # deterministic mocked unit/integration suite
 npx drizzle-kit studio
 ```
@@ -247,17 +304,17 @@ its `-wal` and `-shm` files. This permanently deletes saved sets, attempts, and
 answers.
 
 ## Please cite
-If you use our work please use the following citation (details TBC):
+If you use our work please use the following citation:
 
 ```
 @misc{payan2026grecaptcha,
   title         = {{greCAPTCHA}: Assessing Understanding as Evidence of Research Authorship Under Generative {AI}},
   author        = {Payan, Justin and Gyevn{\'a}r, B{\'a}lint and Kasirzadeh, Atoosa and Shah, Nihar B.},
   year          = {2026},
-  eprint        = {XXXX.XXXXX},
+  eprint        = {2609.20481},
   archivePrefix = {arXiv},
-  primaryClass  = {cs.XX},
-  url           = {https://arxiv.org/abs/XXXX.XXXXX},
+  primaryClass  = {cs.DL},
+  url           = {https://arxiv.org/abs/2609.20481},
   note          = {Justin Payan and B{\'a}lint Gyevn{\'a}r contributed equally.}
 }
 ```

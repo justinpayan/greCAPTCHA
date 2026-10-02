@@ -161,7 +161,7 @@ export function AssessmentInvitation({
 
   return (
     <main className="app-shell dashboard-shell">
-      <Brand href="/" demoBadge />
+      <Brand href="/" />
       <form className="card form-card" onSubmit={(event) => void submit(event)}>
         <div className="section-heading">
           <div>

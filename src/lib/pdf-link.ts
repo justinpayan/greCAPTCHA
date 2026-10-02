@@ -1,7 +1,7 @@
 import "server-only";
 
 import dns from "node:dns";
-import http from "node:http";
+import http, { type IncomingMessage } from "node:http";
 import https from "node:https";
 import net from "node:net";
 
@@ -15,7 +15,7 @@ import { MAX_PDF_BYTES, MAX_PDF_LABEL } from "@/lib/uploads";
  * this a server-side request to an arbitrary URL, and the guards below exist so it cannot be
  * pointed at anything but the public internet:
  *
- * - only `http:` and `https:`, and no credentials in the URL;
+ * - only `https:`, and no credentials in the URL;
  * - every address the host resolves to must be public — checked inside the socket's own DNS
  *   lookup, so the address that is vetted is the address that is connected to, and a host that
  *   re-resolves to an internal address between a check and the connection gains nothing;
@@ -85,15 +85,15 @@ export function isPublicAddress(address: string): boolean {
 }
 
 /** Validates the shape of a pasted link. Cheap: nothing is fetched. */
-export function parsePdfLink(raw: string, base?: URL): URL {
+export function parsePdfLink(raw: string, base?: URL, allowTestHttp = false): URL {
   let url: URL;
   try {
     url = new URL(raw.trim(), base);
   } catch {
     throw new PdfLinkError("Enter a full link to the PDF, starting with https://.");
   }
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new PdfLinkError("Only http:// and https:// links are supported.");
+  if (url.protocol !== "https:" && !(allowTestHttp && url.protocol === "http:")) {
+    throw new PdfLinkError("Only encrypted https:// PDF links are supported.");
   }
   if (url.username || url.password) {
     throw new PdfLinkError("Links containing a username or password are not supported.");
@@ -130,14 +130,21 @@ function requestOnce(
   url: URL,
   allow: AddressPolicy,
   signal: AbortSignal,
-): Promise<http.IncomingMessage> {
+  allowTestHttp = false,
+): Promise<IncomingMessage> {
   // A literal IP address is connected to without a lookup, so it is checked here instead.
   const literal = url.hostname.replace(/^\[|\]$/g, "");
-  if (net.isIP(literal) && !allow(literal)) {
+  if (
+    (net.isIP(literal) && !allow(literal)) ||
+    (url.hostname.toLowerCase() === "localhost" && !allow("127.0.0.1"))
+  ) {
     return Promise.reject(new PdfLinkError(blockedHostMessage));
   }
-  const client = url.protocol === "https:" ? https : http;
+  if (url.protocol !== "https:" && !(allowTestHttp && url.protocol === "http:")) {
+    return Promise.reject(new PdfLinkError("The PDF link must use HTTPS."));
+  }
   return new Promise((resolve, reject) => {
+    const client = url.protocol === "https:" ? https : http;
     const request = client.get(
       url,
       {
@@ -175,7 +182,7 @@ const linkTooLargeMessage =
   `The linked PDF is larger than ${MAX_PDF_LABEL}, the most a manuscript may be. ` +
   "Upload a compressed copy instead.";
 
-async function readCapped(response: http.IncomingMessage): Promise<Buffer> {
+async function readCapped(response: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let total = 0;
   for await (const chunk of response) {
@@ -200,17 +207,18 @@ export async function fetchPdfLink(
   options: { isAllowedAddress?: AddressPolicy; timeoutMs?: number } = {},
 ): Promise<File> {
   const allow = options.isAllowedAddress ?? isPublicAddress;
+  const allowTestHttp = Boolean(options.isAllowedAddress);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? FETCH_TIMEOUT_MS);
   try {
     let url = link;
     for (let hop = 0; ; hop += 1) {
-      const response = await requestOnce(url, allow, controller.signal);
+      const response = await requestOnce(url, allow, controller.signal, allowTestHttp);
       const status = response.statusCode ?? 0;
       if (REDIRECT_STATUSES.has(status) && response.headers.location) {
         response.resume();
         if (hop >= MAX_REDIRECTS) throw new PdfLinkError("The link redirected too many times.");
-        url = parsePdfLink(response.headers.location, url);
+        url = parsePdfLink(response.headers.location, url, allowTestHttp);
         continue;
       }
       if (status < 200 || status >= 300) {

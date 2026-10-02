@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Brand } from "@/components/brand";
 import { CostEstimateNotice, useGradingCostEstimate } from "@/components/cost-estimate-notice";
@@ -39,12 +39,55 @@ export function AttemptSummary({
   const [keyError, setKeyError] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [keySource, setKeySource] = useState<KeySource>("paste");
+  const [browserKeyAvailable, setBrowserKeyAvailable] = useState<boolean | null>(null);
+  const [creatorCredentialAvailability, setCreatorCredentialAvailability] = useState<
+    "checking" | "available" | "unavailable" | "unknown"
+  >("checking");
   const takerPaysForGrading =
     outline.apiKeyPayer === "taker" && outline.gradable && !outline.graded;
   const gradingEstimate = useGradingCostEstimate(outline.attemptId, takerPaysForGrading);
 
   const started = outline.answeredCount > 0;
   const complete = outline.graded || outline.gradable;
+  useEffect(() => {
+    if (outline.apiKeyPayer !== "creator" || !outline.gradable || outline.graded) return;
+    let active = true;
+    setCreatorCredentialAvailability("checking");
+    void fetch("/api/openrouter/credential", { cache: "no-store" })
+      .then(async (response) => {
+        const status = (await response.json()) as
+          | { connected: false }
+          | { connected: true; expiresAt: string };
+        if (!response.ok) throw new Error("Unable to load OpenRouter status.");
+        if (!active) return;
+        const available =
+          status.connected && new Date(status.expiresAt).getTime() > Date.now();
+        setCreatorCredentialAvailability(available ? "available" : "unavailable");
+      })
+      .catch(() => {
+        if (active) setCreatorCredentialAvailability("unknown");
+      });
+    return () => {
+      active = false;
+    };
+  }, [outline.apiKeyPayer, outline.gradable, outline.graded]);
+
+  const awaitingEvaluationHint =
+    outline.apiKeyPayer === "creator"
+      ? creatorCredentialAvailability === "available"
+        ? "Your saved OpenRouter API key is ready. Run the evaluation."
+        : creatorCredentialAvailability === "unavailable"
+          ? "Reconnect your OpenRouter API key under API Access on the dashboard, then run the evaluation."
+          : creatorCredentialAvailability === "checking"
+            ? "Checking your saved OpenRouter API access…"
+            : "Run the evaluation using the OpenRouter API key configured under API Access."
+      : apiKey.trim()
+        ? "Your OpenRouter API key is ready. Run the evaluation."
+        : browserKeyAvailable
+          ? "A connected OpenRouter API key is available below. Select “Use this key,” then run the evaluation."
+          : browserKeyAvailable === null
+            ? "Checking for a connected OpenRouter API key…"
+            : "Connect with OpenRouter or paste an API key below, then run the evaluation.";
   const feedbackCommentCount = outline.examineeFeedback
     ? Object.keys(outline.examineeFeedback.commentsByQuestionId).length
     : 0;
@@ -128,7 +171,7 @@ export function AttemptSummary({
 
   return (
     <main className="app-shell dashboard-shell">
-      <Brand onHome={onBack} demoBadge />
+      <Brand onHome={onBack} />
 
       <header className="quiz-header sequential-header">
         <div>
@@ -174,7 +217,7 @@ export function AttemptSummary({
               {complete
                 ? outline.graded
                   ? "Open the completed attempt to see its score and question-by-question results."
-                  : "Provide an OpenRouter API key below, then run the evaluation."
+                  : awaitingEvaluationHint
                 : "Open the attempt when you are ready. Timing begins after you confirm on the start screen."}
             </p>
           </div>
@@ -231,6 +274,7 @@ export function AttemptSummary({
           apiKey={apiKey}
           source={keySource}
           error={keyError}
+          onAvailabilityChange={setBrowserKeyAvailable}
           onChange={(nextKey, nextSource) => {
             setApiKey(nextKey);
             setKeySource(nextSource);

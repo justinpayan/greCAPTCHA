@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import fs from "node:fs";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
@@ -11,7 +10,7 @@ import { requireOpenRouterCredential } from "@/lib/openrouter-credentials";
 import { errorResponseBody } from "@/lib/openrouter-errors";
 import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
-import { templateMaterialPath } from "@/lib/manuscripts";
+import { readTemplateMaterial } from "@/lib/manuscripts";
 import {
   AssessmentNotAllowedError,
   isAssessmentNotAllowedError,
@@ -99,7 +98,7 @@ export async function POST(
       template.materialUploader === "taker"
         ? await loadManuscript(readManuscriptSource(form))
         : new File(
-            [fs.readFileSync(templateMaterialPath(template.id))],
+            [new Uint8Array(readTemplateMaterial(template.id))],
             template.materialFileName ?? "source-material.pdf",
             { type: "application/pdf" },
           );

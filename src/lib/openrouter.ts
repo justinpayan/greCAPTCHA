@@ -302,17 +302,18 @@ const gradingJsonSchema = {
           type: "object",
           additionalProperties: false,
           properties: {
-            questionId: { type: "string" },
-            feedback: { type: "string" },
+            questionId: { type: "string", minLength: 1 },
+            feedback: { type: "string", minLength: 1 },
             criteria: {
               type: "array",
+              minItems: 1,
               items: {
                 type: "object",
                 additionalProperties: false,
                 properties: {
                   criterionIndex: { type: "integer", minimum: 0 },
                   pointsAwarded: { type: "number", minimum: 0 },
-                  justification: { type: "string" },
+                  justification: { type: "string", minLength: 1 },
                   evidence: { type: "array", items: { type: "string" } },
                 },
                 required: ["criterionIndex", "pointsAwarded", "justification", "evidence"],
