@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal, flushSync } from "react-dom";
 import Link from "next/link";
 
 import {
@@ -19,7 +20,9 @@ import {
 
 import { ManuscriptField } from "@/components/manuscript-field";
 import { ProfessorOpenRouterPanel } from "@/components/professor-openrouter-panel";
+import { PrintableQuestionSet } from "@/components/printable-question-set";
 import { SetOverview } from "@/components/set-overview";
+import { WorkflowTag } from "@/components/workflow-tag";
 import {
   CreatedTestAllowlistEditor,
   TakerAllowlistField,
@@ -52,6 +55,7 @@ import {
   type StudyTemplateSummary,
 } from "@/lib/quiz";
 import { userFacingMessage } from "@/lib/user-facing-error";
+import { workflowFor } from "@/lib/workflows";
 
 type CatalogModel = {
   id: string;
@@ -349,6 +353,19 @@ export function ResearchCaptcha({
   const [setName, setSetName] = useState("");
   const [takerAllowlistText, setTakerAllowlistText] = useState("");
   const [createdTests, setCreatedTests] = useState<CreatedTestEntry[]>([]);
+  // Tests ticked in Tests You've Created; export and print act on these and are off until one is.
+  const [selectedTestIds, setSelectedTestIds] = useState<ReadonlySet<string>>(() => new Set());
+  // Question sets rendered for a batch print, only while the print dialog is being prepared.
+  const [printBatch, setPrintBatch] = useState<QuestionSetOverview[] | null>(null);
+  const [preparingPrint, setPreparingPrint] = useState(false);
+  // A deleted test leaves the selection, so "Print selected" never counts a test that is gone.
+  useEffect(() => {
+    setSelectedTestIds((current) => {
+      const present = new Set(createdTests.map((test) => test.id));
+      const kept = [...current].filter((id) => present.has(id));
+      return kept.length === current.size ? current : new Set(kept);
+    });
+  }, [createdTests]);
   const [attemptList, setAttemptList] = useState<AttemptListEntry[]>([]);
   const [myAssessments, setMyAssessments] = useState<AttemptListEntry[]>([]);
   const [catalogSearch, setCatalogSearch] = useState("");
@@ -947,6 +964,65 @@ export function ResearchCaptcha({
   }, [refreshCatalog]);
 
   /** Opens a saved set's contents without creating an attempt to see them. */
+  /**
+   * The question sets behind a created test: its own set when the creator provides the material,
+   * otherwise the separate set generated for each taker who has started it.
+   */
+  function questionSetIdsFor(test: CreatedTestEntry): string[] {
+    if (test.apiKeyPayer === "creator" && test.materialUploader === "creator") return [test.id];
+    return [...new Set(test.attempts.map((entry) => entry.questionSetId))];
+  }
+
+  /** The selected tests, which export and print act on. */
+  function testsToActOn() {
+    return createdTests.filter((test) => selectedTestIds.has(test.id));
+  }
+
+  function toggleTestSelected(id: string) {
+    setSelectedTestIds((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  }
+
+  function exportAttempts() {
+    const sets = testsToActOn().flatMap(questionSetIdsFor);
+    window.location.href = `/api/export/answers?sets=${encodeURIComponent(sets.join(","))}`;
+  }
+
+  /** Prints the question sets of the selected tests, each starting on a new page. */
+  async function printTests() {
+    const ids = [...new Set(testsToActOn().flatMap(questionSetIdsFor))];
+    setShareError("");
+    if (ids.length === 0) {
+      setShareError(
+        "Nothing to print yet. A test where takers upload their own paper has no questions " +
+          "until someone starts it.",
+      );
+      return;
+    }
+    setPreparingPrint(true);
+    try {
+      const overviews = await Promise.all(
+        ids.map(async (id) => {
+          const response = await fetch(`/api/question-sets/${encodeURIComponent(id)}`);
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error ?? "Unable to load a question set.");
+          return payload.overview as QuestionSetOverview;
+        }),
+      );
+      // Rendered before the dialog opens, since the dialog snapshots the page as it is.
+      flushSync(() => setPrintBatch(overviews));
+      window.print();
+    } catch (caught) {
+      setShareError(userFacingMessage(caught, "Unable to prepare the tests for printing."));
+    } finally {
+      setPrintBatch(null);
+      setPreparingPrint(false);
+    }
+  }
+
   async function showSetOverview(id: string) {
     setWorking(true);
     setError("");
@@ -1546,8 +1622,17 @@ export function ResearchCaptcha({
         </div>
       </div>
       {(mode === "default" || mode === "custom") && (
-        <section className="dashboard-workflow" aria-labelledby="workflow-heading">
-          <span className="field-label" id="workflow-heading">Workflow choices</span>
+        <section
+          className={`dashboard-workflow workflow-${
+            workflowFor(apiKeyPayer, materialUploader).key
+          }`}
+          aria-labelledby="workflow-heading"
+        >
+          <div className="workflow-summary">
+            <span className="field-label" id="workflow-heading">Workflow choices</span>
+            <WorkflowTag apiKeyPayer={apiKeyPayer} materialUploader={materialUploader} />
+            <p className="hint">{workflowFor(apiKeyPayer, materialUploader).description}</p>
+          </div>
           <div className="workflow-choice">
             <span className="field-label">Who pays OpenRouter costs?</span>
             <div className="workflow-toggle" role="radiogroup" aria-label="OpenRouter payer">
@@ -1728,16 +1813,50 @@ export function ResearchCaptcha({
                     )} attempts`}
             </span>
             {mode === "resume" && (
-              <button
-                className="secondary"
-                type="button"
-                disabled={attemptList.length === 0}
-                onClick={() => {
-                  window.location.href = "/api/export/answers";
-                }}
-              >
-                Export all attempts as CSV
-              </button>
+              <div className="catalog-toolbar-actions">
+                {visibleCreatedTests.length > 0 && (
+                  <label className="select-all-tests">
+                    <input
+                      type="checkbox"
+                      checked={visibleCreatedTests.every((test) => selectedTestIds.has(test.id))}
+                      onChange={(event) =>
+                        setSelectedTestIds(
+                          event.target.checked
+                            ? new Set([
+                                ...selectedTestIds,
+                                ...visibleCreatedTests.map((test) => test.id),
+                              ])
+                            : new Set(),
+                        )
+                      }
+                    />
+                    Select all
+                  </label>
+                )}
+                <button
+                  className="secondary"
+                  type="button"
+                  // Greyed out until a test is ticked, and while the ticked ones have no attempts.
+                  disabled={testsToActOn().every((test) => test.attempts.length === 0)}
+                  title={
+                    selectedTestIds.size
+                      ? "Every attempt on the selected tests, as one CSV file."
+                      : "Select one or more tests to export their attempts."
+                  }
+                  onClick={exportAttempts}
+                >
+                  Export selected as CSV
+                </button>
+                <button
+                  className="secondary"
+                  type="button"
+                  disabled={selectedTestIds.size === 0 || preparingPrint}
+                  title={selectedTestIds.size ? undefined : "Select one or more tests to print."}
+                  onClick={() => void printTests()}
+                >
+                  {preparingPrint ? "Preparing…" : "Print selected"}
+                </button>
+              </div>
             )}
           </div>
 
@@ -1809,21 +1928,27 @@ export function ResearchCaptcha({
                     test.apiKeyPayer !== "creator" || test.materialUploader !== "creator";
                   const allowlistOpen = allowlistOpenTestIds.has(test.id);
                   return (
-                    <article className="created-test" key={test.id}>
+                    <article
+                      className={`created-test workflow-${
+                        workflowFor(test.apiKeyPayer, test.materialUploader).key
+                      }`}
+                      key={test.id}
+                    >
                       <div className="catalog-row created-test-parent">
+                        <input
+                          className="test-select"
+                          type="checkbox"
+                          aria-label={`Select ${test.name}`}
+                          checked={selectedTestIds.has(test.id)}
+                          onChange={() => toggleTestSelected(test.id)}
+                        />
                         <div className="catalog-main">
                           <div className="catalog-title-row">
                             <strong>{test.name}</strong>
-                            <span className="pill">
-                              {test.apiKeyPayer === "creator"
-                                ? "Creator pays"
-                                : "Taker pays"}
-                            </span>
-                            <span className="pill">
-                              {test.materialUploader === "creator"
-                                ? "Creator uploads"
-                                : "Taker uploads"}
-                            </span>
+                            <WorkflowTag
+                              apiKeyPayer={test.apiKeyPayer}
+                              materialUploader={test.materialUploader}
+                            />
                             {test.takerAllowlist?.length ? (
                               <span className="pill">
                                 Restricted · {test.takerAllowlist.length}
@@ -1980,6 +2105,22 @@ export function ResearchCaptcha({
                                           ? "Resume"
                                           : "Open"}
                                   </button>
+                                  {/* An invitation generates a separate question set for each
+                                      taker, so its overview (and print) belongs to the attempt;
+                                      a shared set has its Overview button on the test itself. */}
+                                  {!(
+                                    test.apiKeyPayer === "creator" &&
+                                    test.materialUploader === "creator"
+                                  ) && (
+                                    <button
+                                      className="secondary"
+                                      type="button"
+                                      disabled={working}
+                                      onClick={() => void showSetOverview(entry.questionSetId)}
+                                    >
+                                      Overview
+                                    </button>
+                                  )}
                                   <button
                                     className="secondary"
                                     type="button"
@@ -2011,7 +2152,10 @@ export function ResearchCaptcha({
         </section>
       ) : (
         <form
-          className="card form-card"
+          // Accented in the workflow's colour, so the form being filled in matches the choice.
+          className={`card form-card workflow-accent workflow-${
+            workflowFor(apiKeyPayer, materialUploader).key
+          }`}
           // Stops Firefox restoring control state on reload: it would re-enable the submit button
           // in the server HTML before hydration, which React then reports as a mismatch against
           // the disabled button it renders while no model is selected.
@@ -2519,6 +2663,21 @@ export function ResearchCaptcha({
         </form>
       )}
       </div>
+      {/* Straight into <body>, so printing can hide the whole dashboard and keep only these. */}
+      {printBatch &&
+        createPortal(
+          <div className="print-root">
+            {printBatch.map((overview) => (
+              <PrintableQuestionSet
+                key={overview.id}
+                overview={overview}
+                title={overview.label || overview.paperName}
+                withKey={false}
+              />
+            ))}
+          </div>,
+          document.body,
+        )}
     </main>
   );
 }

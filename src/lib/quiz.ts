@@ -124,6 +124,9 @@ export type QuestionSetOverview = {
   attemptCount: number;
   createdAt: string;
   takerAllowlist: string[] | null;
+  /** The workflow the set was created under, for its colour-coded tag. */
+  apiKeyPayer: ApiKeyPayer;
+  materialUploader: MaterialUploader;
   items: QuestionSetOverviewItem[];
 };
 

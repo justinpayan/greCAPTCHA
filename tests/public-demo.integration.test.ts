@@ -547,6 +547,16 @@ describe("public demo account-to-grade flow", () => {
       "sk-or-professor-course-secret",
     );
     const exportHeader = (await buildAnswerCsv(alice.id)).split(/\r?\n/, 1)[0].split(",");
+    // "Export selected": only the chosen sets' rows, and nothing for a set that is not the owner's.
+    const allRows = (await buildAnswerCsv(alice.id)).trim().split(/\r?\n/).length;
+    const selectedRows = (await buildAnswerCsv(alice.id, [generatedSetId])).trim().split(/\r?\n/);
+    expect(selectedRows.length).toBeGreaterThan(1);
+    expect(selectedRows.length).toBeLessThanOrEqual(allRows);
+    expect(selectedRows.slice(1).every((line) => line.includes(generatedSetId))).toBe(true);
+    const rowsFor = async (owner: string, sets: string[]) =>
+      (await buildAnswerCsv(owner, sets)).trim().split(/\r?\n/);
+    expect(await rowsFor(alice.id, ["not-a-real-set"])).toHaveLength(1);
+    expect(await rowsFor(bob.id, [generatedSetId])).toHaveLength(1);
     expect(exportHeader).toEqual([
       "attempt_id", "question_set_id", "set_name", "paper_name", "contributions", "model_id",
       "api_key_payer", "material_uploader", "attempt_status", "attempt_score", "randomize",

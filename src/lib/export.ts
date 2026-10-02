@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -117,7 +117,14 @@ function describeAnswer(question: StoredQuestion | undefined, answerJson: string
   return { response: chosen, correctAnswer: key, correct: "" };
 }
 
-export async function buildAnswerCsv(ownerUserId: string): Promise<string> {
+/**
+ * `questionSetIds`, when given, limits the export to those sets (still only the owner's own);
+ * leave it out to export every attempt.
+ */
+export async function buildAnswerCsv(
+  ownerUserId: string,
+  questionSetIds?: string[],
+): Promise<string> {
   const rows = await db
     .select({
       answer: attemptAnswers,
@@ -137,7 +144,14 @@ export async function buildAnswerCsv(ownerUserId: string): Promise<string> {
         eq(attemptQuestionFeedback.questionId, attemptAnswers.questionId),
       ),
     )
-    .where(eq(questionSets.ownerUserId, ownerUserId))
+    .where(
+      questionSetIds
+        ? and(
+            eq(questionSets.ownerUserId, ownerUserId),
+            inArray(questionSets.id, questionSetIds.length ? questionSetIds : [""]),
+          )
+        : eq(questionSets.ownerUserId, ownerUserId),
+    )
     .orderBy(asc(attempts.createdAt), asc(attemptAnswers.startedAt));
 
   // Question sets are parsed once each; a set with 50 questions is shared by every attempt.

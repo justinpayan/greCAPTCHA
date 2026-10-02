@@ -1,9 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { flushSync } from "react-dom";
 
 import { Brand } from "@/components/brand";
+import { PrintableQuestionSet } from "@/components/printable-question-set";
 import { TakerAllowlistField } from "@/components/taker-allowlist-field";
+import { WorkflowTag } from "@/components/workflow-tag";
 import { MathText } from "@/components/quiz/math-text";
 import { formatAllowlist } from "@/lib/allowlist";
 import type { QuestionSetOverview, StoredQuestion } from "@/lib/quiz";
@@ -143,6 +146,16 @@ export function SetOverview({
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  /** Whether the printed copy carries the answer key; Ctrl+P alone prints the questions only. */
+  const [printWithKey, setPrintWithKey] = useState(false);
+
+  function printSet(withKey: boolean) {
+    // Rendered in the chosen mode before the dialog opens, since the dialog snapshots the page.
+    flushSync(() => setPrintWithKey(withKey));
+    window.print();
+    setPrintWithKey(false);
+  }
+
   /** Items whose full text is showing. Several at once, since checking a bank means reading it. */
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -239,12 +252,16 @@ export function SetOverview({
   }
 
   return (
-    <main className="app-shell dashboard-shell">
+    <main className="app-shell dashboard-shell set-overview-shell">
       <Brand onHome={onBack} />
 
       <header className="quiz-header sequential-header">
         <div>
           <p className="eyebrow">Question set</p>
+          <WorkflowTag
+            apiKeyPayer={overview.apiKeyPayer}
+            materialUploader={overview.materialUploader}
+          />
           <h1>{name.trim() || overview.paperName}</h1>
           <div className="quiz-meta">
             {overview.paperName} · {overview.modelId} ·{" "}
@@ -338,16 +355,34 @@ export function SetOverview({
           {overview.items.length} {overview.items.length === 1 ? "item" : "items"}
           {expanded.size > 0 && ` · ${expanded.size} expanded`}
         </span>
-        <button
-          className="secondary"
-          type="button"
-          disabled={overview.items.length === 0}
-          onClick={() =>
-            setExpanded(allOpen ? new Set() : new Set(overview.items.map((i) => i.questionId)))
-          }
-        >
-          {allOpen ? "Collapse all" : "Expand all"}
-        </button>
+        <div className="list-toolbar-actions">
+          <button
+            className="secondary"
+            type="button"
+            disabled={overview.items.length === 0}
+            onClick={() => printSet(false)}
+          >
+            Print question set
+          </button>
+          <button
+            className="secondary"
+            type="button"
+            disabled={overview.items.length === 0}
+            onClick={() => printSet(true)}
+          >
+            Print with answer key
+          </button>
+          <button
+            className="secondary"
+            type="button"
+            disabled={overview.items.length === 0}
+            onClick={() =>
+              setExpanded(allOpen ? new Set() : new Set(overview.items.map((i) => i.questionId)))
+            }
+          >
+            {allOpen ? "Collapse all" : "Expand all"}
+          </button>
+        </div>
       </div>
 
       <section className="summary-list">
@@ -395,6 +430,12 @@ export function SetOverview({
           Back to dashboard
         </button>
       </div>
+
+      <PrintableQuestionSet
+        overview={overview}
+        title={name.trim() || overview.label || overview.paperName}
+        withKey={printWithKey}
+      />
     </main>
   );
 }

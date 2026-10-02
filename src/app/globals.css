@@ -3599,3 +3599,371 @@ mark.evidence:focus-visible {
     display: none;
   }
 }
+
+/* ---- Printing a question set (Overview page) ------------------------------------------------ */
+
+.list-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* The paper copy exists only for the printer. */
+.print-sheet {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 16mm 15mm;
+  }
+
+  html,
+  body {
+    background: white !important;
+  }
+
+  /* Only the printable sheet: the dashboard page around it, and the dev-tools badge, stay off paper. */
+  .set-overview-shell > :not(.print-sheet),
+  nextjs-portal {
+    display: none !important;
+  }
+
+  .set-overview-shell {
+    width: auto;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .print-sheet {
+    display: block;
+    color: black;
+    font-size: 11pt;
+    line-height: 1.45;
+  }
+
+  .print-page + .print-page {
+    break-before: page;
+  }
+
+  /* Up to two written questions: each takes half the page, the rest of it writing space. The
+     height is set to fit both A4 and US Letter inside the page margins. */
+  /* A minimum, not a fixed height: a question longer than its share pushes the page longer
+     instead of running over the question below it. */
+  .print-page-paired {
+    display: flex;
+    flex-direction: column;
+    gap: 8mm;
+    min-height: 245mm;
+  }
+
+  /* Each question takes an equal share; a long one grows past it at the expense of its writing
+     space, never by overlapping the next question. */
+  .print-page-paired .print-question {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+  }
+
+  /* The answer key has no writing space, and its rubrics can run long, so its pages (still two
+     questions at most) size to their content instead. */
+  .print-with-key .print-page-paired {
+    min-height: 0;
+  }
+
+  .print-with-key .print-page-paired .print-question {
+    flex: 0 0 auto;
+    break-inside: avoid;
+  }
+
+  /* Multiple choice flows several to a page, but a question is never split across two. */
+  .print-page-flow .print-question {
+    margin-bottom: 7mm;
+    break-inside: avoid;
+  }
+
+  .print-cover {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 4mm 10mm;
+    margin-bottom: 7mm;
+    border-bottom: 1.5pt solid black;
+    padding-bottom: 4mm;
+  }
+
+  .print-cover h1 {
+    max-width: none;
+    margin: 0;
+    font-size: 17pt;
+    line-height: 1.2;
+    letter-spacing: 0;
+  }
+
+  .print-eyebrow {
+    margin: 0 0 1mm;
+    font-size: 8.5pt;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .print-meta {
+    margin: 1.5mm 0 0;
+    font-size: 9.5pt;
+  }
+
+  .print-taker {
+    display: grid;
+    gap: 3mm;
+    min-width: 70mm;
+    font-size: 10pt;
+  }
+
+  .print-taker > span {
+    display: flex;
+    align-items: flex-end;
+    gap: 2mm;
+  }
+
+  .print-answer-line {
+    display: inline-block;
+    flex: 1;
+    min-width: 40mm;
+    border-bottom: 0.75pt solid black;
+  }
+
+  .print-question-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 4mm;
+    margin-bottom: 2mm;
+    border-bottom: 0.5pt solid #999;
+    padding-bottom: 1mm;
+    font-size: 10pt;
+  }
+
+  .print-question-head span {
+    font-style: italic;
+  }
+
+  .print-prompt {
+    margin: 0 0 3mm;
+  }
+
+  .print-options {
+    display: grid;
+    gap: 2mm;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .print-options li {
+    display: flex;
+    align-items: baseline;
+    gap: 2.5mm;
+  }
+
+  .print-option-mark {
+    flex-shrink: 0;
+    width: 3.5mm;
+    height: 3.5mm;
+    border: 0.75pt solid black;
+    border-radius: 50%;
+    transform: translateY(0.6mm);
+  }
+
+  .print-option-letter {
+    font-weight: 700;
+  }
+
+  .print-with-key .print-options li.correct {
+    font-weight: 700;
+  }
+
+  .print-with-key .print-options li.correct .print-option-mark {
+    background: black;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .print-blank {
+    display: inline-block;
+    min-width: 28mm;
+    margin: 0 1mm;
+    border-bottom: 0.75pt solid black;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .print-fill-text {
+    line-height: 2;
+  }
+
+  .print-word-bank {
+    margin-bottom: 4mm;
+    border: 0.75pt solid black;
+    padding: 2mm 3mm;
+  }
+
+  .print-word-bank-label {
+    display: block;
+    margin-bottom: 1mm;
+    font-size: 8.5pt;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .print-word-bank ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5mm 6mm;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .print-blank-answers {
+    display: grid;
+    gap: 5mm;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .print-blank-answers li {
+    display: flex;
+    align-items: flex-end;
+    gap: 2mm;
+  }
+
+  /* Ruled writing space filling whatever height the question leaves on its half of the page. */
+  .print-answer-space {
+    flex: 1 1 auto;
+    min-height: 40mm;
+    border: 0.75pt solid #777;
+    /* One 8 mm tile with its rule at the bottom, repeated: renders evenly where a striped
+       gradient lands on fractional pixels and drops or doubles lines. */
+    background-image: linear-gradient(to bottom, transparent calc(100% - 1px), #aaa calc(100% - 1px));
+    background-size: 100% 8mm;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .print-key {
+    margin-top: 2mm;
+    border-left: 2pt solid black;
+    padding-left: 3mm;
+    font-size: 10pt;
+  }
+
+  .print-key ul {
+    margin: 1mm 0 0;
+    padding-left: 5mm;
+  }
+}
+
+/* ---- Test workflows: one colour per payer × uploader combination ---------------------------- */
+
+/* Shared by the creation controls, the creation form, created-test cards and the set overview, so
+   a test keeps the colour it was created under. White text stays readable on each. */
+.workflow-creator-creator { --workflow: #176b4b; --workflow-tint: #e5f2ec; }
+.workflow-creator-taker { --workflow: #3f4fb8; --workflow-tint: #e9ebf8; }
+.workflow-taker-creator { --workflow: #a3540d; --workflow-tint: #f8ece0; }
+.workflow-taker-taker { --workflow: #96306b; --workflow-tint: #f6e6ef; }
+
+.workflow-tag {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border: 1px solid var(--workflow);
+  border-radius: 999px;
+  padding: 3px 10px;
+  color: var(--workflow);
+  background: var(--workflow-tint);
+  font-size: 0.78rem;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+/* Creating: the panel and its selected choices take the colour of the combination chosen. */
+.dashboard-workflow[class*="workflow-"] {
+  border-left: 5px solid var(--workflow);
+  transition: border-color 150ms;
+}
+
+.dashboard-workflow .workflow-toggle button.active {
+  background: var(--workflow, var(--green));
+  transition: background 150ms;
+}
+
+.workflow-summary {
+  display: grid;
+  gap: 6px;
+  max-width: 280px;
+}
+
+.workflow-summary .hint {
+  margin: 0;
+}
+
+.workflow-accent {
+  border-top: 4px solid var(--workflow);
+}
+
+/* Viewing: each created test carries its workflow's colour down its left edge. */
+.created-test[class*="workflow-"] {
+  border-left: 5px solid var(--workflow);
+}
+
+/* ---- Selecting created tests for export and print ------------------------------------------- */
+
+.catalog-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 10px;
+}
+
+.select-all-tests {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: 4px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 720;
+  cursor: pointer;
+}
+
+.select-all-tests input,
+.test-select {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  accent-color: var(--green);
+  cursor: pointer;
+}
+
+.created-test-parent > .test-select {
+  align-self: center;
+  margin-right: 2px;
+}
+
+/* A batch print from Tests You've Created: only the sheets rendered into .print-root reach the
+   paper, each question set starting on a page of its own. Hidden on screen like any sheet. */
+@media print {
+  body:has(> .print-root) > :not(.print-root) {
+    display: none !important;
+  }
+
+  .print-root .print-sheet + .print-sheet {
+    break-before: page;
+  }
+}

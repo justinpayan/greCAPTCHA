@@ -9,8 +9,10 @@ import { deleteManuscript } from "@/lib/manuscripts";
 import {
   isWarmup,
   questionBlockName,
+  type ApiKeyPayer,
   type AttemptListEntry,
   type CreatedTestEntry,
+  type MaterialUploader,
   type QuestionSetListEntry,
   type QuestionSetOverview,
   type StudyTemplateConfig,
@@ -104,8 +106,9 @@ export async function getQuestionSetOverview(id: string, ownerUserId: string): P
     overallTimeLimitSeconds: set.overallTimeLimitSeconds,
     attemptCount: attemptTotal?.total ?? 0,
     createdAt: set.createdAt,
-    takerAllowlist: readStoredAllowlist(set.takerAllowlistJson),
-    items: questions.map((question, index) => ({
+        takerAllowlist: readStoredAllowlist(set.takerAllowlistJson),
+    apiKeyPayer: set.apiKeyPayer as ApiKeyPayer,
+    materialUploader: set.materialUploader as MaterialUploader, items: questions.map((question, index) => ({
       position: index + 1,
       questionId: question.id,
       type: question.type,

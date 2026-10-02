@@ -12,15 +12,30 @@ export const maxDuration = 300;
  * allowlist in middleware matches `/api/attempts/<id>` for GET, so an `export` segment
  * there would be read as an attempt ID and served without a session.
  */
-export async function GET() {
+/** How many question sets one export may name; a dashboard selection is far below it. */
+const MAX_SELECTED_SETS = 1_000;
+
+export async function GET(request: Request) {
   try {
     const user = await requireUser();
-    const csv = await buildAnswerCsv(user.id);
+    // `?sets=id1,id2` exports only those question sets (the dashboard's "Export selected").
+    const raw = new URL(request.url).searchParams.get("sets");
+    const selected =
+      raw === null
+        ? undefined
+        : [...new Set(raw.split(",").map((id) => id.trim()).filter(Boolean))];
+    const malformed = selected?.some((id) => !/^[\w-]+$/.test(id));
+    if (selected && (selected.length > MAX_SELECTED_SETS || malformed)) {
+      throw new Error("The selection could not be exported. Choose the tests again.");
+    }
+    const csv = await buildAnswerCsv(user.id, selected);
     const stamp = new Date().toISOString().slice(0, 10);
     return new Response(csv, {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": `attachment; filename="research-captcha-answers-${stamp}.csv"`,
+        "Content-Disposition": `attachment; filename="research-captcha-answers-${
+          selected ? "selected-" : ""
+        }${stamp}.csv"`,
         "Cache-Control": "no-store",
       },
     });
