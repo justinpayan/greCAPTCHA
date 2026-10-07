@@ -9,6 +9,11 @@ import {
   createDefaultStudyTemplate,
   isLegacyStarterTemplate,
 } from "@/lib/default-study-template";
+import {
+  batchTestNames,
+  readBatchManuscripts,
+  type BatchManuscript,
+} from "@/lib/batch-manuscripts";
 import { errorFromPayload, isOpenRouterError } from "@/lib/openrouter-errors";
 import { MAX_PDF_BYTES, pdfTooLargeMessage } from "@/lib/uploads";
 import {
@@ -85,6 +90,25 @@ async function tryCopyToClipboard(text: string): Promise<boolean> {
 
 /** The "Assessment created" notice: the new test's link, and whether it reached the clipboard. */
 type CreatedNotice = { link: string; copied: boolean; copyBlocked?: boolean };
+/** The outcome of a batch: one entry per manuscript, created or not. */
+type BatchNotice = {
+  created: { name: string; link: string }[];
+  failed: { name: string; message: string }[];
+  copied?: boolean;
+};
+
+const MANUSCRIPT_FIELDS = new Set(["paper", "paperUrl", "paperUrls"]);
+
+/** A copy of the form carrying one batch manuscript in place of the whole batch. */
+function formForManuscript(form: FormData, item: BatchManuscript): FormData {
+  const copy = new FormData();
+  for (const [key, value] of form.entries()) {
+    if (!MANUSCRIPT_FIELDS.has(key)) copy.append(key, value);
+  }
+  if (item.kind === "file") copy.set("paper", item.file, item.file.name);
+  else copy.set("paperUrl", item.url);
+  return copy;
+}
 const FEATURED_MODEL_IDS = [
   "anthropic/claude-opus-5.5",
   DEFAULT_MODEL_ID,
@@ -336,6 +360,9 @@ export function ResearchCaptcha({
   const [working, setWorking] = useState(false);
   const [generationStatus, setGenerationStatus] = useState("");
   const [generationNotice, setGenerationNotice] = useState<CreatedNotice | null>(null);
+  // Batch mode of the manuscript field: one test per manuscript, on the creator-uploads workflows.
+  const [batchManuscripts, setBatchManuscripts] = useState(false);
+  const [batchNotice, setBatchNotice] = useState<BatchNotice | null>(null);
   const [error, setError] = useState("");
   const [failedGenerationJobId, setFailedGenerationJobId] = useState("");
   // Which subtab of *New question set* was last open, so returning to the tab restores it.
@@ -424,6 +451,8 @@ export function ResearchCaptcha({
     }),
     [selectedModel, pdfEngine, blocks, overallLimitMinutes],
   );
+  // Batch applies only where the test creator supplies the manuscripts.
+  const isBatch = batchManuscripts && materialUploader === "creator";
   function applyConfig(config: StudyTemplateConfig, catalog: CatalogModel[]) {
     setPdfEngine(config.pdfEngine);
     setBlocks(config.blocks);
@@ -709,6 +738,11 @@ export function ResearchCaptcha({
   }
 
   async function activateAndCopyQuestionSetLink(questionSetId: string): Promise<CreatedNotice> {
+    const link = await activateQuestionSetLink(questionSetId);
+    return { link, copied: await tryCopyToClipboard(link) };
+  }
+
+  async function activateQuestionSetLink(questionSetId: string): Promise<string> {
     const response = await fetch(
       `/api/question-sets/${encodeURIComponent(questionSetId)}/share`,
       { method: "POST" },
@@ -723,8 +757,7 @@ export function ResearchCaptcha({
     if (!payload.participantPath) {
       throw new Error("The assessment link was not returned.");
     }
-    const link = new URL(payload.participantPath, window.location.origin).toString();
-    return { link, copied: await tryCopyToClipboard(link) };
+    return new URL(payload.participantPath, window.location.origin).toString();
   }
 
   async function deleteCreatedTest(test: CreatedTestEntry) {
@@ -1118,6 +1151,7 @@ export function ResearchCaptcha({
   async function updateInvitationSharing(
     id: string,
     enabled: boolean,
+    copy = true,
   ): Promise<CreatedNotice | null> {
     const response = await fetch(
       `/api/templates/${encodeURIComponent(id)}/invite-share`,
@@ -1143,7 +1177,7 @@ export function ResearchCaptcha({
     if (payload.participantPath) {
       const link = `${window.location.origin}${payload.participantPath}`;
       // No message here: creating the invitation shows its own "Assessment created" notice.
-      return { link, copied: await tryCopyToClipboard(link) };
+      return { link, copied: copy && (await tryCopyToClipboard(link)) };
     }
     setTemplateStatus("Invitation revoked.");
     return null;
@@ -1161,6 +1195,7 @@ export function ResearchCaptcha({
     setError("");
     setTemplateStatus("");
     setGenerationNotice(null);
+    setBatchNotice(null);
     const form = new FormData(event.currentTarget);
     const paper = form.get("paper");
     if (
@@ -1212,6 +1247,90 @@ export function ResearchCaptcha({
     } finally {
       setWorking(false);
     }
+  }
+
+  /** One invitation per manuscript, each named after the shared name and its manuscript. */
+  async function createInvitationBatch(
+    event: FormEvent<HTMLFormElement>,
+    config: StudyTemplateConfig,
+  ) {
+    event.preventDefault();
+    if (!setName.trim()) return setError("Give the test set a name.");
+    if (!config.modelId) return setError("Choose an OpenRouter model.");
+    if (config.blocks.length === 0) return setError("Add at least one question family.");
+    const form = new FormData(event.currentTarget);
+    let items: BatchManuscript[];
+    try {
+      items = readBatchManuscripts(form);
+    } catch (caught) {
+      setError("");
+      return setPaperError(userFacingMessage(caught, "Unable to read the manuscripts."));
+    }
+    const names = batchTestNames(setName, items);
+    setPaperError("");
+    setWorking(true);
+    setError("");
+    setTemplateStatus("");
+    setGenerationNotice(null);
+    setBatchNotice(null);
+    const outcome: BatchNotice = { created: [], failed: [] };
+    for (const [index, item] of items.entries()) {
+      const name = names[index];
+      setGenerationStatus(`Publishing invitation ${index + 1} of ${items.length}…`);
+      let savedId = "";
+      try {
+        const response = await fetch("/api/templates", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            config,
+            apiKeyPayer,
+            materialUploader,
+            allowlist: takerAllowlistText,
+          }),
+        });
+        const payload = (await response.json()) as {
+          error?: string;
+          template?: StudyTemplateSummary;
+        };
+        if (!response.ok || !payload.template) {
+          throw new Error(payload.error ?? "Unable to save the invitation.");
+        }
+        const saved = payload.template;
+        savedId = saved.id;
+        setTemplates((current) => [saved, ...current.filter((one) => one.id !== saved.id)]);
+        const materialResponse = await fetch(
+          `/api/templates/${encodeURIComponent(saved.id)}/material`,
+          { method: "POST", body: formForManuscript(form, item) },
+        );
+        const materialPayload = await materialResponse.json();
+        if (!materialResponse.ok) {
+          throw new Error(materialPayload.error ?? "Unable to save the source material.");
+        }
+        const shared = await updateInvitationSharing(saved.id, true, false);
+        if (!shared) throw new Error("The invitation link was not returned.");
+        outcome.created.push({ name, link: shared.link });
+      } catch (caught) {
+        outcome.failed.push({
+          name,
+          message: userFacingMessage(caught, "Unable to publish the invitation."),
+        });
+        // An invitation without its manuscript cannot be taken; remove it so a retry can reuse
+        // the name. Best effort: a failure here leaves it in Tests You've Created to delete.
+        if (savedId) {
+          const removed = await fetch(`/api/templates/${encodeURIComponent(savedId)}`, {
+            method: "DELETE",
+          }).catch(() => null);
+          if (removed?.ok) {
+            setTemplates((current) => current.filter((one) => one.id !== savedId));
+          }
+        }
+      }
+    }
+    setBatchNotice(outcome);
+    setWorking(false);
+    setGenerationStatus("");
   }
 
   async function deleteTemplate() {
@@ -1295,6 +1414,124 @@ export function ResearchCaptcha({
     else setError(message);
   }
 
+  /** The generation settings every question set request carries, beside its manuscript. */
+  function setGenerationFields(form: FormData, config: StudyTemplateConfig, name: string) {
+    form.set("modelId", config.modelId);
+    form.set("pdfEngine", config.pdfEngine);
+    form.set("blocks", JSON.stringify(config.blocks));
+    form.set("randomize", "false");
+    form.set(
+      "overallTimeLimitSeconds",
+      config.overallTimeLimitSeconds === null
+        ? ""
+        : String(config.overallTimeLimitSeconds),
+    );
+    form.set("name", name);
+    form.set("takerAllowlist", takerAllowlistText);
+    form.set("apiKeyPayer", apiKeyPayer);
+    form.set("materialUploader", materialUploader);
+    if (templateId) form.set("sourceTemplateId", templateId);
+  }
+
+  /**
+   * One question set per manuscript, generated one after another: the server runs at most one
+   * generation per account at a time, so each manuscript is sent once the previous one is done.
+   */
+  async function generateBatch(
+    event: FormEvent<HTMLFormElement>,
+    config: StudyTemplateConfig,
+  ) {
+    event.preventDefault();
+    if (!config.modelId) return setError("No compatible OpenRouter model is available.");
+    if (config.blocks.length === 0) return setError("Add at least one question family.");
+    const form = new FormData(event.currentTarget);
+    let items: BatchManuscript[];
+    try {
+      items = readBatchManuscripts(form);
+    } catch (caught) {
+      setError("");
+      return setPaperError(userFacingMessage(caught, "Unable to read the manuscripts."));
+    }
+    const names = batchTestNames(setName, items);
+    setPaperError("");
+    setWorking(true);
+    setGenerationNotice(null);
+    setBatchNotice(null);
+    setFailedGenerationJobId("");
+    setError("");
+    setKeyError("");
+    const outcome: BatchNotice = { created: [], failed: [] };
+    try {
+      for (const [index, item] of items.entries()) {
+        const name = names[index];
+        const failed = outcome.failed.length;
+        const prefix = `Test ${index + 1} of ${items.length}${failed ? ` (${failed} failed)` : ""}`;
+        setGenerationStatus(
+          item.kind === "link" ? `${prefix}: fetching the linked PDF…` : `${prefix}: uploading…`,
+        );
+        const itemForm = formForManuscript(form, item);
+        // Without a shared name, each test is named after its PDF by the server, as for one.
+        setGenerationFields(itemForm, config, setName.trim() ? name : "");
+        try {
+          const response = await fetch("/api/question-sets", { method: "POST", body: itemForm });
+          const payload = await response.json();
+          if (!response.ok) throw errorFromPayload(payload, "Unable to generate questions.");
+          const jobId = String(payload.jobId ?? "");
+          if (!jobId) throw new Error("The generation job was not created.");
+          let questionSetId = "";
+          while (!questionSetId) {
+            await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+            const jobResponse = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);
+            const jobPayload = await jobResponse.json();
+            if (!jobResponse.ok) throw errorFromPayload(jobPayload, "Unable to check generation.");
+            const job = jobPayload.job as {
+              status: string;
+              progressCurrent: number;
+              progressTotal: number;
+              error?: string;
+              errorSource?: string;
+              result?: { questionSetId?: string };
+            };
+            setGenerationStatus(
+              job.status === "running"
+                ? `${prefix}: generating block ${Math.min(job.progressCurrent + 1, job.progressTotal)} of ${job.progressTotal}…`
+                : `${prefix}: waiting for a generation worker…`,
+            );
+            if (job.status === "failed") throw errorFromPayload(job, "Question generation failed.");
+            if (job.status === "completed") {
+              questionSetId = String(job.result?.questionSetId ?? "");
+              if (!questionSetId) throw new Error("Generation completed without a question set.");
+            }
+          }
+          outcome.created.push({ name, link: await activateQuestionSetLink(questionSetId) });
+        } catch (caught) {
+          outcome.failed.push({
+            name,
+            message: userFacingMessage(caught, "Question generation failed."),
+          });
+          // A key problem fails every manuscript the same way, so stop rather than repeat it,
+          // and list the manuscripts never sent so the tally still covers the whole batch.
+          if (isOpenRouterError(caught)) {
+            for (const skipped of names.slice(index + 1)) {
+              outcome.failed.push({
+                name: skipped,
+                message: "Not sent: the batch stopped after an OpenRouter error (see API Access).",
+              });
+            }
+            throw caught;
+          }
+        }
+      }
+    } catch (caught) {
+      reportError(caught, "Question generation failed.");
+    } finally {
+      await refreshCatalog().catch(() => undefined);
+      if (outcome.created.length || outcome.failed.length) setBatchNotice(outcome);
+      setWorking(false);
+      setGenerationStatus("");
+    }
+  }
+
   async function generateSet(
     event: FormEvent<HTMLFormElement>,
     config: StudyTemplateConfig,
@@ -1317,23 +1554,10 @@ export function ResearchCaptcha({
       form.get("paperUrl") ? "Fetching the linked PDF…" : "Queued for generation…",
     );
     setGenerationNotice(null);
+    setBatchNotice(null);
     setError("");
     setKeyError("");
-    form.set("modelId", config.modelId);
-    form.set("pdfEngine", config.pdfEngine);
-    form.set("blocks", JSON.stringify(config.blocks));
-    form.set("randomize", "false");
-    form.set(
-      "overallTimeLimitSeconds",
-      config.overallTimeLimitSeconds === null
-        ? ""
-        : String(config.overallTimeLimitSeconds),
-    );
-    form.set("name", setName);
-    form.set("takerAllowlist", takerAllowlistText);
-    form.set("apiKeyPayer", apiKeyPayer);
-    form.set("materialUploader", materialUploader);
-    if (templateId) form.set("sourceTemplateId", templateId);
+    setGenerationFields(form, config, setName);
     let jobId = "";
     try {
       const response = await fetch("/api/question-sets", { method: "POST", body: form });
@@ -2162,8 +2386,11 @@ export function ResearchCaptcha({
           autoComplete="off"
           onSubmit={(event) => {
             const config = currentConfig;
-            return apiKeyPayer === "creator" && materialUploader === "creator"
-              ? generateSet(event, config)
+            if (apiKeyPayer === "creator" && materialUploader === "creator") {
+              return isBatch ? generateBatch(event, config) : generateSet(event, config);
+            }
+            return isBatch
+              ? createInvitationBatch(event, config)
               : createInvitationTemplate(event, config);
           }}
         >
@@ -2175,9 +2402,13 @@ export function ResearchCaptcha({
                   Test set name
                   <FieldHint
                     text={
-                      apiKeyPayer === "taker" || materialUploader === "taker"
-                        ? "Identifies this test on your dashboard. Test takers don't see it."
-                        : "Identifies this test on your dashboard. Test takers don't see it. Leave blank to use the PDF filename; you can rename it later."
+                      isBatch
+                        ? apiKeyPayer === "taker"
+                          ? "Each test is named with this, followed by its manuscript's file name. Test takers don't see it."
+                          : "Each test is named with this, followed by its manuscript's file name. Test takers don't see it. Leave blank to name each test after its PDF."
+                        : apiKeyPayer === "taker" || materialUploader === "taker"
+                          ? "Identifies this test on your dashboard. Test takers don't see it."
+                          : "Identifies this test on your dashboard. Test takers don't see it. Leave blank to use the PDF filename; you can rename it later."
                     }
                   />
                 </label>
@@ -2192,10 +2423,17 @@ export function ResearchCaptcha({
               </div>
               {materialUploader === "creator" && (
                 <>
-                  <ManuscriptField id="paper" error={paperError} onError={setPaperError} />
+                  <ManuscriptField
+                    id="paper"
+                    error={paperError}
+                    onError={setPaperError}
+                    batch={batchManuscripts}
+                    onBatchChange={setBatchManuscripts}
+                  />
                   <div className="field full">
                     <label htmlFor="contributions">
                       What material can we test on?
+                      <FieldHint text="In batch generation, this same statement is used for every manuscript in the batch." />
                     </label>
                     {/* No length constraint, blank included: with no statement the generator is told
                         there is no declared scope and covers the whole manuscript. */}
@@ -2595,12 +2833,18 @@ export function ResearchCaptcha({
               }
             >
               {working
-                ? apiKeyPayer === "taker" || materialUploader === "taker"
-                  ? "Publishing invitation…"
-                  : generationStatus || "Preparing upload…"
+                ? isBatch
+                  ? generationStatus || "Preparing uploads…"
+                  : apiKeyPayer === "taker" || materialUploader === "taker"
+                    ? "Publishing invitation…"
+                    : generationStatus || "Preparing upload…"
                 : apiKeyPayer === "taker" || materialUploader === "taker"
-                  ? "Create and copy invitation"
-                  : "Generate question set"}
+                  ? isBatch
+                    ? "Create invitations"
+                    : "Create and copy invitation"
+                  : isBatch
+                    ? "Generate question sets"
+                    : "Generate question set"}
             </button>
           </div>
           {/* Beneath the button that produced it, so the result appears where the eye already is. */}
@@ -2655,6 +2899,85 @@ export function ResearchCaptcha({
                 aria-label="Dismiss this notice"
                 title="Dismiss"
                 onClick={() => setGenerationNotice(null)}
+              >
+                ×
+              </button>
+            </div>
+          )}
+          {batchNotice && (
+            <div className="template-status dashboard-notice submit-notice" role="status">
+              <div className="batch-notice">
+                <p>
+                  {batchNotice.created.length} of{" "}
+                  {batchNotice.created.length + batchNotice.failed.length}{" "}
+                  {apiKeyPayer === "creator" && materialUploader === "creator"
+                    ? "assessments"
+                    : "invitations"}{" "}
+                  created.{" "}
+                  {batchNotice.created.length > 0 && (
+                    <button
+                      className="inline-link"
+                      type="button"
+                      onClick={async () => {
+                        // Tab-separated, so the list pastes into a spreadsheet as two columns.
+                        const copied = await tryCopyToClipboard(
+                          batchNotice.created
+                            .map((entry) => `${entry.name}\t${entry.link}`)
+                            .join("\n"),
+                        );
+                        setBatchNotice({ ...batchNotice, copied });
+                      }}
+                    >
+                      {batchNotice.copied ? "Links copied" : "Copy all links"}
+                    </button>
+                  )}
+                  {batchNotice.copied === false && (
+                    <>
+                      {" "}
+                      Your browser did not allow copying to the clipboard, so select the links
+                      and copy them yourself.
+                    </>
+                  )}{" "}
+                  <button
+                    className="inline-link"
+                    type="button"
+                    onClick={() => {
+                      setMode("resume");
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                  >
+                    See Tests You&apos;ve Created
+                  </button>
+                </p>
+                {batchNotice.created.length > 0 && (
+                  <ul className="batch-list">
+                    {batchNotice.created.map((entry) => (
+                      <li key={entry.link}>
+                        <strong>{entry.name}</strong>{" "}
+                        <span className="notice-link">{entry.link}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {batchNotice.failed.length > 0 && (
+                  <>
+                    <p className="batch-failed-heading">Not created:</p>
+                    <ul className="batch-list">
+                      {batchNotice.failed.map((entry, index) => (
+                        <li key={`${entry.name}-${index}`}>
+                          <strong>{entry.name}</strong>: {entry.message}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+              <button
+                className="notice-dismiss"
+                type="button"
+                aria-label="Dismiss this notice"
+                title="Dismiss"
+                onClick={() => setBatchNotice(null)}
               >
                 ×
               </button>
