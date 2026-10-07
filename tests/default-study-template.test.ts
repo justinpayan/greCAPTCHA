@@ -19,7 +19,6 @@ describe("default study template", () => {
     });
     expect(processMatching?.prompt).toMatch(/^Generate process-matching fill-in-the-blank questions\./);
     expect(blocks.map((block) => block.type)).toEqual([
-      "multiple_choice",
       "fill_blank",
       "free_response",
       "free_response",

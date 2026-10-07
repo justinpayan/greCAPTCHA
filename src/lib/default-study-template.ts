@@ -4,16 +4,6 @@ import {
   type StudyTemplateConfig,
 } from "@/lib/quiz";
 
-const PLANTED_ERROR_PROMPT = `Generate planted-error detection items. Each item states a specific claim about this manuscript, and the participant must identify which version of the claim is what the paper actually reports.
-
-Build each item from a single atomic, verifiable fact that appears exactly once in the paper, such as a numeric result, an ablation delta, a dataset or baseline name, a hyperparameter, a section or table attribution, etc. Anchor the item to where that fact lives, such as "the ablation in Section 5.2" or "Table 3", so the key is checkable against a specific passage. Never include Section or Table names in the question text to avoid easily looking up the information.
-
-Perturb a value or a referent, never a qualitative direction. Reassigning which component an effect belongs to, or which condition a number describes, is the target. Flipping "improves" to "degrades" is too easy and must not be used. Every incorrect option must be plausible enough that a reader who does not know the work has to locate and read the relevant passage to rule it out.
-
-Never build an item on a fact the paper restates elsewhere, including in the abstract, a figure caption, or the conclusion. A restatement gives a non-author a cheap second place to check. Never build an item whose correct option can be identified by keyword overlap with the prompt, by grammar, by option length, or by being the most specific or most hedged option. Options must be mutually exclusive and comparable in length, specificity, and technical register.
-
-Discard any candidate answerable from the title and abstract alone, and any candidate that someone who knows this field but has never read this paper would get right.`;
-
 const PROCESS_MATCHING_PROMPT = `Generate process-matching fill-in-the-blank questions. Each item presents a specific chain of reasoning from this manuscript with numbered blanks that the participant must complete. Test whether the participant understands how the parts of the work connect, such as what question motivated a method, what that method established, and how the resulting evidence supports a conclusion.
 
 Build each item around one coherent chain of three to five connected steps, with two or three substantive steps replaced by blanks. Leave enough context to identify the intended chain and constrain each missing step. Use short connected sentences that make the relationships clear, such as “To determine [given objective], the authors [blank 1]. This comparison showed [blank 2], supporting [given interpretation].” Adapt the structure to the actual reasoning in the paper; do not force every item into the same template.
@@ -66,15 +56,6 @@ Award nothing for fluency, length, hedging, confidence, or restating the questio
 
 export function createDefaultStudyBlocks(): QuestionBlockConfig[] {
   return [
-    {
-      id: "default-planted-error",
-      type: "multiple_choice",
-      name: "Planted error",
-      count: 2,
-      optionsPerQuestion: 2,
-      warmup: false,
-      prompt: PLANTED_ERROR_PROMPT,
-    },
     {
       id: "default-process-matching",
       type: "fill_blank",

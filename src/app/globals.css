@@ -12,6 +12,8 @@
   --amber: #bc6a20;
   --danger: #b63b3b;
   --shadow: 0 22px 60px rgba(25, 49, 39, 0.09);
+  /* One length for every dashboard text box that does not span its container. */
+  --short-control-width: 560px;
 }
 
 * {
@@ -409,7 +411,7 @@ textarea.control {
 
 .model-picker {
   position: relative;
-  width: min(100%, 560px);
+  width: min(100%, var(--short-control-width));
 }
 
 .model-search-control {
@@ -1862,6 +1864,11 @@ textarea.control {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+}
+
+/* Half-width fields would otherwise take their column's width, which differs between grids. */
+.form-grid > .field:not(.full) > .control {
+  width: min(100%, var(--short-control-width));
 }
 
 textarea.prompt-control {
