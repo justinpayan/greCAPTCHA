@@ -28,35 +28,42 @@ const STAGES = [
   },
 ];
 
-// Table 2 of the paper; examples are quoted verbatim.
-const FAMILIES = [
+// Answers restate what the rest of this page says; keep them in sync when it changes.
+const FAQS = [
   {
-    name: "Planted-error detection",
-    format: "Multiple choice",
-    text: "Identify which version of a specific, verifiable claim accurately reflects the manuscript.",
-    example:
-      "In validating the three-item ethical-concern scales, which construct had a Cronbach's α of 0.82? A) Autonomy; B) Privacy; C) Fairness; D) Transparency.",
+    question: "Who is greCAPTCHA for?",
+    answer:
+      "Anyone who needs evidence that people understand work submitted in their name. The report can inform peer review, job screening, admissions, grant proposals, and course projects. For example, a conference or journal can create question prompts and have authors take a test on their own manuscripts, or an instructor can test students on shared course material or on their own project reports.",
   },
   {
-    name: "Unstated rationale",
-    format: "Free response",
-    text: "Explain why a methodological or design choice is appropriate, where the reason for that choice is not explicitly stated in the paper.",
-    example:
-      "Table 1 places both sensing-not-in-use scenarios before all four sensing-in-use scenarios, while randomising only within those blocks. What supports this fixed ordering rather than randomising all six scenarios, and what interpretive cost does that choice create?",
+    question: "Who provides the source material?",
+    answer:
+      "Both the test creator or taker can. The test creator can upload source material that every test taker is asked about, such as course readings, or allow each test taker to upload their own, such as a manuscript or project report.",
   },
   {
-    name: "Background knowledge",
-    format: "Free response",
-    text: "Define an important concept that the manuscript presupposes but does not define, and explain why that concept matters for understanding the reported work.",
-    example:
-      "In your own words, explain the Mann–Whitney rank-sum procedure, including what it tests and the observation-level assumption it ordinarily makes. Then explain why this procedure matters for the condition comparisons reported.",
+    question: "What does it cost, and who pays?",
+    answer:
+      "Accounts are free. Generating and grading questions calls language models through OpenRouter, so it requires an OpenRouter API key. The test creator can pay all API costs with their own key, or have each test taker provide a key and pay for their own test.",
   },
   {
-    name: "Failure mode",
-    format: "Free response",
-    text: "Name a realistic, manuscript-specific condition under which the proposed method or central finding would degrade, and explain the mechanism producing that degradation.",
-    example:
-      "Name one realistic learning condition for which the reported preference for system-generated hints over teacher assistance might weaken or reverse, and explain why.",
+    question: "Do I have to write my own questions?",
+    answer:
+      "No. You can use the default set of question prompts, or customize them and create your own to suit your needs.",
+  },
+  {
+    question: "When are results available?",
+    answer:
+      "Immediately. Both the test creator and the test taker receive a graded report as soon as the test is completed.",
+  },
+  {
+    question: "Does a high score prove that the work is correct, or that no AI was used?",
+    answer:
+      "No. greCAPTCHA measures capacity to verify: the knowledge and reasoning needed to critically assess one's own contributions. That capacity is a prerequisite for verification, but it does not establish that verification occurred or that the work is correct.",
+  },
+  {
+    question: "How well does it work?",
+    answer:
+      "In a study with 31 researchers, scores separated their own papers from unfamiliar papers with an AUC of 0.90 (0.934 without the multiple-choice questions, which proved too easy).",
   },
 ];
 
@@ -93,12 +100,13 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
   return (
     <>
       <div className="landing-screen">
-        <div className="landing-screen-inner">
+        <div className="landing-topbar">
           <header className="landing-header">
             <div className="landing-brand">
               <Brand />
             </div>
             <nav className="landing-nav" aria-label="Site">
+              <a href="#faq">FAQ</a>
               <ExternalLink href={PAPER_URL}>Paper</ExternalLink>
               <ExternalLink href={CODE_URL}>Code &amp; data</ExternalLink>
               <Link className="landing-account" href={account.href}>
@@ -107,7 +115,8 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
               <TryIt signedIn={signedIn} />
             </nav>
           </header>
-
+        </div>
+        <div className="landing-screen-inner">
           <section className="landing-hero">
             <h1>Assessing understanding as evidence of research authorship.</h1>
             <p className="lede">
@@ -135,23 +144,18 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
 
       <main className="app-shell landing">
         <section className="landing-section" id="overview">
-          <p className="eyebrow">The problem</p>
-          <h2>Authorship no longer guarantees understanding</h2>
+          <h2>What is greCAPTCHA?</h2>
           <div className="landing-prose">
             <p>
-              Conferences, journals, funders, schools, and universities are struggling with a surge of
-              potentially AI-generated submissions from ostensibly human authors, who may not have
-              exercised sufficient human oversight for their manuscripts. Institutions evaluating
-              submissions can no longer reliably credit expertise based solely on authors&apos; names
-              on submitted work.
-            </p>
-            
-            <p>
-              Generative AI has legitimate uses in research, including language assistance,
-              accessibility, and exploring the literature. But responsibility for a paper&apos;s claims
-              must remain with its human authors. Existing responses, such as restrictions on
-              submissions, sanctions for policy violations, and detectors of machine-generated text, do
-              not directly establish whether authors understand and can evaluate their contributions.
+              greCAPTCHA is an{" "}
+              <a className="landing-inline-link" href="#evaluation">
+                empirically-validated
+              </a>{" "}
+              and open-source platform to automatically create
+              and evaluate assessments about claimed authors&apos; manuscripts. It supports four
+              workflows depending who uploads the manuscript (the test creator or taker) and who pays
+              for LLM inference costs. It is also highly customizable, supports the printing of
+              question sets, and batch processing of multiple manuscripts.
             </p>
 
             <p>
@@ -173,13 +177,20 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
         </section>
 
         <section className="landing-section">
-          <p className="eyebrow">What it measures</p>
-          <h2>Capacity to verify</h2>
+          <h2>Why use greCAPTCHA?</h2>
           <div className="landing-prose">
             <p>
-              greCAPTCHA measures <em>capacity to verify</em>: the knowledge and reasoning required to
-              critically assess the claims, methods, and evidence underlying one&apos;s specific
-              contributions to a manuscript. It has two dimensions:
+              Conferences, journals, funders, schools, and universities are struggling with a surge of
+              potentially AI-generated submissions from ostensibly human authors, who may not have
+              exercised sufficient human oversight for their manuscripts. Institutions evaluating
+              submissions can no longer reliably credit expertise based solely on authors&apos; names
+              on submitted work.
+            </p>
+            <p>
+              greCAPTCHA was empirically validated with 31 academic participants. It measures the{" "}
+              <em>capacity to verify</em>: the knowledge and reasoning required to critically assess
+              the claims, methods, and evidence underlying one&apos;s specific contributions to a
+              manuscript. It has two dimensions:
             </p>
           </div>
           <div className="landing-grid landing-grid-2">
@@ -194,10 +205,6 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
           </div>
           <div className="landing-prose">
             <p>
-              This capacity is a prerequisite for verification, though it does not establish
-              that verification occurred or that the work is correct.
-            </p>
-            <p>
               The name borrows from the Graduate Record Examinations (GRE) used in university
               admissions, and alludes to CAPTCHAs, which tell human users apart from bots. Here the
               aim is to distinguish authors who present AI-generated research as their own with no
@@ -208,8 +215,7 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
         </section>
 
         <section className="landing-section">
-          <p className="eyebrow">How it works</p>
-          <h2>Create question prompts, then share a link with your test takers</h2>
+          <h2>How does greCAPTCHA work?</h2>
           <ol className="landing-stages">
             {STAGES.map((stage, index) => (
               <li className="card landing-card" key={stage.name}>
@@ -219,47 +225,14 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
               </li>
             ))}
           </ol>
-          <p className="landing-uses">
-            The report can inform peer review, job screening, admissions, grant proposals, and
-            course projects.
-          </p>
         </section>
 
-        <section className="landing-section">
-          <p className="eyebrow">The questions</p>
-          <h2>Four question families</h2>
+        <section className="landing-section" id="evaluation">
+          <h2>How was greCAPTCHA evaluated?</h2>
           <div className="landing-prose">
             <p>
-              Informed by the revised Bloom&apos;s taxonomy, the prototype asks about factual,
-              conceptual, and procedural knowledge through tasks that ask test takers to identify errors,
-              explain choices, demonstrate background understanding, and assess limitations. The
-              examples below come from the study.
-            </p>
-          </div>
-          <div className="landing-grid landing-grid-2">
-            {FAMILIES.map((family) => (
-              <article className="card landing-card" key={family.name}>
-                <div className="landing-family-head">
-                  <h3>{family.name}</h3>
-                  <span className="landing-tag">{family.format}</span>
-                </div>
-                <p>{family.text}</p>
-                <p className="landing-example">&ldquo;{family.example}&rdquo;</p>
-              </article>
-            ))}
-          </div>
-          <p className="landing-caption">
-            You can also customize and create your own question families to best suit your needs.
-          </p>
-        </section>
-
-        <section className="landing-section">
-          <p className="eyebrow">Evaluation</p>
-          <h2>What the study found</h2>
-          <div className="landing-prose">
-            <p>
-              In a one-hour in-person session, 31 researchers answered eight questions (two per
-              family, with 15 minutes per paper) about one of their own papers and about an unfamiliar
+              In a one-hour in-person session, 31 researchers answered eight questions (15 minutes
+              per paper) about one of their own papers and about an unfamiliar
               paper chosen by the research team. The unfamiliar paper was either in or outside their
               field. A semi-structured interview followed.
             </p>
@@ -274,7 +247,7 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
                   Excluding the multiple-choice questions raises it to 0.934.
                 </p>
                 <p>
-                  <strong>Multiple-choice questions are too easy.</strong> The multiple-choice family
+                  <strong>Multiple-choice questions are too easy.</strong> The multiple-choice questions
                   barely separated the two (AUC 0.595): its answers can be found by searching the
                   manuscript, so it mostly measures attention.
                 </p>
@@ -318,41 +291,20 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
           </div>
         </section>
 
-        <section className="card landing-cta">
-          <div>
-            <h2>Try the prototype</h2>
-            <p>
-              First choose your workflow. The test creator can upload source material or have test takers upload their own. The test creator can pay all API costs, or have test takers pay. Example use cases include:
-            </p>
-            <ul className="landing-list">
-              <li>
-                <strong>Conference or journal.</strong> The venue creates question prompts; authors upload their
-                own manuscripts and pay with their own OpenRouter keys.
-              </li>
-              <li>
-                <strong>Class assignment.</strong> The instructor uploads shared
-                course material, and pays for generation and grading.
-              </li>
-              <li>
-                <strong>Class project.</strong> Each student uploads their
-                own project report as source material, but the instructor pays for generation and grading.
-              </li>
-            </ul>
-            <p>
-              You can use our default set of question prompts, or create your own.
-            </p>
-          </div>
-          <div className="landing-cta-actions">
-            <TryIt large signedIn={signedIn} />
-            <Link className="secondary button-link" href={account.href}>
-              {account.label}
-            </Link>
+        <section className="landing-section" id="faq">
+          <h2>Frequently asked questions</h2>
+          <div className="landing-faq">
+            {FAQS.map((faq) => (
+              <details className="card landing-card" key={faq.question}>
+                <summary>{faq.question}</summary>
+                <p>{faq.answer}</p>
+              </details>
+            ))}
           </div>
         </section>
 
         <section className="landing-section">
-          <p className="eyebrow">Cite</p>
-          <h2>The preferred bibtex citation for greCAPTCHA is:</h2>
+          <h2>Bibtex citation</h2>
           <pre className="landing-cite">{CITATION}</pre>
         </section>
 

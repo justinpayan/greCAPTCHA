@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "greCAPTCHA Demo",
+  title: "greCAPTCHA",
   description: "Try manuscript-specific authorship understanding assessments.",
 };
 
