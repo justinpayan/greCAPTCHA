@@ -30,27 +30,51 @@ const blockBase = {
   // participant; snapshotted onto each answer row so exports can group by family.
   name: z.string().max(80).default(""),
   count: z.number().int().min(1).max(30),
+  candidatePoolSize: z.number().int().min(1),
   prompt: z.string().min(20).max(20_000),
   // Warm-up items are graded and reviewed but excluded from the overall score.
   warmup: z.boolean().default(false),
 };
 
-export const questionBlockSchema = z.discriminatedUnion("type", [
-  z.object({
-    ...blockBase,
-    type: z.literal("fill_blank"),
-    distractorsPerBlank: z.number().int().min(0).max(10),
-  }),
-  z.object({
-    ...blockBase,
-    type: z.literal("free_response"),
-  }),
-  z.object({
-    ...blockBase,
-    type: z.literal("multiple_choice"),
-    optionsPerQuestion: z.number().int().min(2).max(10),
-  }),
-]);
+export const questionBlockSchema = z
+  .preprocess(
+    (value) => {
+      if (
+        typeof value === "object" &&
+        value !== null &&
+        !("candidatePoolSize" in value) &&
+        "count" in value
+      ) {
+        return { ...value, candidatePoolSize: value.count };
+      }
+      return value;
+    },
+    z.discriminatedUnion("type", [
+      z.object({
+        ...blockBase,
+        type: z.literal("fill_blank"),
+        distractorsPerBlank: z.number().int().min(0).max(10),
+      }),
+      z.object({
+        ...blockBase,
+        type: z.literal("free_response"),
+      }),
+      z.object({
+        ...blockBase,
+        type: z.literal("multiple_choice"),
+        optionsPerQuestion: z.number().int().min(2).max(10),
+      }),
+    ]),
+  )
+  .superRefine((block, context) => {
+    if (block.candidatePoolSize < block.count) {
+      context.addIssue({
+        code: "custom",
+        path: ["candidatePoolSize"],
+        message: "Candidate pool size must be at least the number of questions.",
+      });
+    }
+  });
 
 export const generationConfigSchema = z.array(questionBlockSchema).min(1).max(20);
 export type QuestionBlockConfig = z.infer<typeof questionBlockSchema>;
@@ -180,6 +204,14 @@ export type StudyTemplateSummary = {
   materialUploader: MaterialUploader;
   invitationShareToken: string | null;
   updatedAt: string;
+};
+
+/** Full researcher-facing configuration for reviewing an invitation before participants use it. */
+export type InvitationTemplateOverview = StudyTemplateSummary & {
+  materialFileName: string | null;
+  materialContributions: string | null;
+  takerAllowlist: string[] | null;
+  config: StudyTemplateConfig;
 };
 
 const generatedBlankSchema = z.object({
@@ -615,6 +647,14 @@ export function shuffled<T>(values: T[]): T[] {
     [result[index], result[randomIndex]] = [result[randomIndex], result[index]];
   }
   return result;
+}
+
+/** Selects a random subset without replacement, leaving the candidate array untouched. */
+export function sampleQuestions<T>(candidates: T[], count: number): T[] {
+  if (!Number.isInteger(count) || count < 0 || count > candidates.length) {
+    throw new Error("Cannot sample the requested number of questions from the candidate pool.");
+  }
+  return shuffled(candidates).slice(0, count);
 }
 
 function parseSegments(prompt: string, blankIds: Set<string>): QuestionSegment[] {

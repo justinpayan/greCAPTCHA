@@ -56,7 +56,7 @@ function cost(tokens: Tokens, price: ModelPrice) {
  */
 export function generationCost(input: {
   price: ModelPrice;
-  blocks: Array<Pick<QuestionBlockConfig, "count">>;
+  blocks: Array<Pick<QuestionBlockConfig, "count" | "candidatePoolSize">>;
   pages: number;
   pdfEngine: PdfEngine;
 }): CostRange {
@@ -70,7 +70,7 @@ export function generationCost(input: {
             input.pages * PDF_TOKENS_PER_PAGE[bound] +
             GENERATION_PROMPT_TOKENS +
             generatedSoFar * PREVIOUS_QUESTION_TOKENS,
-          output: block.count * GENERATED_QUESTION_TOKENS[bound],
+          output: block.candidatePoolSize * GENERATED_QUESTION_TOKENS[bound],
         },
         input.price,
       );

@@ -509,12 +509,12 @@ Each entry above carries a "covers" line naming the part of the manuscript that 
       responseSchema: fillResponseJsonSchema,
       prompt: `${sharedContext}
 
-Generate exactly ${input.block.count} fill-in-the-blank questions. Provide approximately ${input.block.distractorsPerBlank} distractors per correct answer. Use a unique short ID for each blank and place it exactly once in the prompt as {{blank_id}}. Do not repeat a correct answer as its own distractor. Return only schema-conforming JSON.`,
+Generate exactly ${input.block.candidatePoolSize} candidate fill-in-the-blank questions. Provide approximately ${input.block.distractorsPerBlank} distractors per correct answer. Use a unique short ID for each blank and place it exactly once in the prompt as {{blank_id}}. Do not repeat a correct answer as its own distractor. Return only schema-conforming JSON.`,
     });
     const validated = generatedFillSetSchema.parse(parsed);
-    if (validated.questions.length !== input.block.count) {
+    if (validated.questions.length !== input.block.candidatePoolSize) {
       throw new Error(
-        `The model returned ${validated.questions.length} questions instead of ${input.block.count}.`,
+        `The model returned ${validated.questions.length} candidate questions instead of ${input.block.candidatePoolSize}.`,
       );
     }
     return { type: "fill_blank" as const, generated: validated };
@@ -530,12 +530,12 @@ Generate exactly ${input.block.count} fill-in-the-blank questions. Provide appro
       responseSchema: multipleChoiceJsonSchema,
       prompt: `${sharedContext}
 
-Generate exactly ${input.block.count} multiple-choice questions with exactly one correct answer each. Supply the correct answer plus exactly ${optionCount - 1} distractors, so each question offers ${optionCount} options in total. Never repeat the correct answer as a distractor and never give two options the same meaning. Do not number, letter, or otherwise order the options in their text, and do not refer to options by position in the prompt. Also supply a rationale of one or two sentences explaining why the correct answer is correct; it is shown to the participant only after grading. Return only schema-conforming JSON.`,
+Generate exactly ${input.block.candidatePoolSize} candidate multiple-choice questions with exactly one correct answer each. Supply the correct answer plus exactly ${optionCount - 1} distractors, so each question offers ${optionCount} options in total. Never repeat the correct answer as a distractor and never give two options the same meaning. Do not number, letter, or otherwise order the options in their text, and do not refer to options by position in the prompt. Also supply a rationale of one or two sentences explaining why the correct answer is correct; it is shown to the participant only after grading. Return only schema-conforming JSON.`,
     });
     const validated = generatedMultipleChoiceSetSchema.parse(parsed);
-    if (validated.questions.length !== input.block.count) {
+    if (validated.questions.length !== input.block.candidatePoolSize) {
       throw new Error(
-        `The model returned ${validated.questions.length} questions instead of ${input.block.count}.`,
+        `The model returned ${validated.questions.length} candidate questions instead of ${input.block.candidatePoolSize}.`,
       );
     }
     for (const question of validated.questions) {
@@ -556,12 +556,12 @@ Generate exactly ${input.block.count} multiple-choice questions with exactly one
     responseSchema: freeResponseJsonSchema,
     prompt: `${sharedContext}
 
-Generate exactly ${input.block.count} free-response questions. Every rubric must total exactly 100 points across its criteria and permit substantively equivalent wording. Return only schema-conforming JSON.`,
+Generate exactly ${input.block.candidatePoolSize} candidate free-response questions. Every rubric must total exactly 100 points across its criteria and permit substantively equivalent wording. Return only schema-conforming JSON.`,
   });
   const validated = generatedFreeResponseSetSchema.parse(parsed);
-  if (validated.questions.length !== input.block.count) {
+  if (validated.questions.length !== input.block.candidatePoolSize) {
     throw new Error(
-      `The model returned ${validated.questions.length} questions instead of ${input.block.count}.`,
+      `The model returned ${validated.questions.length} candidate questions instead of ${input.block.candidatePoolSize}.`,
     );
   }
   for (const question of validated.questions) {

@@ -26,7 +26,25 @@ Ground every item in a specific named element of this paper, such as this compar
 
 Build the rubric to award credit for reasoning that connects the choice to the specific properties of this study's data or design, and to withhold credit for a generically correct textbook justification that never touches this paper. Accept substantively equivalent reasoning and multiple valid explanations. Award no credit for fluency, length, confidence, or command of English; score only the content of the reasoning.
 
-For each item of the rubric, the question should explicitly name it without giving away the answer. To do this, say something like "To receive full points, you should cover these N points: (1) … (2) … (N) …" Avoid telegraphing the answer. Someone who understands the paper shouldn't have to guess that you want them to cover those components, it should be made crystal clear what topics need to be covered ahead of time.`;
+To create a rubric, first list the core concept(s) you are testing about the paper, and why it is important to understand the concept(s) to verify the examinee understands the paper.
+
+Generate 1-4 observable criteria that assess understanding of the concept(s). For each criterion, provide descriptions for three performance levels (emerging, proficient, advanced) using parallel structure. Focus on describing cognitive skills rather than products. Avoid terms like 'good' or 'excellent.' Each description should be specific enough that two graders would agree on the rating.
+Important: These criteria should assess thinking processes that require engagement with document-specific content, not generic skills.
+Provide a summary of the rubric in the text of the question, so the participant knows how they will be evaluated. This means that the question and rubric should be designed so that you are not giving away the answer in the rubric, but rather providing clear guidelines on what an acceptable answer looks like.
+You should also generate 2 sample answers, one which receives partial credit and one which receives full credit. Do not show these in the question, but please include them in the full rubric. When the participant sees the rubric after they finish the test, they will benefit from knowing what is required to receive full points.
+
+
+Design the question and rubric around a minimum sufficient explanation.
+Keep the question open to multiple valid counterfactuals. Do not silently restrict the rubric to the particular answer used in your sample answer. If a particular element is essential, request it explicitly in the question.
+Make the assessment target clear. 
+Define advanced performance as the minimum reasoning sufficient to answer the question fully. Do not reserve full credit for additional examples, comparisons, qualifications, or technical details unless the question explicitly requires them and they are necessary for the definitions.
+Accept concise explanations. 
+Treat sample answers as illustrations, not exhaustive answer keys. Accept alternative conditions that satisfy the same conceptual criteria through a valid paper-specific mechanism.
+Before returning the item, perform these checks:
+-Write a brief answer containing a fairly sparse answer that contains all the necessary details. Verify that it receives full credit.
+-Construct a substantively different answer. Verify that the rubric can award it full credit. If it cannot, broaden the rubric or make the question's restriction explicit.
+-Check that every requirement for full credit is signaled in the question.
+-Check that partial credit reflects missing or incorrect reasoning, rather than missing elaboration.`;
 
 const BACKGROUND_CONCEPT_PROMPT = `Generate background-concept items. Each item asks the participant to define or explain, in their own words, one concept the paper depends on but does not itself define — the presupposed background a competent member of this field carries into reading it, not the paper's own contribution.
 
@@ -35,8 +53,24 @@ Choose concepts that are relevant to the understanding of the paper. If the part
 The most important filter is that the paper must not define the concept. The participant answers with the paper in front of them, so a concept the paper explains in its own words is a lookup rather than a question. Prefer concepts the paper names and uses as though they need no introduction. Where the paper's own topic is a concept it does define, choose an adjacent concept it presupposes instead.
 
 Never name a section, table, figure, or page in the question text, and never reuse the paper's own phrasing of the concept. Both point the participant at a passage to copy. Discard any candidate concept whose definition appears anywhere in the paper, any answerable from the title alone, and any that duplicates a concept an earlier card already covers.
+To create a rubric, first list the core concept(s) you are testing about the paper, and why it is important to understand the concept(s) to verify the examinee understands the paper.
 
-Build the rubric as an enumeration of the elements a correct definition must contain, each its own criterion with its own points. For each item of the rubric, the question should explicitly name it without giving away the answer. To do this, say something like "To receive full points, you should cover these N points: (1) … (2) … (N) …" Avoid telegraphing the answer. Someone who understands the paper shouldn't have to guess that you want them to cover those components, it should be made crystal clear what topics need to be covered ahead of time.
+Generate 1-4 observable criteria that assess understanding of the concept(s). For each criterion, provide descriptions for three performance levels (emerging, proficient, advanced) using parallel structure. Focus on describing cognitive skills rather than products. Avoid terms like 'good' or 'excellent.' Each description should be specific enough that two graders would agree on the rating.
+Important: These criteria should assess thinking processes that require engagement with document-specific content, not generic skills.
+Provide a summary of the rubric in the text of the question, so the participant knows how they will be evaluated. This means that the question and rubric should be designed so that you are not giving away the answer in the rubric, but rather providing clear guidelines on what an acceptable answer looks like.
+You should also generate 2 sample answers, one which receives partial credit and one which receives full credit. Do not show these in the question, but please include them in the full rubric. When the participant sees the rubric after they finish the test, they will benefit from knowing what is required to receive full points.
+
+Design the question and rubric around a minimum sufficient explanation.
+Keep the question open to multiple valid counterfactuals. Do not silently restrict the rubric to the particular answer used in your sample answer. If a particular element is essential, request it explicitly in the question.
+Make the assessment target clear. 
+Define advanced performance as the minimum reasoning sufficient to answer the question fully. Do not reserve full credit for additional examples, comparisons, qualifications, or technical details unless the question explicitly requires them and they are necessary for the definitions.
+Accept concise explanations. 
+Treat sample answers as illustrations, not exhaustive answer keys. Accept alternative conditions that satisfy the same conceptual criteria through a valid paper-specific mechanism.
+Before returning the item, perform these checks:
+-Write a brief answer containing a fairly sparse answer that contains all the necessary details. Verify that it receives full credit.
+-Construct a substantively different answer. Verify that the rubric can award it full credit. If it cannot, broaden the rubric or make the question's restriction explicit.
+-Check that every requirement for full credit is signaled in the question.
+-Check that partial credit reflects missing or incorrect reasoning, rather than missing elaboration.
 
 Award nothing for fluency, length, hedging, confidence, or restating the question. Accept any wording that carries the required elements, including informal phrasing, an example that entails the definition, and notation in place of prose. Do not require the participant's terminology to match the paper's.`;
 
@@ -48,9 +82,29 @@ The condition must be specific to the paper and plausible in its domain — such
 
 Do not use anything the paper names itself: its limitations, its future work, its statements about what it did not test, or anything in the abstract. The participant reads with the paper open, so those are lookups. Never name a section, table, or figure in the question text.
 
-In the rubric, list qualifying conditions for this paper, each with the mechanism that makes it fail. Any one of them earns the naming points, since reasonable people will pick different edges. Then list the answers that earn nothing: that the sample is small, that the results may not generalise, that more data or more baselines are needed, that the method is untested in other settings, and anything else that could be written without having read this paper. Weight the mechanism above the condition.
+To create a rubric, first list 1 or 2 core concepts you are testing about the paper, and why it is important to understand them to verify the examinee understands the paper.
 
-For each item of the rubric, the question should explicitly name it without giving away the answer. To do this, say something like "To receive full points, you should cover these N points: (1) … (2) … (N) …" Avoid telegraphing the answer. Someone who understands the paper shouldn't have to guess that you want them to cover those components, it should be made crystal clear what topics need to be covered ahead of time.
+Generate 1-4 observable criteria that assess understanding of these concepts. For each criterion, provide descriptions for three performance levels (emerging, proficient, advanced) using parallel structure. Focus on describing cognitive skills rather than products. Avoid terms like 'good' or 'excellent.' Each description should be specific enough that two graders would agree on the rating.
+Important: These criteria should assess thinking processes that require engagement with document-specific content, not generic skills.
+Provide a summary of the rubric in the text of the question, so the participant knows how they will be evaluated. This means that the question and rubric should be designed so that you are not giving away the answer in the rubric, but rather providing clear guidelines on what an acceptable answer looks like.
+You should also generate 2 sample answers, one which receives partial credit and one which receives full credit. Do not show these in the question, but please include them in the full rubric. When the participant sees the rubric after they finish the test, they will benefit from knowing what is required to receive full points.
+
+
+Design the question and rubric around a minimum sufficient explanation: one realistic condition, its interaction with a specific feature of the work, and the resulting degradation or interpretive limit.
+Keep the question open to multiple valid counterfactuals. Do not silently restrict the rubric to the particular counterfactual used in your sample answer. If a particular comparison or mechanism is essential, request it explicitly in the question.
+Make the assessment target clear. Distinguish degradation of the method's performance from weakening an inference drawn from its output. A condition can limit what an output establishes even when the method still performs its intended task. Do not treat an intentionally limited assessment scope as a failure to achieve a broader goal.
+Use three rubric criteria by default:
+Identify a realistic, paper-specific condition.
+Explain how that condition interacts with the work's design, method, or evidence.
+Explain the resulting consequence for performance or interpretation.
+Define advanced performance as the minimum reasoning sufficient to answer the question fully. Do not reserve full credit for additional examples, comparisons, qualifications, technical details, or remedies unless the question explicitly requires them and they are necessary to establish the mechanism.
+Accept concise causal explanations. Credit a relationship that is clearly entailed by the response, even if the participant does not separately state every intermediate step. Do not infer reasoning that the response does not support.
+Treat sample answers as illustrations, not exhaustive answer keys. Accept alternative conditions that satisfy the same conceptual criteria through a valid paper-specific mechanism.
+Before returning the item, perform these checks:
+-Write a brief answer containing only a condition, a paper-specific mechanism, and a consequence. Verify that it receives full credit.
+-Construct a substantively different valid counterfactual. Verify that the rubric can award it full credit. If it cannot, broaden the rubric or make the question's restriction explicit.
+-Check that every requirement for full credit is signaled in the question.
+-Check that partial credit reflects missing or incorrect reasoning, rather than missing elaboration.
 
 Award nothing for fluency, length, hedging, confidence, or restating the question. Accept any wording that carries the required elements, including informal phrasing, an example that entails the definition, and notation in place of prose. Do not require the participant's terminology to match the paper's.`;
 
@@ -61,6 +115,7 @@ export function createDefaultStudyBlocks(): QuestionBlockConfig[] {
       type: "fill_blank",
       name: "Process matching",
       count: 2,
+      candidatePoolSize: 6,
       distractorsPerBlank: 2,
       warmup: false,
       prompt: PROCESS_MATCHING_PROMPT,
@@ -70,6 +125,7 @@ export function createDefaultStudyBlocks(): QuestionBlockConfig[] {
       type: "free_response",
       name: "Unstated rationale",
       count: 2,
+      candidatePoolSize: 6,
       warmup: false,
       prompt: UNSTATED_RATIONALE_PROMPT,
     },
@@ -78,6 +134,7 @@ export function createDefaultStudyBlocks(): QuestionBlockConfig[] {
       type: "free_response",
       name: "Background concept",
       count: 2,
+      candidatePoolSize: 6,
       warmup: false,
       prompt: BACKGROUND_CONCEPT_PROMPT,
     },
@@ -86,6 +143,7 @@ export function createDefaultStudyBlocks(): QuestionBlockConfig[] {
       type: "free_response",
       name: "Counterfactual",
       count: 2,
+      candidatePoolSize: 6,
       warmup: false,
       prompt: COUNTERFACTUAL_PROMPT,
     },

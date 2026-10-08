@@ -53,6 +53,7 @@ live("uses a real OpenRouter model only when explicitly enabled", async () => {
     type: "multiple_choice",
     name: "Live generation",
     count: 1,
+    candidatePoolSize: 1,
     optionsPerQuestion: 2,
     warmup: false,
     prompt: "Create one simple question whose answer is explicitly stated in the document.",

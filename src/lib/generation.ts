@@ -20,6 +20,7 @@ import {
   prepareFillQuestions,
   prepareFreeResponseQuestions,
   prepareMultipleChoiceQuestions,
+  sampleQuestions,
   type PdfEngine,
   type QuestionBlockConfig,
   type StoredQuestion,
@@ -116,11 +117,17 @@ export async function executeGeneration(
       pdfEngine: payload.pdfEngine,
     });
     if (generated.type === "fill_blank") {
-      questions.push(...prepareFillQuestions(generated.generated, block));
+      questions.push(
+        ...sampleQuestions(prepareFillQuestions(generated.generated, block), block.count),
+      );
     } else if (generated.type === "multiple_choice") {
-      questions.push(...prepareMultipleChoiceQuestions(generated.generated, block));
+      questions.push(
+        ...sampleQuestions(prepareMultipleChoiceQuestions(generated.generated, block), block.count),
+      );
     } else {
-      questions.push(...prepareFreeResponseQuestions(generated.generated, block));
+      questions.push(
+        ...sampleQuestions(prepareFreeResponseQuestions(generated.generated, block), block.count),
+      );
     }
     await onProgress(index + 1, payload.blocks.length);
   }

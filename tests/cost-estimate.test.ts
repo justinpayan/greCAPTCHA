@@ -4,7 +4,12 @@ import { generationCost, gradingCost, tokensForText } from "@/lib/cost-estimate"
 
 // $1.25 per million input tokens and $10 per million output tokens.
 const price = { promptPerToken: 1.25e-6, completionPerToken: 10e-6 };
-const studyBlocks = [{ count: 2 }, { count: 2 }, { count: 2 }, { count: 2 }];
+const studyBlocks = [
+  { count: 2, candidatePoolSize: 6 },
+  { count: 2, candidatePoolSize: 6 },
+  { count: 2, candidatePoolSize: 6 },
+  { count: 2, candidatePoolSize: 6 },
+];
 
 describe("cost estimates", () => {
   it("gives a plausible range for generating the study's eight questions", () => {
@@ -21,6 +26,23 @@ describe("cost estimates", () => {
     const ocr = generationCost({ price, blocks: studyBlocks, pages: 10, pdfEngine: "mistral-ocr" });
     // Four requests, each OCR-ing ten pages at $0.002 a page.
     expect(ocr.low - short.low).toBeCloseTo(4 * 10 * 0.002, 6);
+  });
+
+  it("scales generation output cost with the candidate pool, not retained count", () => {
+    const direct = generationCost({
+      price,
+      blocks: [{ count: 2, candidatePoolSize: 2 }],
+      pages: 20,
+      pdfEngine: "native",
+    });
+    const pooled = generationCost({
+      price,
+      blocks: [{ count: 2, candidatePoolSize: 6 }],
+      pages: 20,
+      pdfEngine: "native",
+    });
+    expect(pooled.low).toBeGreaterThan(direct.low);
+    expect(pooled.high).toBeGreaterThan(direct.high);
   });
 
   it("charges nothing to grade when there are no free responses", () => {

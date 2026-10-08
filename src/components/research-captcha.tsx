@@ -276,6 +276,7 @@ function newBlock(type: QuestionBlockConfig["type"]): QuestionBlockConfig {
       type,
       name: "",
       count: 5,
+      candidatePoolSize: 15,
       distractorsPerBlank: 3,
       warmup: false,
       prompt: DEFAULT_FILL_PROMPT,
@@ -287,6 +288,7 @@ function newBlock(type: QuestionBlockConfig["type"]): QuestionBlockConfig {
       type,
       name: "",
       count: 5,
+      candidatePoolSize: 15,
       optionsPerQuestion: 4,
       warmup: false,
       prompt: DEFAULT_MULTIPLE_CHOICE_PROMPT,
@@ -297,6 +299,7 @@ function newBlock(type: QuestionBlockConfig["type"]): QuestionBlockConfig {
     type,
     name: "",
     count: 2,
+    candidatePoolSize: 6,
     warmup: false,
     prompt: DEFAULT_FREE_RESPONSE_PROMPT,
   };
@@ -354,6 +357,8 @@ export function ResearchCaptcha({
   const [blocks, setBlocks] = useState<QuestionBlockConfig[]>(createDefaultStudyBlocks);
   /** In-progress count text so clearing a card's question count does not snap to 0. */
   const [countDrafts, setCountDrafts] = useState<Record<string, string>>({});
+  /** In-progress pool text so the absolute candidate count can also be cleared and retyped. */
+  const [poolSizeDrafts, setPoolSizeDrafts] = useState<Record<string, string>>({});
   /** Whole minutes in the form, seconds in the data. Empty means no overall limit. */
   const [overallLimitMinutes, setOverallLimitMinutes] = useState("30");
   const [loadingModels, setLoadingModels] = useState(false);
@@ -456,6 +461,8 @@ export function ResearchCaptcha({
   function applyConfig(config: StudyTemplateConfig, catalog: CatalogModel[]) {
     setPdfEngine(config.pdfEngine);
     setBlocks(config.blocks);
+    setCountDrafts({});
+    setPoolSizeDrafts({});
     setOverallLimitMinutes(
       config.overallTimeLimitSeconds ? String(Math.round(config.overallTimeLimitSeconds / 60)) : "",
     );
@@ -2690,10 +2697,65 @@ export function ResearchCaptcha({
                                 const { [block.id]: _removed, ...rest } = current;
                                 return rest;
                               });
-                              updateBlock(block.id, { count: next });
+                              setPoolSizeDrafts((current) => {
+                                if (!(block.id in current)) return current;
+                                const { [block.id]: _removed, ...rest } = current;
+                                return rest;
+                              });
+                              updateBlock(block.id, {
+                                count: next,
+                                candidatePoolSize: Math.max(block.candidatePoolSize, next),
+                              });
                             }}
                             onBlur={() => {
                               setCountDrafts((current) => {
+                                if (!(block.id in current)) return current;
+                                const { [block.id]: _removed, ...rest } = current;
+                                return rest;
+                              });
+                            }}
+                          />
+                        </div>
+                        <div className="field">
+                          <label htmlFor={`${block.id}-candidate-pool`}>
+                            Candidate pool size
+                            <FieldHint text="The model generates this many candidate questions, then randomly selects the configured number of questions above. A larger pool costs more to generate." />
+                          </label>
+                          <input
+                            className="control"
+                            id={`${block.id}-candidate-pool`}
+                            type="number"
+                            min={block.count}
+                            step={1}
+                            value={
+                              poolSizeDrafts[block.id] ?? String(block.candidatePoolSize)
+                            }
+                            onChange={(event) => {
+                              const raw = event.target.value;
+                              if (raw === "") {
+                                setPoolSizeDrafts((current) => ({
+                                  ...current,
+                                  [block.id]: "",
+                                }));
+                                return;
+                              }
+                              const next = Number(raw);
+                              if (!Number.isInteger(next) || next < block.count) {
+                                setPoolSizeDrafts((current) => ({
+                                  ...current,
+                                  [block.id]: raw,
+                                }));
+                                return;
+                              }
+                              setPoolSizeDrafts((current) => {
+                                if (!(block.id in current)) return current;
+                                const { [block.id]: _removed, ...rest } = current;
+                                return rest;
+                              });
+                              updateBlock(block.id, { candidatePoolSize: next });
+                            }}
+                            onBlur={() => {
+                              setPoolSizeDrafts((current) => {
                                 if (!(block.id in current)) return current;
                                 const { [block.id]: _removed, ...rest } = current;
                                 return rest;

@@ -121,40 +121,48 @@ setOpenRouterTransportForTests(async (input, init) => {
       messages?: Array<{ content?: Array<{ text?: string }> }>;
     };
     const schema = body.response_format?.json_schema?.name;
+    const prompt = body.messages?.[0]?.content?.find((part) => part.text)?.text ?? "";
+    const requestedCandidates = Number(
+      /Generate exactly (\d+) candidate/.exec(prompt)?.[1] ?? "1",
+    );
     let content: unknown;
     if (schema === "research_captcha_multiple_choice_questions") {
       content = {
-        questions: [{
-          prompt: "Which result is reported?",
-          description: "Checks the main reported result.",
-          page: 3,
-          answer: "Result A",
-          distractors: ["Result B", "Result C", "Result D"],
-          rationale: "The paper reports Result A.",
-        }],
+        questions: Array.from({ length: requestedCandidates }, (_, index) => ({
+          prompt: `Which result is reported in candidate ${index + 1}?`,
+          description: `Checks reported result candidate ${index + 1}.`,
+          page: index + 3,
+          answer: `Result A${index + 1}`,
+          distractors: [`Result B${index + 1}`, `Result C${index + 1}`, `Result D${index + 1}`],
+          rationale: `The paper reports Result A${index + 1}.`,
+        })),
       };
     } else if (schema === "research_captcha_free_response_questions") {
       content = {
-        questions: [{
-          prompt: "Explain the main contribution.",
-          description: "Checks understanding of the contribution.",
-          page: 7,
+        questions: Array.from({ length: requestedCandidates }, (_, index) => ({
+          prompt: `Explain contribution candidate ${index + 1}.`,
+          description: `Checks contribution candidate ${index + 1}.`,
+          page: index + 7,
           rubric: {
             summary: "Names the contribution.",
             criteria: [{ criterion: "Correct contribution", points: 100, guidance: "Accept equivalents." }],
           },
-        }],
+        })),
       };
     } else if (schema === "research_captcha_fill_questions") {
       content = {
-        questions: [{
-          prompt: "The method uses {{method}}.",
-          description: "Checks the method.",
-          blanks: [{ id: "method", answer: "Method A", distractors: ["Method B", "Method C"] }],
-        }],
+        questions: Array.from({ length: requestedCandidates }, (_, index) => ({
+          prompt: `Candidate ${index + 1} uses {{method}}.`,
+          description: `Checks method candidate ${index + 1}.`,
+          page: index + 1,
+          blanks: [{
+            id: "method",
+            answer: `Method A${index + 1}`,
+            distractors: [`Method B${index + 1}`, `Method C${index + 1}`],
+          }],
+        })),
       };
     } else if (schema === "research_captcha_free_response_grades") {
-      const prompt = body.messages?.[0]?.content?.find((part) => part.text)?.text ?? "";
       const marker = "Questions, rubrics, and responses:\n";
       const items = JSON.parse(prompt.slice(prompt.indexOf(marker) + marker.length)) as Array<{
         questionId: string;
@@ -198,6 +206,7 @@ const blocks: QuestionBlockConfig[] = [
     type: "multiple_choice",
     name: "Facts",
     count: 1,
+    candidatePoolSize: 3,
     optionsPerQuestion: 4,
     warmup: false,
     prompt: "Ask one factual question.",
@@ -207,6 +216,7 @@ const blocks: QuestionBlockConfig[] = [
     type: "free_response",
     name: "Explanation",
     count: 1,
+    candidatePoolSize: 3,
     warmup: false,
     prompt: "Ask one explanatory question.",
   },
@@ -358,11 +368,16 @@ describe("public demo account-to-grade flow", () => {
       .get();
     expect(generatedSet?.randomize).toBe(false);
     // Stored in page order, each question keeping the page it was generated from.
-    expect(
-      (JSON.parse(generatedSet?.questionsJson ?? "[]") as Array<{ sourcePage?: number }>).map(
-        (question) => question.sourcePage,
-      ),
-    ).toEqual([3, 7]);
+    const storedQuestions = JSON.parse(generatedSet?.questionsJson ?? "[]") as Array<{
+      type: string;
+      sourcePage?: number;
+    }>;
+    expect(storedQuestions.map((question) => question.type)).toEqual([
+      "multiple_choice",
+      "free_response",
+    ]);
+    expect([3, 4, 5]).toContain(storedQuestions[0].sourcePage);
+    expect([7, 8, 9]).toContain(storedQuestions[1].sourcePage);
     const shared = await createQuestionSetShareLink(generatedSetId, alice.id);
     expect(
       (await listCreatedTests(alice.id)).find((test) => test.id === generatedSetId),

@@ -14,6 +14,7 @@ describe("default study template", () => {
       type: "fill_blank",
       name: "Process matching",
       count: 2,
+      candidatePoolSize: 6,
       distractorsPerBlank: 2,
       warmup: false,
     });
