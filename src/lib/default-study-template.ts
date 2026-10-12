@@ -1,5 +1,6 @@
 import {
   DEFAULT_FILL_PROMPT,
+  type FixedRubric,
   type QuestionBlockConfig,
   type StudyTemplateConfig,
 } from "@/lib/quiz";
@@ -22,29 +23,7 @@ Locate a choice the paper makes but does not explain, such as a test or estimato
 
 The reason must be genuinely absent from the manuscript, so that no amount of searching the PDF produces it. If the paper explains the choice anywhere, including a footnote, an appendix, or a limitations paragraph, discard the item.
 
-Ground every item in a specific named element of this paper, such as this comparison, this table, this preprocessing step, etc. A question that could be asked of any paper in the field is testing field knowledge rather than authorship of this artifact, and must be discarded.
-
-Build the rubric to award credit for reasoning that connects the choice to the specific properties of this study's data or design, and to withhold credit for a generically correct textbook justification that never touches this paper. Accept substantively equivalent reasoning and multiple valid explanations. Award no credit for fluency, length, confidence, or command of English; score only the content of the reasoning.
-
-To create a rubric, first list the core concept(s) you are testing about the paper, and why it is important to understand the concept(s) to verify the examinee understands the paper.
-
-Generate 1-4 observable criteria that assess understanding of the concept(s). For each criterion, provide descriptions for three performance levels (emerging, proficient, advanced) using parallel structure. Focus on describing cognitive skills rather than products. Avoid terms like 'good' or 'excellent.' Each description should be specific enough that two graders would agree on the rating.
-Important: These criteria should assess thinking processes that require engagement with document-specific content, not generic skills.
-Provide a summary of the rubric in the text of the question, so the participant knows how they will be evaluated. This means that the question and rubric should be designed so that you are not giving away the answer in the rubric, but rather providing clear guidelines on what an acceptable answer looks like.
-You should also generate 2 sample answers, one which receives partial credit and one which receives full credit. Do not show these in the question, but please include them in the full rubric. When the participant sees the rubric after they finish the test, they will benefit from knowing what is required to receive full points.
-
-
-Design the question and rubric around a minimum sufficient explanation.
-Keep the question open to multiple valid counterfactuals. Do not silently restrict the rubric to the particular answer used in your sample answer. If a particular element is essential, request it explicitly in the question.
-Make the assessment target clear. 
-Define advanced performance as the minimum reasoning sufficient to answer the question fully. Do not reserve full credit for additional examples, comparisons, qualifications, or technical details unless the question explicitly requires them and they are necessary for the definitions.
-Accept concise explanations. 
-Treat sample answers as illustrations, not exhaustive answer keys. Accept alternative conditions that satisfy the same conceptual criteria through a valid paper-specific mechanism.
-Before returning the item, perform these checks:
--Write a brief answer containing a fairly sparse answer that contains all the necessary details. Verify that it receives full credit.
--Construct a substantively different answer. Verify that the rubric can award it full credit. If it cannot, broaden the rubric or make the question's restriction explicit.
--Check that every requirement for full credit is signaled in the question.
--Check that partial credit reflects missing or incorrect reasoning, rather than missing elaboration.`;
+Ground every item in a specific named element of this paper, such as this comparison, this table, this preprocessing step, etc. A question that could be asked of any paper in the field is testing field knowledge rather than authorship of this artifact, and must be discarded.`;
 
 const BACKGROUND_CONCEPT_PROMPT = `Generate background-concept items. Each item asks the participant to define or explain, in their own words, one concept the paper depends on but does not itself define — the presupposed background a competent member of this field carries into reading it, not the paper's own contribution.
 
@@ -52,27 +31,7 @@ Choose concepts that are relevant to the understanding of the paper. If the part
 
 The most important filter is that the paper must not define the concept. The participant answers with the paper in front of them, so a concept the paper explains in its own words is a lookup rather than a question. Prefer concepts the paper names and uses as though they need no introduction. Where the paper's own topic is a concept it does define, choose an adjacent concept it presupposes instead.
 
-Never name a section, table, figure, or page in the question text, and never reuse the paper's own phrasing of the concept. Both point the participant at a passage to copy. Discard any candidate concept whose definition appears anywhere in the paper, any answerable from the title alone, and any that duplicates a concept an earlier card already covers.
-To create a rubric, first list the core concept(s) you are testing about the paper, and why it is important to understand the concept(s) to verify the examinee understands the paper.
-
-Generate 1-4 observable criteria that assess understanding of the concept(s). For each criterion, provide descriptions for three performance levels (emerging, proficient, advanced) using parallel structure. Focus on describing cognitive skills rather than products. Avoid terms like 'good' or 'excellent.' Each description should be specific enough that two graders would agree on the rating.
-Important: These criteria should assess thinking processes that require engagement with document-specific content, not generic skills.
-Provide a summary of the rubric in the text of the question, so the participant knows how they will be evaluated. This means that the question and rubric should be designed so that you are not giving away the answer in the rubric, but rather providing clear guidelines on what an acceptable answer looks like.
-You should also generate 2 sample answers, one which receives partial credit and one which receives full credit. Do not show these in the question, but please include them in the full rubric. When the participant sees the rubric after they finish the test, they will benefit from knowing what is required to receive full points.
-
-Design the question and rubric around a minimum sufficient explanation.
-Keep the question open to multiple valid counterfactuals. Do not silently restrict the rubric to the particular answer used in your sample answer. If a particular element is essential, request it explicitly in the question.
-Make the assessment target clear. 
-Define advanced performance as the minimum reasoning sufficient to answer the question fully. Do not reserve full credit for additional examples, comparisons, qualifications, or technical details unless the question explicitly requires them and they are necessary for the definitions.
-Accept concise explanations. 
-Treat sample answers as illustrations, not exhaustive answer keys. Accept alternative conditions that satisfy the same conceptual criteria through a valid paper-specific mechanism.
-Before returning the item, perform these checks:
--Write a brief answer containing a fairly sparse answer that contains all the necessary details. Verify that it receives full credit.
--Construct a substantively different answer. Verify that the rubric can award it full credit. If it cannot, broaden the rubric or make the question's restriction explicit.
--Check that every requirement for full credit is signaled in the question.
--Check that partial credit reflects missing or incorrect reasoning, rather than missing elaboration.
-
-Award nothing for fluency, length, hedging, confidence, or restating the question. Accept any wording that carries the required elements, including informal phrasing, an example that entails the definition, and notation in place of prose. Do not require the participant's terminology to match the paper's.`;
+Never name a section, table, figure, or page in the question text, and never reuse the paper's own phrasing of the concept. Both point the participant at a passage to copy. Discard any candidate concept whose definition appears anywhere in the paper, any answerable from the title alone, and any that duplicates a concept an earlier card already covers.`;
 
 const COUNTERFACTUAL_PROMPT = `Generate counterfactual items asking the participant to name a realistic condition under which this work's main argument, method, or central finding would degrade, and to say why it would.
 
@@ -80,33 +39,142 @@ Word the question neutrally, such as a condition the work was not built for, not
 
 The condition must be specific to the paper and plausible in its domain — such as, a property of the data, a regime, a scale, a population, a counterexample, or an interaction its pipeline would mishandle. Its mechanism must follow from how this work is built, not from general methodological caution.
 
-Do not use anything the paper names itself: its limitations, its future work, its statements about what it did not test, or anything in the abstract. The participant reads with the paper open, so those are lookups. Never name a section, table, or figure in the question text.
+Do not use anything the paper names itself: its limitations, its future work, its statements about what it did not test, or anything in the abstract. The participant reads with the paper open, so those are lookups. Never name a section, table, or figure in the question text.`;
 
-To create a rubric, first list 1 or 2 core concepts you are testing about the paper, and why it is important to understand them to verify the examinee understands the paper.
+// Fixed rubrics for the default free-response cards: every question a card generates is graded on
+// these criteria and points, with only a per-question note added by the generator.
+const UNSTATED_RATIONALE_RUBRIC: FixedRubric = {
+  summary: "Explain what this choice achieves for this study (30). Make sure to connect the purpose of the choice to a concrete feature of this study's data, design, setting, etc. (50). Explain what would go wrong with an obvious alternative, or with omitting the choice (20). Be specific: a correct but general justification that could apply to any study will earn less credit.",
+  levels: [
+    { label: "Full", percent: 100 },
+    { label: "Half", percent: 50 },
+    { label: "None", percent: 0 },
+  ],
+  criteria: [
+    {
+      criterion: "Identifies what the choice achieves. States the problem the choice solves or the property it secures.",
+      description: "",
+      points: 30,
+      descriptions: [
+        "Names the specific purpose the choice serves in this study.",
+        "Names a plausible purpose, but it is vague or only partly fits the choice.",
+        "Names no purpose, or one that doesn't apply to this choice.",
+      ],
+    },
+    {
+      criterion: "Links it to this study. Connects the purpose to a concrete feature of this study's data, design or setting.",
+      description: "",
+      points: 50,
+      descriptions: [
+        "Ties the purpose to a named feature of this study and explains why that feature makes the choice appropriate.",
+        "Mentions a feature of the study, but the link to the choice is asserted rather than explained.",
+        "Gives only a textbook justification that never touches this paper.",
+      ],
+    },
+    {
+      criterion: "Explains what the alternative would cost. Says what would go wrong with an obvious alternative, or with omitting the choice.",
+      description: "",
+      points: 20,
+      descriptions: [
+        "States a specific consequence of the alternative for this study.",
+        "States a generic downside of the alternative.",
+        "No alternative or consequence given.",
+      ],
+    },
+  ],
+  gradingNote: "",
+};
 
-Generate 1-4 observable criteria that assess understanding of these concepts. For each criterion, provide descriptions for three performance levels (emerging, proficient, advanced) using parallel structure. Focus on describing cognitive skills rather than products. Avoid terms like 'good' or 'excellent.' Each description should be specific enough that two graders would agree on the rating.
-Important: These criteria should assess thinking processes that require engagement with document-specific content, not generic skills.
-Provide a summary of the rubric in the text of the question, so the participant knows how they will be evaluated. This means that the question and rubric should be designed so that you are not giving away the answer in the rubric, but rather providing clear guidelines on what an acceptable answer looks like.
-You should also generate 2 sample answers, one which receives partial credit and one which receives full credit. Do not show these in the question, but please include them in the full rubric. When the participant sees the rubric after they finish the test, they will benefit from knowing what is required to receive full points.
+const BACKGROUND_CONCEPT_RUBRIC: FixedRubric = {
+  summary: "Define the concept in your own words, and set the concept apart from any closely related ones (40). Explain the conditions, assumptions, or components essential to the definition (30). Name a specific design decision, method, or claim in the paper that depends on the concept, and explain why it depends on the concept (30).",
+  levels: [
+    { label: "Full", percent: 100 },
+    { label: "Half", percent: 50 },
+    { label: "None", percent: 0 },
+  ],
+  criteria: [
+    {
+      criterion: "Correct core definition. States what the concept is.",
+      description: "",
+      points: 40,
+      descriptions: [
+        "A correct definition that sets the concept apart from closely related ones, if any.",
+        "Broadly right, but imprecise or mixes it up with a neighbouring concept.",
+        "Incorrect, circular, or missing.",
+      ],
+    },
+    {
+      criterion: "Essential elements. Covers the conditions, assumptions or components the definition can't do without.",
+      description: "",
+      points: 30,
+      descriptions: [
+        "Gives the elements essential to the definition, each correct.",
+        "Gives some of the required elements, or all with an error.",
+        "Gives none correctly.",
+      ],
+    },
+    {
+      criterion: "Role in this work. Names a specific design decision, method or claim in the paper that depends on the concept, and why it depends on it.",
+      description: "",
+      points: 30,
+      descriptions: [
+        "Names a specific dependency and explains why it depends on the concept.",
+        "Names a relevant part of the paper but doesn't explain the dependency.",
+        "Gives no paper-specific connection, or only a generic statement of importance.",
+      ],
+    },
+  ],
+  gradingNote: "",
+};
 
+const COUNTERFACTUAL_RUBRIC: FixedRubric = {
+  summary: "Name one realistic, paper-specific condition or counterfactual this work was not designed for (30). Explain how the condition interacts with the work's design, method or evidence, outlining its causal path through the specific features of the work (40). State the resulting consequence (degraded performance, a limit on what can be concluded, or both) and what it means for the work's conclusions (30). Do not use a limitation the paper already states.",
+  levels: [
+    { label: "Full", percent: 100 },
+    { label: "Half", percent: 50 },
+    { label: "None", percent: 0 },
+  ],
+  criteria: [
+    {
+      criterion: "Realistic, paper-specific condition. A realistic condition or counterfactual this work was not designed for, specific to how the work is designed and plausible in its domain.",
+      description: "",
+      points: 30,
+      descriptions: [
+        "A plausible condition or counterfactual in this domain, specific to how this work is designed, and not one the paper itself lists as a limitation.",
+        "A plausible condition or counterfactual, but generic to the field or loosely tied to this work.",
+        "Implausible, missing, or taken from the paper's own limitations.",
+      ],
+    },
+    {
+      criterion: "Mechanism. How the condition interacts with the work's design, method or evidence.",
+      description: "",
+      points: 40,
+      descriptions: [
+        "Explains the causal path through a specific feature of the work.",
+        "Gives a mechanism that is generic or skips a step the answer doesn't support.",
+        "No mechanism, or one that doesn't follow from how the work is designed.",
+      ],
+    },
+    {
+      criterion: "Consequence. The resulting degraded performance or limit on what can be concluded, and what it means for the work's conclusions.",
+      description: "",
+      points: 30,
+      descriptions: [
+        "States a specific consequence and what it means for the work's conclusions.",
+        "States a consequence, but it is vague, does not say what it means for the conclusions, or confuses degraded performance with a weaker conclusion.",
+        "No consequence, or one that doesn't follow from the mechanism.",
+      ],
+    },
+  ],
+  gradingNote: "If the condition is one the paper already lists as a limitation, award no points for the mechanism or the consequence either, so the whole answer scores 0.",
+};
 
-Design the question and rubric around a minimum sufficient explanation: one realistic condition, its interaction with a specific feature of the work, and the resulting degradation or interpretive limit.
-Keep the question open to multiple valid counterfactuals. Do not silently restrict the rubric to the particular counterfactual used in your sample answer. If a particular comparison or mechanism is essential, request it explicitly in the question.
-Make the assessment target clear. Distinguish degradation of the method's performance from weakening an inference drawn from its output. A condition can limit what an output establishes even when the method still performs its intended task. Do not treat an intentionally limited assessment scope as a failure to achieve a broader goal.
-Use three rubric criteria by default:
-Identify a realistic, paper-specific condition.
-Explain how that condition interacts with the work's design, method, or evidence.
-Explain the resulting consequence for performance or interpretation.
-Define advanced performance as the minimum reasoning sufficient to answer the question fully. Do not reserve full credit for additional examples, comparisons, qualifications, technical details, or remedies unless the question explicitly requires them and they are necessary to establish the mechanism.
-Accept concise causal explanations. Credit a relationship that is clearly entailed by the response, even if the participant does not separately state every intermediate step. Do not infer reasoning that the response does not support.
-Treat sample answers as illustrations, not exhaustive answer keys. Accept alternative conditions that satisfy the same conceptual criteria through a valid paper-specific mechanism.
-Before returning the item, perform these checks:
--Write a brief answer containing only a condition, a paper-specific mechanism, and a consequence. Verify that it receives full credit.
--Construct a substantively different valid counterfactual. Verify that the rubric can award it full credit. If it cannot, broaden the rubric or make the question's restriction explicit.
--Check that every requirement for full credit is signaled in the question.
--Check that partial credit reflects missing or incorrect reasoning, rather than missing elaboration.
-
-Award nothing for fluency, length, hedging, confidence, or restating the question. Accept any wording that carries the required elements, including informal phrasing, an example that entails the definition, and notation in place of prose. Do not require the participant's terminology to match the paper's.`;
+/** Applied to every free-response grading request of the default template. */
+export const DEFAULT_GRADING_INSTRUCTIONS = `- **Content only:** no points for fluency, length, hedging, confidence, command of English, or restating the question.
+- **Any valid wording:** accept equivalent wording, informal phrasing and notation, and do not require the paper's own terms.
+- **Minimum is enough:** full credit means the minimum sufficient answer. Extra examples, comparisons or caveats are never required unless the question asks for them.
+- **Other valid answers count:** an answer that differs from the sample but is valid and specific to the paper earns full credit.
+- **Implied steps count:** credit a step that the answer clearly entails, even if it is not stated separately, but do not infer reasoning the answer does not support.`;
 
 export function createDefaultStudyBlocks(): QuestionBlockConfig[] {
   return [
@@ -128,6 +196,8 @@ export function createDefaultStudyBlocks(): QuestionBlockConfig[] {
       candidatePoolSize: 6,
       warmup: false,
       prompt: UNSTATED_RATIONALE_PROMPT,
+      rubricPrompt: "",
+      fixedRubric: UNSTATED_RATIONALE_RUBRIC,
     },
     {
       id: "default-background-concept",
@@ -137,6 +207,8 @@ export function createDefaultStudyBlocks(): QuestionBlockConfig[] {
       candidatePoolSize: 6,
       warmup: false,
       prompt: BACKGROUND_CONCEPT_PROMPT,
+      rubricPrompt: "",
+      fixedRubric: BACKGROUND_CONCEPT_RUBRIC,
     },
     {
       id: "default-counterfactual",
@@ -146,6 +218,8 @@ export function createDefaultStudyBlocks(): QuestionBlockConfig[] {
       candidatePoolSize: 6,
       warmup: false,
       prompt: COUNTERFACTUAL_PROMPT,
+      rubricPrompt: "",
+      fixedRubric: COUNTERFACTUAL_RUBRIC,
     },
   ];
 }
@@ -157,6 +231,7 @@ export function createDefaultStudyTemplate(modelId: string): StudyTemplateConfig
     blocks: createDefaultStudyBlocks(),
     randomize: false,
     overallTimeLimitSeconds: 30 * 60,
+    gradingInstructions: DEFAULT_GRADING_INSTRUCTIONS,
   };
 }
 

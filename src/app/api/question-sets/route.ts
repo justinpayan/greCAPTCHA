@@ -162,6 +162,10 @@ export async function POST(request: Request) {
       throw new Error("A question set may contain at most 50 questions.");
     }
     const takerAllowlist = parseAllowlist(form.get("takerAllowlist"));
+    const gradingInstructions = z
+      .string()
+      .max(20_000, "Grading instructions may be at most 20,000 characters.")
+      .parse(String(form.get("gradingInstructions") ?? "").trim());
 
     const file = await loadManuscript(manuscript);
     const created = await enqueueGenerationJob(user.id, file, {
@@ -175,6 +179,7 @@ export async function POST(request: Request) {
       pdfEngine,
       randomize: false,
       overallTimeLimitSeconds,
+      gradingInstructions,
       blocks,
       takerAllowlist,
     }, apiKey);

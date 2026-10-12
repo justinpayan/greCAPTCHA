@@ -8,6 +8,7 @@ import { PrintableQuestionSet } from "@/components/printable-question-set";
 import { TakerAllowlistField } from "@/components/taker-allowlist-field";
 import { WorkflowTag } from "@/components/workflow-tag";
 import { MathText } from "@/components/quiz/math-text";
+import { QuestionPrompt } from "@/components/quiz/question-prompt";
 import { formatAllowlist } from "@/lib/allowlist";
 import type { QuestionSetOverview, StoredQuestion } from "@/lib/quiz";
 import { userFacingMessage } from "@/lib/user-facing-error";
@@ -69,7 +70,7 @@ function ItemDetail({ question }: { question: StoredQuestion }) {
     return (
       <div className="item-detail">
         <p className="item-text">
-          <MathText text={question.prompt} />
+          <QuestionPrompt text={question.prompt} />
         </p>
         <ul className="item-options">
           {question.options.map((option) => {
@@ -93,7 +94,7 @@ function ItemDetail({ question }: { question: StoredQuestion }) {
   return (
     <div className="item-detail">
       <p className="item-text">
-        <MathText text={question.prompt} />
+        <QuestionPrompt text={question.prompt} />
       </p>
       <span className="review-label">Rubric</span>
       <p className="item-note">
@@ -111,6 +112,23 @@ function ItemDetail({ question }: { question: StoredQuestion }) {
           </li>
         ))}
       </ul>
+      {question.rubric.gradingNote && (
+        <p className="item-note">
+          <MathText text={question.rubric.gradingNote} />
+        </p>
+      )}
+      {question.rubric.sampleAnswers && (
+        <>
+          <span className="review-label">Sample answers</span>
+          <p className="item-note">
+            <strong>Partial credit:</strong>{" "}
+            <MathText text={question.rubric.sampleAnswers.partial} />
+          </p>
+          <p className="item-note">
+            <strong>Full credit:</strong> <MathText text={question.rubric.sampleAnswers.full} />
+          </p>
+        </>
+      )}
     </div>
   );
 }

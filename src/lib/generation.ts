@@ -18,6 +18,7 @@ import {
   type ApiKeyPayer,
   type MaterialUploader,
   prepareFillQuestions,
+  prepareFixedRubricQuestions,
   prepareFreeResponseQuestions,
   prepareMultipleChoiceQuestions,
   sampleQuestions,
@@ -43,6 +44,8 @@ export type GenerationJobPayload = {
   pdfEngine: PdfEngine;
   randomize: boolean;
   overallTimeLimitSeconds: number | null;
+  /** Absent on jobs queued before grading instructions existed. */
+  gradingInstructions?: string;
   blocks: QuestionBlockConfig[];
   takerAllowlist?: string[] | null;
 };
@@ -120,6 +123,13 @@ export async function executeGeneration(
       questions.push(
         ...sampleQuestions(prepareFillQuestions(generated.generated, block), block.count),
       );
+    } else if (generated.type === "fixed_rubric") {
+      questions.push(
+        ...sampleQuestions(
+          prepareFixedRubricQuestions(generated.generated, block, generated.rubric),
+          block.count,
+        ),
+      );
     } else if (generated.type === "multiple_choice") {
       questions.push(
         ...sampleQuestions(prepareMultipleChoiceQuestions(generated.generated, block), block.count),
@@ -155,6 +165,7 @@ export async function executeGeneration(
     configJson: JSON.stringify(payload.blocks),
     questionsJson: JSON.stringify(orderQuestions(questions)),
     takerAllowlistJson: serializeAllowlist(payload.takerAllowlist ?? null),
+    gradingInstructions: payload.gradingInstructions?.trim() || null,
     createdAt: new Date().toISOString(),
   });
   if (!payload.taker) return { questionSetId: payload.questionSetId };

@@ -1,7 +1,7 @@
 "use client";
 
 import { Brand } from "@/components/brand";
-import type { InvitationTemplateOverview } from "@/lib/quiz";
+import { activeFixedRubric, type InvitationTemplateOverview } from "@/lib/quiz";
 
 const TYPE_LABELS = {
   fill_blank: "Fill in the blank",
@@ -79,6 +79,11 @@ export function TemplateOverview({
               : "Anyone with the invitation can take this test."}
           </p>
           {overview.materialContributions && <p>{overview.materialContributions}</p>}
+          {overview.config.gradingInstructions?.trim() && (
+            <p>
+              <strong>Grading instructions:</strong> {overview.config.gradingInstructions}
+            </p>
+          )}
         </div>
       </section>
 
@@ -95,6 +100,21 @@ export function TemplateOverview({
               </span>
             </div>
             <p className="summary-description">{block.prompt}</p>
+            {activeFixedRubric(block) && (
+              <p className="summary-description">
+                <strong>Fixed rubric:</strong>{" "}
+                {activeFixedRubric(block)!.criteria
+                  .map((criterion) => `${criterion.criterion} (${criterion.points})`)
+                  .join(" · ")}
+              </p>
+            )}
+            {block.type === "free_response" &&
+              !activeFixedRubric(block) &&
+              block.rubricPrompt.trim() && (
+              <p className="summary-description">
+                <strong>Rubric prompt:</strong> {block.rubricPrompt}
+              </p>
+            )}
           </article>
         ))}
       </section>

@@ -16,6 +16,7 @@ import { Brand } from "@/components/brand";
 import { CostEstimateNotice, useGradingCostEstimate } from "@/components/cost-estimate-notice";
 import { GradedFreeResponse } from "@/components/quiz/graded-response";
 import { MathText } from "@/components/quiz/math-text";
+import { QuestionPrompt } from "@/components/quiz/question-prompt";
 import { OpenRouterKeyPanel } from "@/components/openrouter-key-panel";
 import { PdfAssessmentSplit } from "@/components/quiz/pdf-assessment-split";
 import {
@@ -193,7 +194,7 @@ function MultipleChoiceQuestion({
   return (
     <div className="multiple-choice-question">
       <h2>
-        <MathText text={question.prompt} />
+        <QuestionPrompt text={question.prompt} />
       </h2>
       <div className="option-list" role="radiogroup" aria-label="Answer options">
         {question.options.map((option) => (
@@ -445,7 +446,7 @@ function ResultSections({
                 ) : review.type === "multiple_choice" ? (
                   <div className="free-review">
                     <h3>
-                      <MathText text={review.prompt} />
+                      <QuestionPrompt text={review.prompt} />
                     </h3>
                     <div className="option-list review-option-list">
                       {review.options.map((option) => {
@@ -1163,9 +1164,6 @@ export function QuizWorkspace({
         plan page and the set overview, which are researcher-facing.
       */}
       <section className="card question-card">
-        <p className="question-position">
-          Question {attempt.currentIndex + 1} of {attempt.totalQuestions}
-        </p>
         {question.type === "fill_blank" ? (
           <FillQuestionEditor
             question={question}
@@ -1187,7 +1185,7 @@ export function QuizWorkspace({
         ) : (
           <div className="free-response-question">
             <h2>
-              <MathText text={question.prompt} />
+              <QuestionPrompt text={question.prompt} />
             </h2>
             <label htmlFor="freeResponse">Your response</label>
             <textarea

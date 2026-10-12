@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { MathText } from "@/components/quiz/math-text";
+import { QuestionPrompt } from "@/components/quiz/question-prompt";
 import { segmentByEvidence } from "@/lib/evidence";
 import type { FreeResponseReview } from "@/lib/quiz";
 
@@ -126,7 +127,7 @@ export function GradedFreeResponse({ review }: { review: FreeResponseReview }) {
   return (
     <div className="free-review">
       <h3>
-        <MathText text={review.prompt} />
+        <QuestionPrompt text={review.prompt} />
       </h3>
       <div>
         <span className="review-label">Your response</span>
@@ -226,7 +227,23 @@ export function GradedFreeResponse({ review }: { review: FreeResponseReview }) {
             );
           })}
         </ul>
+        {review.rubric.gradingNote && (
+          <p>
+            <MathText text={review.rubric.gradingNote} />
+          </p>
+        )}
       </div>
+      {review.rubric.sampleAnswers && (
+        <div>
+          <span className="review-label">Sample answers</span>
+          <p>
+            <strong>Partial credit:</strong> <MathText text={review.rubric.sampleAnswers.partial} />
+          </p>
+          <p>
+            <strong>Full credit:</strong> <MathText text={review.rubric.sampleAnswers.full} />
+          </p>
+        </div>
+      )}
       <div>
         <span className="review-label">Grading feedback</span>
         <p>

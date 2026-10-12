@@ -4,10 +4,14 @@ import { OpenRouterError } from "@/lib/openrouter-errors";
 import { logOutgoing } from "@/lib/request-log";
 
 import {
+  activeFixedRubric,
+  fixedLevelPoints,
   freeResponseGradesSchema,
   generatedFillSetSchema,
+  generatedFixedRubricSetSchema,
   generatedFreeResponseSetSchema,
   generatedMultipleChoiceSetSchema,
+  generationInstructions,
   type PdfEngine,
   type QuestionBlockConfig,
   type StoredFreeResponseQuestion,
@@ -254,6 +258,41 @@ const freeResponseJsonSchema = {
   },
 };
 
+const fixedRubricQuestionsJsonSchema = {
+  name: "research_captcha_fixed_rubric_questions",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      questions: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            prompt: { type: "string" },
+            description: { type: "string" },
+            page: { type: "integer", minimum: 1 },
+            criterionNotes: { type: "array", items: { type: "string" } },
+            sampleAnswers: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                partial: { type: "string" },
+                full: { type: "string" },
+              },
+              required: ["partial", "full"],
+            },
+          },
+          required: ["prompt", "description", "page", "criterionNotes", "sampleAnswers"],
+        },
+      },
+    },
+    required: ["questions"],
+  },
+};
+
 const multipleChoiceJsonSchema = {
   name: "research_captcha_multiple_choice_questions",
   strict: true,
@@ -482,8 +521,7 @@ ${input.contributions}`
 
 ${contributionContext}
 
-User-authored generation instructions:
-${input.block.prompt}
+${generationInstructions(input.block)}
 
 For every question also supply a "description": one sentence, at most 25 words, naming what the question probes and which part of the manuscript it draws on. It is read only by the researcher reviewing the item bank and is never shown to the person taking the assessment, so state the target plainly rather than hinting at it. Do not reveal the correct answer in the description.
 
@@ -548,6 +586,43 @@ Generate exactly ${input.block.candidatePoolSize} candidate multiple-choice ques
     return { type: "multiple_choice" as const, generated: validated };
   }
 
+  const rubric = activeFixedRubric(input.block);
+  if (rubric) {
+    const parsed = await callOpenRouter({
+      apiKey: input.apiKey,
+      modelId: input.modelId,
+      file: input.file,
+      pdfEngine: input.pdfEngine,
+      responseSchema: fixedRubricQuestionsJsonSchema,
+      prompt: `${sharedContext}
+
+This card uses the fixed rubric below for every question. Its summary, criteria, points, and levels are final. Do not write criteria, points, performance levels, or a rubric summary of your own, and do not put a rubric summary in the question text: the fixed summary is added to every question automatically. Where the rubric generation instructions above ask you to create those, follow the fixed rubric instead, and use the rest of those instructions to design each question, its notes, and its sample answers.
+
+Fixed rubric:
+${JSON.stringify(rubric)}
+
+Design every question so that the fixed summary fits it. For every question also supply:
+- criterionNotes: exactly ${rubric.criteria.length} notes, one per fixed criterion in the order given. Each is one or two sentences saying what earns full and half credit on that criterion for this particular question, such as which elements or which feature of the paper count. Never give away the answer in a way that could be shown to the participant before they answer.
+- sampleAnswers: a "partial" answer that earns partial credit and a "full" answer that earns full credit under the fixed rubric. They are never shown in the question.
+
+Generate exactly ${input.block.candidatePoolSize} candidate free-response questions. Return only schema-conforming JSON.`,
+    });
+    const validated = generatedFixedRubricSetSchema.parse(parsed);
+    if (validated.questions.length !== input.block.candidatePoolSize) {
+      throw new Error(
+        `The model returned ${validated.questions.length} candidate questions instead of ${input.block.candidatePoolSize}.`,
+      );
+    }
+    for (const question of validated.questions) {
+      if (question.criterionNotes.length !== rubric.criteria.length) {
+        throw new Error(
+          `A generated question has ${question.criterionNotes.length} rubric notes instead of ${rubric.criteria.length}.`,
+        );
+      }
+    }
+    return { type: "fixed_rubric" as const, generated: validated, rubric };
+  }
+
   const parsed = await callOpenRouter({
     apiKey: input.apiKey,
     modelId: input.modelId,
@@ -583,7 +658,10 @@ export async function gradeFreeResponseBlock(input: {
   modelId: string;
   questions: StoredFreeResponseQuestion[];
   answers: Record<string, string>;
+  /** The test creator's instructions for every question in the set; blank for none. */
+  gradingInstructions?: string;
 }) {
+  const instructions = input.gradingInstructions?.trim();
   const gradingItems = input.questions.map((question) => ({
     questionId: question.id,
     prompt: question.prompt,
@@ -593,7 +671,12 @@ export async function gradeFreeResponseBlock(input: {
       criteria: question.rubric.criteria.map((criterion, criterionIndex) => ({
         criterionIndex,
         ...criterion,
+        ...(question.rubric.fixed && !criterion.allowedPoints
+          ? { allowedPoints: fixedLevelPoints(criterion.points) }
+          : {}),
       })),
+      gradingNote: question.rubric.gradingNote,
+      sampleAnswers: question.rubric.sampleAnswers,
     },
     response: input.answers[question.id] ?? "",
   }));
@@ -610,6 +693,15 @@ For every question, return one entry per rubric criterion, identified by its cri
 
 Also return feedback: a concise, actionable summary for the participant. Do not omit or add question IDs or criteria.
 
+When a criterion lists allowedPoints, award exactly one of those values, the one for the level its guidance describes. When a rubric has a gradingNote, apply it across all of that question's criteria. Sample answers illustrate partial and full credit; they are not the only acceptable answers.
+${
+  instructions
+    ? `
+The test creator gave these grading instructions, which apply to every question. Follow them when applying each rubric; they do not change the criteria or their points:
+${instructions}
+`
+    : ""
+}
 Questions, rubrics, and responses:
 ${JSON.stringify(gradingItems)}`,
   });
@@ -630,9 +722,19 @@ ${JSON.stringify(gradingItems)}`,
     if (indices.length !== criteria.length || indices.some((value, index) => value !== index)) {
       throw new Error("The grading model did not mark every rubric criterion exactly once.");
     }
+    const fixed = questionsById.get(grade.questionId)?.rubric.fixed;
     for (const entry of grade.criteria) {
+      const criterion = criteria[entry.criterionIndex];
       // A criterion cannot award more than it is worth.
-      entry.pointsAwarded = Math.min(entry.pointsAwarded, criteria[entry.criterionIndex].points);
+      entry.pointsAwarded = Math.min(entry.pointsAwarded, criterion.points);
+      // A fixed rubric awards only its levels' points; a mark between two goes to the nearer, the
+      // lower one on a tie, so a hesitant grader never rounds a score up.
+      const allowed = criterion.allowedPoints ?? (fixed ? fixedLevelPoints(criterion.points) : null);
+      if (allowed?.length) {
+        entry.pointsAwarded = allowed.reduce((best, level) =>
+          Math.abs(level - entry.pointsAwarded) < Math.abs(best - entry.pointsAwarded) ? level : best,
+        );
+      }
     }
     grade.criteria.sort((x, y) => x.criterionIndex - y.criterionIndex);
   }

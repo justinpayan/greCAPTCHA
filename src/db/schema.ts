@@ -181,6 +181,8 @@ export const questionSets = sqliteTable(
     shareToken: text("share_token"),
     /** Normalized usernames that may take this set. Null or empty means anyone. */
     takerAllowlistJson: text("taker_allowlist_json"),
+    /** The creator's free-text instructions for grading every free response. Null for none. */
+    gradingInstructions: text("grading_instructions"),
     createdAt: text("created_at").notNull(),
   },
   (table) => [

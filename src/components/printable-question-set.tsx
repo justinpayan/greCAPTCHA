@@ -3,6 +3,7 @@
 import { Fragment } from "react";
 
 import { MathText } from "@/components/quiz/math-text";
+import { QuestionPrompt } from "@/components/quiz/question-prompt";
 import { paginateForPrint } from "@/lib/print-layout";
 import type { QuestionSetOverview, QuestionSetOverviewItem, StoredQuestion } from "@/lib/quiz";
 
@@ -43,7 +44,7 @@ function PrintedQuestion({
       {question.type === "multiple_choice" && (
         <>
           <p className="print-prompt">
-            <MathText text={question.prompt} />
+            <QuestionPrompt text={question.prompt} />
           </p>
           <ol className="print-options">
             {question.options.map((option, index) => (
@@ -78,7 +79,7 @@ function PrintedQuestion({
       {question.type === "free_response" && (
         <>
           <p className="print-prompt">
-            <MathText text={question.prompt} />
+            <QuestionPrompt text={question.prompt} />
           </p>
           {withKey ? (
             <div className="print-key">
@@ -93,6 +94,19 @@ function PrintedQuestion({
                   </li>
                 ))}
               </ul>
+              {question.rubric.gradingNote && <MathText text={question.rubric.gradingNote} />}
+              {question.rubric.sampleAnswers && (
+                <ul>
+                  <li>
+                    <strong>Sample partial-credit answer.</strong>{" "}
+                    <MathText text={question.rubric.sampleAnswers.partial} />
+                  </li>
+                  <li>
+                    <strong>Sample full-credit answer.</strong>{" "}
+                    <MathText text={question.rubric.sampleAnswers.full} />
+                  </li>
+                </ul>
+              )}
             </div>
           ) : (
             <div className="print-answer-space" aria-hidden="true" />

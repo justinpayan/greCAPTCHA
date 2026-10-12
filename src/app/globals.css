@@ -1900,6 +1900,148 @@ textarea.control {
   width: min(100%, var(--short-control-width));
 }
 
+/* How a fixed-rubric question is graded: its own line, a clear gap below the question. */
+.grading-summary {
+  display: block;
+  margin-top: 0.9em;
+  /* Relative, so it stays a step below the question at every size the question is shown at. */
+  font-size: 0.85em;
+}
+
+/* A card's fixed rubric: the summary, then a table of criteria (rows) by levels (columns). */
+.fixed-rubric {
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: var(--paper);
+}
+
+.fixed-rubric-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+
+.fixed-rubric-editor {
+  display: grid;
+  gap: 14px;
+}
+
+/* The table keeps its columns readable and scrolls sideways inside the card when it is wide. */
+.rubric-table-scroll {
+  overflow-x: auto;
+}
+
+.rubric-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.rubric-table th,
+.rubric-table td {
+  min-width: 150px;
+  border: 1px solid var(--line);
+  padding: 8px;
+  vertical-align: top;
+  background: white;
+  text-align: left;
+}
+
+.rubric-table th {
+  font-weight: 700;
+  background: var(--green-soft);
+}
+
+.rubric-table td:nth-child(2),
+.rubric-table th:nth-child(2) {
+  min-width: 82px;
+  width: 82px;
+}
+
+.rubric-table .control {
+  min-height: 0;
+  padding: 7px 9px;
+  font-size: 0.86rem;
+}
+
+.rubric-table td > * + * {
+  margin-top: 6px;
+}
+
+.rubric-table small {
+  display: block;
+  color: var(--muted);
+}
+
+.rubric-table .rubric-actions {
+  min-width: 0;
+  width: 1%;
+  white-space: nowrap;
+}
+
+.rubric-level-head {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.rubric-share {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.rubric-table .rubric-number {
+  width: 72px;
+}
+
+.rubric-remove {
+  flex: none;
+  border: 0;
+  padding: 2px 6px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.rubric-remove:hover {
+  color: var(--danger);
+}
+
+.rubric-add {
+  min-height: 0;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.rubric-total {
+  font-weight: 700;
+}
+
+.rubric-total-off {
+  color: var(--danger);
+}
+
+.rubric-problems {
+  margin: 0;
+  padding: 10px 12px 10px 28px;
+  border-left: 3px solid var(--amber);
+  color: var(--amber);
+  background: white;
+  font-size: 0.84rem;
+}
+
 textarea.prompt-control {
   min-height: 190px;
   font-size: 0.88rem;
@@ -2093,23 +2235,8 @@ textarea.prompt-control {
 /* Each question type carries a top margin that used to separate it from the type chip. With the
    chip gone that margin is a void at the top of the box, so the first element starts at the
    card's own padding. */
-.question-card > :first-child,
-.question-card > .question-position + * {
+.question-card > :first-child {
   margin-top: 0;
-}
-
-/* "Question 3 of 8", in the card's top-left corner above the question itself. */
-.question-position {
-  display: inline-block;
-  align-self: flex-start;
-  margin: 0 0 20px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 6px 12px;
-  color: var(--muted);
-  background: white;
-  font-size: 0.8rem;
-  font-weight: 720;
 }
 
 .question-number {

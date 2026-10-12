@@ -7,6 +7,7 @@ import Link from "next/link";
 import {
   createDefaultStudyBlocks,
   createDefaultStudyTemplate,
+  DEFAULT_GRADING_INSTRUCTIONS,
   isLegacyStarterTemplate,
 } from "@/lib/default-study-template";
 import {
@@ -23,6 +24,7 @@ import {
   type KeySource,
 } from "@/lib/openrouter-browser-key";
 
+import { FixedRubricEditor, starterFixedRubric } from "@/components/fixed-rubric-editor";
 import { ManuscriptField } from "@/components/manuscript-field";
 import { ProfessorOpenRouterPanel } from "@/components/professor-openrouter-panel";
 import { PrintableQuestionSet } from "@/components/printable-question-set";
@@ -43,7 +45,10 @@ import { QuizWorkspace, ResultView } from "@/components/quiz/quiz-workspace";
 import {
   DEFAULT_FILL_PROMPT,
   DEFAULT_FREE_RESPONSE_PROMPT,
+  DEFAULT_FREE_RESPONSE_RUBRIC_PROMPT,
   DEFAULT_MULTIPLE_CHOICE_PROMPT,
+  activeFixedRubric,
+  fixedRubricProblems,
   isInvitationTemplate,
   type AssessmentResult,
   type AttemptIntro,
@@ -302,6 +307,7 @@ function newBlock(type: QuestionBlockConfig["type"]): QuestionBlockConfig {
     candidatePoolSize: 6,
     warmup: false,
     prompt: DEFAULT_FREE_RESPONSE_PROMPT,
+    rubricPrompt: DEFAULT_FREE_RESPONSE_RUBRIC_PROMPT,
   };
 }
 
@@ -361,6 +367,7 @@ export function ResearchCaptcha({
   const [poolSizeDrafts, setPoolSizeDrafts] = useState<Record<string, string>>({});
   /** Whole minutes in the form, seconds in the data. Empty means no overall limit. */
   const [overallLimitMinutes, setOverallLimitMinutes] = useState("30");
+  const [gradingInstructions, setGradingInstructions] = useState(DEFAULT_GRADING_INSTRUCTIONS);
   const [loadingModels, setLoadingModels] = useState(false);
   const [working, setWorking] = useState(false);
   const [generationStatus, setGenerationStatus] = useState("");
@@ -453,8 +460,9 @@ export function ResearchCaptcha({
       overallTimeLimitSeconds: overallLimitMinutes
         ? Number(overallLimitMinutes) * 60
         : null,
+      gradingInstructions,
     }),
-    [selectedModel, pdfEngine, blocks, overallLimitMinutes],
+    [selectedModel, pdfEngine, blocks, overallLimitMinutes, gradingInstructions],
   );
   // Batch applies only where the test creator supplies the manuscripts.
   const isBatch = batchManuscripts && materialUploader === "creator";
@@ -466,6 +474,9 @@ export function ResearchCaptcha({
     setOverallLimitMinutes(
       config.overallTimeLimitSeconds ? String(Math.round(config.overallTimeLimitSeconds / 60)) : "",
     );
+    // A setup saved before grading instructions existed starts from the defaults; one whose box
+    // was deliberately emptied stays empty.
+    setGradingInstructions(config.gradingInstructions ?? DEFAULT_GRADING_INSTRUCTIONS);
     const match = catalog.find((model) => model.id === config.modelId);
     if (match) {
       setSelectedModel(match);
@@ -1435,6 +1446,7 @@ export function ResearchCaptcha({
     );
     form.set("name", name);
     form.set("takerAllowlist", takerAllowlistText);
+    form.set("gradingInstructions", config.gradingInstructions ?? "");
     form.set("apiKeyPayer", apiKeyPayer);
     form.set("materialUploader", materialUploader);
     if (templateId) form.set("sourceTemplateId", templateId);
@@ -2393,6 +2405,20 @@ export function ResearchCaptcha({
           autoComplete="off"
           onSubmit={(event) => {
             const config = currentConfig;
+            // Said here by name rather than left to the server, which refuses it less helpfully.
+            const unfinished = config.blocks.find(
+              (block) => {
+                const rubric = activeFixedRubric(block);
+                return Boolean(rubric && fixedRubricProblems(rubric).length > 0);
+              },
+            );
+            if (unfinished) {
+              event.preventDefault();
+              const index = config.blocks.indexOf(unfinished);
+              return setError(
+                `Finish the fixed rubric of ${unfinished.name.trim() || `family ${index + 1}`} first: its problems are listed under the rubric.`,
+              );
+            }
             if (apiKeyPayer === "creator" && materialUploader === "creator") {
               return isBatch ? generateBatch(event, config) : generateSet(event, config);
             }
@@ -2552,6 +2578,22 @@ export function ResearchCaptcha({
               value={takerAllowlistText}
               onChange={setTakerAllowlistText}
             />
+
+            <div className="field full">
+              <label htmlFor="gradingInstructions">
+                Grading instructions
+                <FieldHint text="Sent with every free-response grading request for tests made from this setup, alongside each question's rubric. They guide how the rubric is applied but do not change its criteria or points. Saved with the template." />
+              </label>
+              <textarea
+                className="control"
+                id="gradingInstructions"
+                rows={4}
+                maxLength={20_000}
+                value={gradingInstructions}
+                placeholder="Sent to the grader with every free-response answer, alongside the question's rubric."
+                onChange={(event) => setGradingInstructions(event.target.value)}
+              />
+            </div>
 
             <div className="full">
               <div className="section-heading section-heading-stacked">
@@ -2814,10 +2856,11 @@ export function ResearchCaptcha({
                           />
                           Warm-up card — asked first and excluded from the overall score
                         </label>
+                        {/* A free-response card splits its instructions in two, stacked in the
+                            order they are sent; other types have answer keys, not rubrics. */}
                         <div className="field full">
                           <label htmlFor={`${block.id}-prompt`}>
-                            Question {block.type === "free_response" ? "and rubric " : ""}
-                            generation prompt
+                            Question generation prompt
                           </label>
                           <textarea
                             className="control prompt-control"
@@ -2828,6 +2871,69 @@ export function ResearchCaptcha({
                             }
                           />
                         </div>
+                        {block.type === "free_response" && (
+                          <div className="field full fixed-rubric">
+                            <div className="fixed-rubric-head">
+                              <span className="field-label field-label-row">
+                                {activeFixedRubric(block) ? "Fixed rubric" : "Model-written rubrics"}
+                                <FieldHint
+                                  text={
+                                    activeFixedRubric(block)
+                                      ? "Every question from this card is graded on this rubric: each criterion awards only the points of one of its levels. The summary is added to each question. The generator writes only a note per criterion for each question, and two sample answers."
+                                      : "The model writes a rubric for each question, following the rubric generation prompt."
+                                  }
+                                />
+                              </span>
+                              {activeFixedRubric(block) ? (
+                                <button
+                                  className="inline-link"
+                                  type="button"
+                                  // The rubric is kept, so switching back restores it as it was.
+                                  onClick={() => updateBlock(block.id, { modelWrittenRubric: true })}
+                                >
+                                  Use model-written rubrics instead
+                                </button>
+                              ) : (
+                                <button
+                                  className="inline-link"
+                                  type="button"
+                                  onClick={() =>
+                                    updateBlock(block.id, {
+                                      modelWrittenRubric: false,
+                                      fixedRubric: block.fixedRubric ?? starterFixedRubric(),
+                                    })
+                                  }
+                                >
+                                  {block.fixedRubric
+                                    ? "Use the fixed rubric instead"
+                                    : "Create a fixed rubric"}
+                                </button>
+                              )}
+                            </div>
+                            {activeFixedRubric(block) ? (
+                              <FixedRubricEditor
+                                id={`${block.id}-rubric`}
+                                rubric={block.fixedRubric!}
+                                onChange={(fixedRubric) => updateBlock(block.id, { fixedRubric })}
+                              />
+                            ) : (
+                              <div className="field">
+                                <label htmlFor={`${block.id}-rubric-prompt`}>
+                                  Rubric generation prompt
+                                  <FieldHint text="Sent to the model right after the question generation prompt, in the same request. Leave blank to put all instructions in the question prompt." />
+                                </label>
+                                <textarea
+                                  className="control prompt-control"
+                                  id={`${block.id}-rubric-prompt`}
+                                  value={block.rubricPrompt}
+                                  onChange={(event) =>
+                                    updateBlock(block.id, { rubricPrompt: event.target.value })
+                                  }
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </article>

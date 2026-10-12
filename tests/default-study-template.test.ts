@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { createDefaultStudyTemplate } from "@/lib/default-study-template";
+import {
+  createDefaultStudyTemplate,
+  DEFAULT_GRADING_INSTRUCTIONS,
+} from "@/lib/default-study-template";
 
 describe("default study template", () => {
   it("starts new Basic and Advanced configurations with a 30-minute limit", () => {
@@ -25,5 +28,12 @@ describe("default study template", () => {
       "free_response",
       "free_response",
     ]);
+  });
+
+  it("starts with the default grading instructions", () => {
+    expect(createDefaultStudyTemplate("test/model").gradingInstructions).toBe(
+      DEFAULT_GRADING_INSTRUCTIONS,
+    );
+    expect(DEFAULT_GRADING_INSTRUCTIONS).toMatch(/^- \*\*Content only:\*\*/);
   });
 });

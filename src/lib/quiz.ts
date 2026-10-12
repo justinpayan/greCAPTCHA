@@ -18,11 +18,103 @@ Ask only questions the author should reasonably answer given their stated contri
 
 export const DEFAULT_FREE_RESPONSE_PROMPT = `Generate free-response questions that verify the author's conceptual understanding of the manuscript in areas connected to their stated contributions.
 
-Questions should be difficult for someone who did not contribute to or deeply understand the work, but answerable without calculations by a genuine contributor. Avoid requests that can be answered by copying a sentence from the paper. For each question, construct an objective 100-point rubric with explicit criteria, point allocations, and guidance about what evidence earns full, partial, or no credit. Allow substantively equivalent wording and multiple valid explanations where appropriate. The rubric must support consistent grading without requiring exact phrasing.`;
+Questions should be difficult for someone who did not contribute to or deeply understand the work, but answerable without calculations by a genuine contributor. Avoid requests that can be answered by copying a sentence from the paper.`;
+
+export const DEFAULT_FREE_RESPONSE_RUBRIC_PROMPT = `For each question, construct an objective 100-point rubric with explicit criteria, point allocations, and guidance about what evidence earns full, partial, or no credit. Allow substantively equivalent wording and multiple valid explanations where appropriate. The rubric must support consistent grading without requiring exact phrasing.`;
 
 export const DEFAULT_MULTIPLE_CHOICE_PROMPT = `Generate multiple-choice questions that test whether a claimed author can recognise subtly incorrect statements about their own manuscript.
 
 Each question presents a specific claim about the paper's methods, results, or design decisions. Exactly one option must accurately state what the paper reports; every other option must be a plausible but objectively false variant of it. Perturb a value, a referent, or an attribution, never a qualitative direction, which is too easy to spot. Never perturb something the paper restates elsewhere, and never let an option be checked by matching a single keyword. Options must be mutually exclusive, similar in length and specificity, and grammatically consistent with the question. Someone who understands the work should recognise the correct option immediately; someone who does not should have to verify every option against the paper.`;
+
+/**
+ * A rubric fixed in advance for every question a free-response card generates: the summary shown
+ * to the participant, its performance levels (the table's columns, each worth a share of a
+ * criterion's points), and its criteria (the rows, with one description per level). The generator
+ * only adds a note per criterion for each question, plus sample answers.
+ *
+ * Deliberately permissive, so a rubric mid-edit still autosaves; `fixedRubricProblems` says what
+ * must be fixed before it can generate questions.
+ */
+export const fixedRubricSchema = z.preprocess(
+  upgradeLegacyFixedRubric,
+  z.object({
+    summary: z.string().max(2_000).default(""),
+    levels: z
+      .array(z.object({ label: z.string().max(40), percent: z.number().min(0).max(100) }))
+      .min(1)
+      .max(6),
+    criteria: z
+      .array(
+        z.object({
+          criterion: z.string().max(200).default(""),
+          description: z.string().max(1_000).default(""),
+          points: z.number().min(0).max(100),
+          /** One per level, in the same order as `levels`. */
+          descriptions: z.array(z.string().max(1_000)).max(6),
+        }),
+      )
+      .min(1)
+      .max(10),
+    /** A rule spanning the criteria, e.g. when one failure voids the whole answer. */
+    gradingNote: z.string().max(2_000).default(""),
+  }),
+);
+export type FixedRubric = z.infer<typeof fixedRubricSchema>;
+
+/** The Full/Half/None rubrics saved before levels were editable, in today's shape. */
+function upgradeLegacyFixedRubric(value: unknown): unknown {
+  if (typeof value !== "object" || value === null || "levels" in value) return value;
+  const legacy = value as { criteria?: Array<Record<string, unknown>> };
+  return {
+    ...value,
+    levels: [
+      { label: "Full", percent: 100 },
+      { label: "Half", percent: 50 },
+      { label: "None", percent: 0 },
+    ],
+    criteria: (legacy.criteria ?? []).map(({ full, half, none, ...criterion }) => ({
+      ...criterion,
+      descriptions: [full, half, none].map((text) => String(text ?? "")),
+    })),
+  };
+}
+
+/** Points a criterion awards at each level, in level order, to one decimal place. */
+export function levelPoints(rubric: Pick<FixedRubric, "levels">, points: number): number[] {
+  return rubric.levels.map((level) => Math.round(points * level.percent * 10) / 1000);
+}
+
+/** What stops a fixed rubric from generating questions; empty when it is ready. */
+export function fixedRubricProblems(rubric: FixedRubric): string[] {
+  const problems: string[] = [];
+  if (!rubric.summary.trim()) problems.push("Write the summary shown to the participant.");
+  if (rubric.levels.some((level) => !level.label.trim())) problems.push("Name every level.");
+  const percents = rubric.levels.map((level) => level.percent);
+  if (new Set(percents).size !== percents.length) {
+    problems.push("Give every level a different share of the points.");
+  }
+  if (!percents.includes(100)) problems.push("One level must award 100% of a criterion's points.");
+  if (rubric.criteria.some((criterion) => !criterion.criterion.trim())) {
+    problems.push("Fill in every criterion.");
+  }
+  if (rubric.criteria.some((criterion) => !(criterion.points > 0))) {
+    problems.push("Give every criterion more than 0 points.");
+  }
+  const total = rubric.criteria.reduce((sum, criterion) => sum + criterion.points, 0);
+  if (Math.abs(total - 100) > 1e-9) {
+    problems.push(`The criteria must total 100 points; they total ${total}.`);
+  }
+  if (
+    rubric.criteria.some(
+      (criterion) =>
+        criterion.descriptions.length !== rubric.levels.length ||
+        criterion.descriptions.some((text) => !text.trim()),
+    )
+  ) {
+    problems.push("Describe every level of every criterion.");
+  }
+  return problems;
+}
 
 const blockBase = {
   id: z.string().min(1).max(100),
@@ -58,6 +150,12 @@ export const questionBlockSchema = z
       z.object({
         ...blockBase,
         type: z.literal("free_response"),
+        // How to build each question's rubric, sent after `prompt`. Older cards have none.
+        rubricPrompt: z.string().max(20_000).default(""),
+        // When set, every question is graded on this rubric instead of one the model writes.
+        fixedRubric: fixedRubricSchema.optional(),
+        // Set aside the fixed rubric for model-written ones, keeping it to switch back to.
+        modelWrittenRubric: z.boolean().optional(),
       }),
       z.object({
         ...blockBase,
@@ -76,8 +174,45 @@ export const questionBlockSchema = z
     }
   });
 
-export const generationConfigSchema = z.array(questionBlockSchema).min(1).max(20);
+/** The fixed rubric a card grades on: none when it has none, or has set it aside. */
+export function activeFixedRubric(block: QuestionBlockConfig): FixedRubric | undefined {
+  if (block.type !== "free_response" || block.modelWrittenRubric) return undefined;
+  return block.fixedRubric;
+}
+
+export const generationConfigSchema = z
+  .array(questionBlockSchema)
+  .min(1)
+  .max(20)
+  .superRefine((blocks, context) => {
+    // Checked here rather than on the card, so an unfinished rubric still autosaves.
+    blocks.forEach((block, index) => {
+      const rubric = activeFixedRubric(block);
+      if (!rubric) return;
+      const problems = fixedRubricProblems(rubric);
+      if (problems.length) {
+        const label = block.name.trim() || `card ${index + 1}`;
+        context.addIssue({
+          code: "custom",
+          path: [index, "fixedRubric"],
+          message: `The fixed rubric of ${label} is not finished: ${problems.join(" ")}`,
+        });
+      }
+    });
+  });
 export type QuestionBlockConfig = z.infer<typeof questionBlockSchema>;
+
+/**
+ * The researcher's instructions for one card as a single block of text for the generator. A
+ * free-response card's rubric prompt follows its question prompt, each under its own heading;
+ * a card without one keeps the original single heading.
+ */
+export function generationInstructions(block: QuestionBlockConfig): string {
+  if (block.type !== "free_response" || !block.rubricPrompt.trim()) {
+    return `User-authored generation instructions:\n${block.prompt}`;
+  }
+  return `Question generation instructions:\n${block.prompt}\n\nRubric generation instructions:\n${block.rubricPrompt}`;
+}
 
 /**
  * Everything on the generation screen except the PDF and the contribution statement, so
@@ -97,6 +232,11 @@ export const studyTemplateConfigSchema = z.object({
    * is served. The form collects whole minutes.
    */
   overallTimeLimitSeconds: z.number().int().min(30).max(21_600).nullable().default(null),
+  /**
+   * Free-text instructions sent with every free-response grading request. Empty for none;
+   * absent on a configuration saved before they existed, which the form fills with the defaults.
+   */
+  gradingInstructions: z.string().max(20_000).optional(),
 });
 export type StudyTemplateConfig = z.infer<typeof studyTemplateConfigSchema>;
 
@@ -295,6 +435,22 @@ export const freeResponseGradesSchema = z.object({
 
 export type GeneratedFillSet = z.infer<typeof generatedFillSetSchema>;
 export type GeneratedFreeResponseSet = z.infer<typeof generatedFreeResponseSetSchema>;
+
+/** What the generator returns for a card with a fixed rubric: no criteria, only notes on them. */
+export const generatedFixedRubricSetSchema = z.object({
+  questions: z.array(
+    z.object({
+      prompt: z.string().min(1),
+      description: z.string().min(1),
+      /** The PDF page (from 1) the question draws on; orders the set through the paper. */
+      page: z.number().int().min(1).optional(),
+      /** One per fixed criterion, in order: what earns full and half credit on this question. */
+      criterionNotes: z.array(z.string().min(1)).min(1),
+      sampleAnswers: z.object({ partial: z.string().min(1), full: z.string().min(1) }),
+    }),
+  ),
+});
+export type GeneratedFixedRubricSet = z.infer<typeof generatedFixedRubricSetSchema>;
 export type GeneratedMultipleChoiceSet = z.infer<typeof generatedMultipleChoiceSetSchema>;
 export type FreeResponseGrades = z.infer<typeof freeResponseGradesSchema>;
 
@@ -326,7 +482,22 @@ export type StoredFillQuestion = {
 
 export type Rubric = {
   summary: string;
-  criteria: Array<{ criterion: string; points: number; guidance: string }>;
+  criteria: Array<{
+    criterion: string;
+    points: number;
+    guidance: string;
+    /** From a fixed rubric: the only points this criterion may award, one per level. */
+    allowedPoints?: number[];
+  }>;
+  /**
+   * From a fixed rubric. Sets saved before levels were editable carry no `allowedPoints`, and
+   * award none, half, or all of a criterion's points.
+   */
+  fixed?: boolean;
+  /** A fixed rubric's rule spanning its criteria. */
+  gradingNote?: string;
+  /** Illustrations of partial and full credit, shown once the attempt is graded. */
+  sampleAnswers?: { partial: string; full: string };
 };
 
 export type StoredFreeResponseQuestion = {
@@ -772,6 +943,69 @@ export function prepareFreeResponseQuestions(
     sourcePage: question.page,
     prompt: question.prompt.trim(),
     rubric: question.rubric,
+  }));
+}
+
+/** Points a criterion of a set saved before levels were editable may award: none, half, all. */
+export function fixedLevelPoints(points: number): [number, number, number] {
+  return [0, points / 2, points];
+}
+
+/** A fixed criterion's levels and this question's note on them, as one block of guidance. */
+export function fixedCriterionGuidance(
+  rubric: FixedRubric,
+  criterion: FixedRubric["criteria"][number],
+  note: string,
+): string {
+  const points = levelPoints(rubric, criterion.points);
+  return [
+    criterion.description,
+    ...rubric.levels.map(
+      (level, index) =>
+        `${level.label} (${points[index]} points): ${criterion.descriptions[index] ?? ""}`,
+    ),
+    `For this question: ${note.trim()}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** Joins a fixed-rubric question to its rubric summary; displays split on it to set the summary apart. */
+export const GRADING_SUMMARY_SEPARATOR = "\n\nHow your answer is graded: ";
+
+/**
+ * Questions from a fixed-rubric card. Each carries the fixed summary in its text, so the
+ * participant knows how it is graded, and the fixed criteria with this question's notes.
+ */
+export function prepareFixedRubricQuestions(
+  generated: GeneratedFixedRubricSet,
+  block: QuestionBlockConfig,
+  rubric: FixedRubric,
+): StoredFreeResponseQuestion[] {
+  return generated.questions.map((question) => ({
+    type: "free_response",
+    id: globalThis.crypto.randomUUID(),
+    blockId: block.id,
+    warmup: block.warmup,
+    blockName: block.name,
+    description: question.description.trim(),
+    sourcePage: question.page,
+    prompt: `${question.prompt.trim()}${GRADING_SUMMARY_SEPARATOR}${rubric.summary}`,
+    rubric: {
+      summary: rubric.summary,
+      criteria: rubric.criteria.map((criterion, index) => ({
+        criterion: criterion.criterion,
+        points: criterion.points,
+        guidance: fixedCriterionGuidance(rubric, criterion, question.criterionNotes[index] ?? ""),
+        allowedPoints: [...new Set(levelPoints(rubric, criterion.points))].sort((x, y) => x - y),
+      })),
+      fixed: true,
+      ...(rubric.gradingNote.trim() ? { gradingNote: rubric.gradingNote.trim() } : {}),
+      sampleAnswers: {
+        partial: question.sampleAnswers.partial.trim(),
+        full: question.sampleAnswers.full.trim(),
+      },
+    },
   }));
 }
 

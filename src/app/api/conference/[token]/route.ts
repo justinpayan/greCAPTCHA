@@ -132,6 +132,7 @@ export async function POST(
         pdfEngine: template.config.pdfEngine,
         randomize: false,
         overallTimeLimitSeconds: template.config.overallTimeLimitSeconds,
+        gradingInstructions: template.config.gradingInstructions,
         blocks: template.config.blocks,
         takerAllowlist: template.takerAllowlist,
       },

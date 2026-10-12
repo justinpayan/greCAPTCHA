@@ -54,6 +54,7 @@ export async function finalizeAttempt(
       modelId: input.set.modelId,
       questions,
       answers: responses,
+      gradingInstructions: input.set.gradingInstructions ?? "",
     });
     // Only apply grades for questions actually sent. A model that echoes an ID it was not
     // given must not be able to overwrite a skipped question's score.
