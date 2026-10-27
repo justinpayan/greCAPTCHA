@@ -569,12 +569,19 @@ describe("public demo account-to-grade flow", () => {
     expect(selectedRows.length).toBeGreaterThan(1);
     expect(selectedRows.length).toBeLessThanOrEqual(allRows);
     expect(selectedRows.slice(1).every((line) => line.includes(generatedSetId))).toBe(true);
+    expect(
+      selectedRows.slice(1).every((line) => {
+        const [, creatorUsername, takerUsername] = line.split(",", 3);
+        return creatorUsername === alice.username && takerUsername === bob.username;
+      }),
+    ).toBe(true);
     const rowsFor = async (owner: string, sets: string[]) =>
       (await buildAnswerCsv(owner, sets)).trim().split(/\r?\n/);
     expect(await rowsFor(alice.id, ["not-a-real-set"])).toHaveLength(1);
     expect(await rowsFor(bob.id, [generatedSetId])).toHaveLength(1);
     expect(exportHeader).toEqual([
-      "attempt_id", "question_set_id", "set_name", "paper_name", "contributions", "model_id",
+      "attempt_id", "creator_username", "taker_username", "question_set_id", "set_name",
+      "paper_name", "contributions", "model_id",
       "api_key_payer", "material_uploader", "attempt_status", "attempt_score", "randomize",
       "attempt_created_at", "attempt_completed_at", "position",
       "question_id", "block_name", "question_type", "warmup",

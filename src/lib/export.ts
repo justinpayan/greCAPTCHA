@@ -9,6 +9,7 @@ import {
   attemptQuestionFeedback,
   attempts,
   questionSets,
+  users,
 } from "@/db/schema";
 import { questionSetLabel } from "@/lib/catalog";
 import { isWarmup, type StoredQuestion } from "@/lib/quiz";
@@ -26,6 +27,8 @@ import { isWarmup, type StoredQuestion } from "@/lib/quiz";
  */
 const COLUMNS = [
   "attempt_id",
+  "creator_username",
+  "taker_username",
   "question_set_id",
   "set_name",
   "paper_name",
@@ -130,12 +133,14 @@ export async function buildAnswerCsv(
       answer: attemptAnswers,
       attempt: attempts,
       set: questionSets,
+      creatorUsername: users.username,
       examineeFeedbackSubmission: attemptFeedback,
       examineeQuestionFeedback: attemptQuestionFeedback,
     })
     .from(attemptAnswers)
     .innerJoin(attempts, eq(attempts.id, attemptAnswers.attemptId))
     .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
+    .innerJoin(users, eq(users.id, questionSets.ownerUserId))
     .leftJoin(attemptFeedback, eq(attemptFeedback.attemptId, attempts.id))
     .leftJoin(
       attemptQuestionFeedback,
@@ -164,6 +169,7 @@ export async function buildAnswerCsv(
     answer,
     attempt,
     set,
+    creatorUsername,
     examineeFeedbackSubmission,
     examineeQuestionFeedback,
   } of rows) {
@@ -182,6 +188,8 @@ export async function buildAnswerCsv(
     lines.push(
       [
         attempt.id,
+        creatorUsername,
+        attempt.takerUsername ?? "",
         set.id,
         questionSetLabel(set.name, set.paperName),
         set.paperName,

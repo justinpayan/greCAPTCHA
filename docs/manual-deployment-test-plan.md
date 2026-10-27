@@ -259,8 +259,9 @@ Test each case with a single Railway instance:
    be lost, then confirm the set and every child attempt disappear. Delete an invitation test and
    confirm its template, invitation, submissions, generated manuscript sets, attempts, reports,
    feedback, and files all disappear. Confirm another creator's tests are unchanged.
-6. Export creator attempts. Confirm expected usernames, answers, `api_key_payer`,
-   `material_uploader`,
+6. Export creator attempts. Confirm `creator_username` identifies the test owner,
+   `taker_username` identifies the account that claimed the attempt (and is empty for an
+   unclaimed/legacy attempt), and that expected answers, `api_key_payer`, `material_uploader`,
    `examinee_feedback`, and `examinee_feedback_submitted_at` are present, and that each answer row
    contains only the comment submitted for that question.
 7. Confirm a second feedback POST returns 409 and no update endpoint exists.
