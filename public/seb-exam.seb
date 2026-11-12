@@ -229,7 +229,7 @@
     <key>enableZoomText</key>
     <true />
     <key>examKeySalt</key>
-    <data>4Idc/ZIdlKVVKIPiXPtB36Lg20uuqV1Sf0JIbKwNpGw=</data>
+    <data>C0l93sj7CJo/pTxKh0SLZiP+x0buw6sMTMFRBWoljI0=</data>
     <key>examSessionClearCookiesOnEnd</key>
     <true />
     <key>examSessionClearCookiesOnStart</key>
@@ -325,7 +325,76 @@
     <key>oskBehavior</key>
     <integer>2</integer>
     <key>permittedProcesses</key>
-    <array></array>
+    <array>
+      <dict>
+        <key>active</key>
+        <true />
+        <key>autostart</key>
+        <false />
+        <key>iconInTaskbar</key>
+        <true />
+        <key>runInBackground</key>
+        <false />
+        <key>allowUserToChooseApp</key>
+        <false />
+        <key>strongKill</key>
+        <false />
+        <key>os</key>
+        <integer>1</integer>
+        <key>title</key>
+        <string />
+        <key>description</key>
+        <string />
+        <key>executable</key>
+        <string>Zoom.exe</string>
+        <key>originalName</key>
+        <string />
+        <key>windowHandlingProcess</key>
+        <string />
+        <key>path</key>
+        <string />
+        <key>identifier</key>
+        <string />
+        <key>arguments</key>
+        <array></array>
+        <key>signature</key>
+        <string />
+      </dict>
+      <dict>
+        <key>active</key>
+        <true />
+        <key>autostart</key>
+        <false />
+        <key>iconInTaskbar</key>
+        <true />
+        <key>runInBackground</key>
+        <false />
+        <key>allowUserToChooseApp</key>
+        <false />
+        <key>strongKill</key>
+        <false />
+        <key>os</key>
+        <integer>0</integer>
+        <key>title</key>
+        <string />
+        <key>description</key>
+        <string />
+        <key>executable</key>
+        <string>Zoom.exe</string>
+        <key>originalName</key>
+        <string />
+        <key>windowHandlingProcess</key>
+        <string />
+        <key>path</key>
+        <string />
+        <key>identifier</key>
+        <string />
+        <key>arguments</key>
+        <array></array>
+        <key>signature</key>
+        <string />
+      </dict>
+    </array>
     <key>pinEmbeddedCertificates</key>
     <false />
     <key>prohibitedProcesses</key>
