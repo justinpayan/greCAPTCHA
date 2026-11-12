@@ -1102,28 +1102,6 @@
       </dict>
       <dict>
         <key>active</key>
-        <false />
-        <key>currentUser</key>
-        <true />
-        <key>description</key>
-        <string />
-        <key>executable</key>
-        <string>Zoom.exe</string>
-        <key>identifier</key>
-        <string />
-        <key>originalName</key>
-        <string>Zoom.exe</string>
-        <key>os</key>
-        <integer>0</integer>
-        <key>strongKill</key>
-        <false />
-        <key>user</key>
-        <string />
-        <key>windowHandlingProcess</key>
-        <string />
-      </dict>
-      <dict>
-        <key>active</key>
         <true />
         <key>currentUser</key>
         <true />
