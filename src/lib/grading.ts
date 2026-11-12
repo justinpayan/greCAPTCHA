@@ -8,7 +8,8 @@ import { buildResult, hydrateAssessmentResult, loadAttemptContext } from "@/lib/
 import { backupInBackground } from "@/lib/backup";
 import { locateEvidence } from "@/lib/evidence";
 import { gradeFreeResponseBlock } from "@/lib/openrouter";
-import type { AssessmentResult, StoredFreeResponseQuestion } from "@/lib/quiz";
+import { readManuscript } from "@/lib/manuscripts";
+import type { AssessmentResult, PdfEngine, StoredFreeResponseQuestion } from "@/lib/quiz";
 
 /**
  * Grades every free-response block, writes the assessment result, and marks the attempt
@@ -31,6 +32,7 @@ export async function finalizeAttempt(
     freeByBlock.set(question.blockId, [...(freeByBlock.get(question.blockId) ?? []), question]);
   }
 
+  let manuscript: File | undefined;
   for (const blockQuestions of freeByBlock.values()) {
     // A skipped question, or one the overall budget never reached, already holds its score and
     // feedback, so it is withheld from the grader: an empty response marked against a rubric is
@@ -41,6 +43,9 @@ export async function finalizeAttempt(
       return !answer?.skipped && !answer?.timedOut;
     });
     if (questions.length === 0) continue;
+    manuscript ??= new File([new Uint8Array(readManuscript(input.set.id))], input.set.paperName, {
+      type: "application/pdf",
+    });
 
     const responses: Record<string, string> = {};
     for (const question of questions) {
@@ -52,6 +57,8 @@ export async function finalizeAttempt(
     const grades = await gradeFreeResponseBlock({
       apiKey,
       modelId: input.set.modelId,
+      file: manuscript,
+      pdfEngine: input.set.pdfEngine as PdfEngine,
       questions,
       answers: responses,
       gradingInstructions: input.set.gradingInstructions ?? "",

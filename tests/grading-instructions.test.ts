@@ -20,7 +20,13 @@ async function gradingPrompt(gradingInstructions?: string) {
   vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body)) as {
       messages: Array<{ content: Array<{ text?: string }> }>;
+      plugins: unknown[];
     };
+    expect(body.messages[0].content).toContainEqual({ type: "file", file: {
+      filename: "source.pdf",
+      file_data: `data:application/pdf;base64,${Buffer.from("%PDF-1.7 grading source").toString("base64")}`,
+    } });
+    expect(body.plugins).toContainEqual({ id: "file-parser", pdf: { engine: "native" } });
     prompt = body.messages[0].content.find((part) => part.text)?.text ?? "";
     const grades = {
       grades: [{
@@ -32,6 +38,8 @@ async function gradingPrompt(gradingInstructions?: string) {
     return Response.json({ choices: [{ message: { content: JSON.stringify(grades) } }] });
   });
   await gradeFreeResponseBlock({
+    file: new File(["%PDF-1.7 grading source"], "source.pdf", { type: "application/pdf" }),
+    pdfEngine: "native",
     apiKey: "sk-or-test",
     modelId: "test/model",
     questions: [question],
@@ -48,6 +56,8 @@ afterEach(() => {
 describe("grading instructions", () => {
   it("sends the creator's instructions with the grading request, before the responses", async () => {
     const prompt = await gradingPrompt("  Do not penalise note-form answers.  ");
+    expect(prompt).toContain("attached manuscript PDF");
+    expect(prompt).toContain("do not invent additional criteria or change their weights");
     expect(prompt).toContain("grading instructions, which apply to every question");
     expect(prompt).toContain("\nDo not penalise note-form answers.\n");
     expect(prompt.indexOf("Do not penalise")).toBeLessThan(

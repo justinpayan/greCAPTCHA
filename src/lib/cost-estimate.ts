@@ -7,7 +7,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { attemptAnswers } from "@/db/schema";
 import { loadAttemptContext } from "@/lib/attempts";
-import { readTemplateMaterial, templateMaterialPath } from "@/lib/manuscripts";
+import { manuscriptPath, readManuscript, readTemplateMaterial, templateMaterialPath } from "@/lib/manuscripts";
 import { getOpenRouterModels } from "@/lib/openrouter";
 import { countPdfPages } from "@/lib/pdf-title";
 import type { PdfEngine, QuestionBlockConfig, StoredQuestion } from "@/lib/quiz";
@@ -92,6 +92,8 @@ export function gradingCost(input: {
   /** Free-response question counts, one entry per family that has any. */
   freeResponseBlocks: number[];
   answerTokens?: number[];
+  pages?: number;
+  pdfEngine?: PdfEngine;
 }): CostRange {
   const questions = input.freeResponseBlocks.reduce((sum, count) => sum + count, 0);
   if (questions === 0) return { low: 0, high: 0 };
@@ -102,13 +104,15 @@ export function gradingCost(input: {
     cost(
       {
         input:
-          input.freeResponseBlocks.length * GRADING_PROMPT_TOKENS +
+          input.freeResponseBlocks.length * (GRADING_PROMPT_TOKENS +
+            (input.pages ?? TYPICAL_PAGE_COUNT) * PDF_TOKENS_PER_PAGE[bound]) +
           questions * GRADING_RUBRIC_TOKENS +
           answers,
         output: questions * GRADED_ANSWER_TOKENS[bound],
       },
       input.price,
-    );
+    ) + input.freeResponseBlocks.length * (input.pages ?? TYPICAL_PAGE_COUNT) *
+      (OCR_PRICE_PER_PAGE[input.pdfEngine ?? "native"] ?? 0);
   return { low: range("low"), high: range("high") };
 }
 
@@ -196,7 +200,8 @@ export async function invitationCostEstimate(template: {
           pdfEngine: template.config.pdfEngine,
         })
       : null,
-    grading: details?.price ? gradingCost({ price: details.price, freeResponseBlocks }) : null,
+    grading: details?.price ? gradingCost({ price: details.price, freeResponseBlocks,
+      pages: pageCount, pdfEngine: template.config.pdfEngine }) : null,
     pages: pageCount,
     pagesKnown: pages !== null,
   };
@@ -205,6 +210,8 @@ export async function invitationCostEstimate(template: {
 /** The estimate for grading one attempt, from its actual free-response answers. */
 export async function attemptGradingCostEstimate(attemptId: string): Promise<CostEstimate> {
   const context = await loadAttemptContext(attemptId);
+  const pages = fs.existsSync(manuscriptPath(context.set.id))
+    ? await countPdfPages(readManuscript(context.set.id)) : null;
   const details = await modelDetails(context.set.modelId);
   const answers = await db
     .select({ questionId: attemptAnswers.questionId, answerJson: attemptAnswers.answerJson })
@@ -232,13 +239,15 @@ export async function attemptGradingCostEstimate(attemptId: string): Promise<Cos
     grading: details?.price
       ? gradingCost({
           price: details.price,
+          pages: pages ?? TYPICAL_PAGE_COUNT,
+          pdfEngine: context.set.pdfEngine as PdfEngine,
           freeResponseBlocks: [...perBlock.values()],
           answerTokens: gradable.map((question) =>
             tokensForText(responseById.get(question.id) ?? ""),
           ),
         })
       : null,
-    pages: 0,
-    pagesKnown: false,
+    pages: pages ?? TYPICAL_PAGE_COUNT,
+    pagesKnown: pages !== null,
   };
 }

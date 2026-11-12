@@ -83,6 +83,8 @@ live("uses a real OpenRouter model only when explicitly enabled", async () => {
     },
   } as StoredFreeResponseQuestion;
   const result = await gradeFreeResponseBlock({
+    file: new File([new Uint8Array(makeSmokePdf())], "source.pdf", { type: "application/pdf" }),
+    pdfEngine: "native",
     apiKey,
     modelId,
     questions: [question],
