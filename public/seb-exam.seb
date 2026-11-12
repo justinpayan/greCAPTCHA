@@ -404,6 +404,50 @@
         <true />
         <key>currentUser</key>
         <true />
+        <key>strongKill</key>
+        <false />
+        <key>os</key>
+        <integer>1</integer>
+        <key>executable</key>
+        <string>UltraViewer_Service.exe</string>
+        <key>originalName</key>
+        <string>UltraViewer_Service.exe</string>
+        <key>description</key>
+        <string />
+        <key>identifier</key>
+        <string />
+        <key>windowHandlingProcess</key>
+        <string />
+        <key>user</key>
+        <string />
+      </dict>
+      <dict>
+        <key>active</key>
+        <false />
+        <key>currentUser</key>
+        <true />
+        <key>strongKill</key>
+        <false />
+        <key>os</key>
+        <integer>1</integer>
+        <key>executable</key>
+        <string>Zoom.exe</string>
+        <key>originalName</key>
+        <string>Zoom.exe</string>
+        <key>description</key>
+        <string />
+        <key>identifier</key>
+        <string />
+        <key>windowHandlingProcess</key>
+        <string />
+        <key>user</key>
+        <string />
+      </dict>
+      <dict>
+        <key>active</key>
+        <true />
+        <key>currentUser</key>
+        <true />
         <key>description</key>
         <string />
         <key>executable</key>
@@ -413,7 +457,7 @@
         <key>originalName</key>
         <string>UltraViewer_Service.exe</string>
         <key>os</key>
-        <integer>1</integer>
+        <integer>0</integer>
         <key>strongKill</key>
         <false />
         <key>user</key>
