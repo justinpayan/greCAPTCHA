@@ -220,6 +220,8 @@ describe("fixed rubrics", () => {
       }],
     });
     const graded = await gradeFreeResponseBlock({
+    file: new File(["%PDF-1.7 grading source"], "source.pdf", { type: "application/pdf" }),
+    pdfEngine: "native",
       apiKey: "sk-or-test",
       modelId: "test/model",
       questions: [question as StoredFreeResponseQuestion],
@@ -262,6 +264,8 @@ describe("fixed rubrics", () => {
       }],
     });
     const graded = await gradeFreeResponseBlock({
+    file: new File(["%PDF-1.7 grading source"], "source.pdf", { type: "application/pdf" }),
+    pdfEngine: "native",
       apiKey: "sk-or-test",
       modelId: "test/model",
       questions: [question],

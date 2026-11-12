@@ -49,6 +49,17 @@ describe("cost estimates", () => {
     expect(gradingCost({ price, freeResponseBlocks: [] })).toEqual({ low: 0, high: 0 });
   });
 
+  it("includes PDF input and OCR for every grading family", () => {
+    const small = gradingCost({ price, freeResponseBlocks: [2], pages: 1, pdfEngine: "native" });
+    const large = gradingCost({ price, freeResponseBlocks: [2], pages: 20, pdfEngine: "native" });
+    const split = gradingCost({ price, freeResponseBlocks: [1, 1], pages: 20, pdfEngine: "native" });
+    const ocr = gradingCost({ price, freeResponseBlocks: [2], pages: 20, pdfEngine: "mistral-ocr" });
+    expect(large.low).toBeGreaterThan(small.low);
+    expect(large.high).toBeGreaterThan(small.high);
+    expect(split.low).toBeGreaterThan(large.low);
+    expect(ocr.low).toBeGreaterThan(large.low);
+  });
+
   it("grows the grading estimate with the length of the answers", () => {
     const brief = gradingCost({ price, freeResponseBlocks: [2], answerTokens: [50, 50] });
     const lengthy = gradingCost({ price, freeResponseBlocks: [2], answerTokens: [2_000, 2_000] });
