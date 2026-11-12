@@ -76,7 +76,7 @@ function gradeDraft(question: StoredQuestion, answerJson: string | null) {
  * Lock every persisted draft in one operation-shaped pass. The timeout and manual submit paths
  * intentionally share this logic so entered work is treated identically at the bell.
  */
-export async function submitAttempt(attemptId: string, reason: SubmissionReason) {
+export async function submitAttempt(attemptId: string, reason: SubmissionReason, cutoff = Date.now()) {
   const quiz = await loadAttemptContext(attemptId);
   if (quiz.attempt.status === "graded" && quiz.attempt.gradingJson) {
     return {
@@ -91,79 +91,86 @@ export async function submitAttempt(attemptId: string, reason: SubmissionReason)
   }
   if (quiz.attempt.status !== "active") return { pendingEvaluation: true as const };
 
-  const closedAt = new Date();
-  const existing = await db
-    .select()
-    .from(attemptAnswers)
-    .where(eq(attemptAnswers.attemptId, attemptId));
-  const rowByQuestion = new Map(existing.map((row) => [row.questionId, row]));
-  const currentQuestionId = quiz.order[quiz.attempt.currentIndex];
+  const closedAt = new Date(cutoff);
+  const finalized = db.transaction((tx) => {
+    const current = tx.select().from(attempts)
+      .where(eq(attempts.id, attemptId)).get();
+    if (current?.status !== "active") return false;
+    const existing = tx
+      .select()
+      .from(attemptAnswers)
+      .where(eq(attemptAnswers.attemptId, attemptId)).all();
+    const rowByQuestion = new Map(existing.map((row) => [row.questionId, row]));
+    const currentQuestionId = quiz.order[current.currentIndex];
 
-  for (const questionId of quiz.order) {
-    const question = quiz.questionById.get(questionId);
-    if (!question) continue;
-    const row = rowByQuestion.get(questionId);
-    const activeVisitMs =
-      questionId === currentQuestionId && quiz.attempt.activeQuestionStartedAt
-        ? Math.max(
-            0,
-            closedAt.getTime() - new Date(quiz.attempt.activeQuestionStartedAt).getTime(),
-          )
-        : 0;
-    const durationMs = (row?.durationMs ?? 0) + activeVisitMs;
-    const graded = gradeDraft(question, row?.answerJson ?? null);
-    const unansweredMessage =
-      reason === "timeout"
-        ? "Not answered before the overall time limit ran out."
-        : "Skipped. No response was submitted to grade.";
-    const values = graded
-      ? {
-          ...graded,
-          skipped: false,
-          timedOut: false,
-        }
-      : {
-          answerJson: null,
-          score: 0,
-          feedbackJson: noCreditFeedbackJson(question, unansweredMessage),
-          skipped: reason === "manual",
-          timedOut: reason === "timeout",
-        };
+    for (const questionId of quiz.order) {
+      const question = quiz.questionById.get(questionId);
+      if (!question) continue;
+      const row = rowByQuestion.get(questionId);
+      const activeVisitMs =
+        questionId === currentQuestionId && current.activeQuestionStartedAt
+          ? Math.max(
+              0,
+              closedAt.getTime() - new Date(current.activeQuestionStartedAt).getTime(),
+            )
+          : 0;
+      const durationMs = (row?.durationMs ?? 0) + activeVisitMs;
+      const graded = gradeDraft(question, row?.answerJson ?? null);
+      const unansweredMessage =
+        reason === "timeout"
+          ? "Not answered before the overall time limit ran out."
+          : "Skipped. No response was submitted to grade.";
+      const values = graded
+        ? {
+            ...graded,
+            skipped: false,
+            timedOut: false,
+          }
+        : {
+            answerJson: null,
+            score: 0,
+            feedbackJson: noCreditFeedbackJson(question, unansweredMessage),
+            skipped: reason === "manual",
+            timedOut: reason === "timeout",
+          };
 
-    if (row) {
-      await db
-        .update(attemptAnswers)
-        .set({
-          ...values,
+      if (row) {
+        tx
+          .update(attemptAnswers)
+          .set({
+            ...values,
+            submittedAt: closedAt.toISOString(),
+            durationMs,
+          })
+          .where(eq(attemptAnswers.id, row.id))
+          .run();
+      } else {
+        tx.insert(attemptAnswers).values({
+          id: randomUUID(),
+          attemptId,
+          questionId,
+          questionType: question.type,
+          blockName: questionBlockName(question),
+          startedAt: closedAt.toISOString(),
           submittedAt: closedAt.toISOString(),
-          durationMs,
-        })
-        .where(eq(attemptAnswers.id, row.id))
-        .run();
-    } else {
-      await db.insert(attemptAnswers).values({
-        id: randomUUID(),
-        attemptId,
-        questionId,
-        questionType: question.type,
-        blockName: questionBlockName(question),
-        startedAt: closedAt.toISOString(),
-        submittedAt: closedAt.toISOString(),
-        durationMs: 0,
-        ...values,
-      });
+          durationMs: 0,
+          ...values,
+        }).run();
+      }
     }
-  }
 
-  await db
-    .update(attempts)
-    .set({
-      status: "submitted",
-      completedAt: closedAt.toISOString(),
-      activeQuestionStartedAt: null,
-    })
-    .where(eq(attempts.id, attemptId))
-    .run();
+    tx
+      .update(attempts)
+      .set({
+        status: "submitted",
+        completedAt: closedAt.toISOString(),
+        activeQuestionStartedAt: null,
+      })
+      .where(eq(attempts.id, attemptId))
+      .run();
+    return true;
+  }, { behavior: "immediate" });
+  if (!finalized) return { pendingEvaluation: true as const };
   backupInBackground("assessment-submitted");
   const { enqueueAutomaticGrading } = await import("@/lib/jobs");
   return enqueueAutomaticGrading(attemptId);

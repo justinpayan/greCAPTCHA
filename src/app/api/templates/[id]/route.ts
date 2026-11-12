@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { parseAllowlist } from "@/lib/allowlist";
 import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
-import { deleteTemplate, getTemplate, setTemplateAllowlist } from "@/lib/templates";
+import { deleteTemplate, getTemplate, setTemplateAllowlist, setTemplateProctoring } from "@/lib/templates";
 import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
@@ -37,7 +37,11 @@ export async function PATCH(
     assertSameOrigin(request);
     const user = await requireUser();
     const { id } = await context.params;
-    const body = (await request.json()) as { allowlist?: unknown };
+    const body = (await request.json()) as { allowlist?: unknown; requireSeb?: unknown };
+    if ("requireSeb" in body) {
+      if (typeof body.requireSeb !== "boolean") throw new Error("Choose whether to require Safe Exam Browser.");
+      return NextResponse.json({ requireSeb: await setTemplateProctoring(id, user.id, body.requireSeb) });
+    }
     if (!("allowlist" in body)) throw new Error("Nothing to update.");
     return NextResponse.json({
       allowlist: await setTemplateAllowlist(id, user.id, parseAllowlist(body.allowlist)),

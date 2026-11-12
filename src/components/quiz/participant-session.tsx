@@ -20,7 +20,7 @@ import { userFacingMessage } from "@/lib/user-facing-error";
  * participant presses Start rather than when the link is opened. An attempt already under way
  * skips that and resumes at the last-opened question with its draft and overall timer intact.
  */
-export function ParticipantSession({ attemptId }: { attemptId: string }) {
+export function ParticipantSession({ attemptId, proctored = false, onClosed }: { attemptId: string; proctored?: boolean; onClosed?: () => void }) {
   const [intro, setIntro] = useState<AttemptIntro | null>(null);
   const [attempt, setAttempt] = useState<AttemptView | null>(null);
   const [result, setResult] = useState<AssessmentResult | null>(null);
@@ -33,10 +33,13 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
     claimed: boolean;
   } | null>(null);
   const [notAllowed, setNotAllowed] = useState<{ username: string } | null>(null);
+  useEffect(() => {
+    if (result || pendingEvaluation) onClosed?.();
+  }, [result, pendingEvaluation, onClosed]);
 
   useEffect(() => {
     let active = true;
-    loadAttemptEntry(attemptId)
+    (proctored ? serveAttempt(attemptId) : loadAttemptEntry(attemptId))
       .then((entry) => {
         if (!active) return;
         applyEntry(entry);
@@ -49,7 +52,7 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attemptId]);
+  }, [attemptId, proctored]);
 
   function applyEntry(entry: Awaited<ReturnType<typeof loadAttemptEntry>>) {
     if (entry.kind === "closed") {
@@ -117,6 +120,7 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
     );
   }
 
+  if (onClosed && (result || pendingEvaluation)) return <main className="app-shell seb-launch-page"><p role="status">Your answers are saved. Opening assessment review…</p></main>;
   if (result) {
     return (
       <ResultView
@@ -142,6 +146,7 @@ export function ParticipantSession({ attemptId }: { attemptId: string }) {
     return (
       <QuizWorkspace
         initialAttempt={attempt}
+        onClosed={onClosed}
         collectFeedback
         onBack={() => {
           window.location.href = "/";

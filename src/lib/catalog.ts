@@ -3,11 +3,12 @@ import "server-only";
 import { and, count, desc, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { db } from "@/db";
-import { attemptAnswers, attempts, jobs, questionSets, studyTemplates } from "@/db/schema";
+import { attemptAnswers, attempts, conferenceSubmissions, jobs, questionSets, studyTemplates } from "@/db/schema";
 import { readStoredAllowlist, serializeAllowlist } from "@/lib/allowlist";
 import { deleteManuscript } from "@/lib/manuscripts";
 import {
   isWarmup,
+  isInvitationTemplate,
   questionBlockName,
   type ApiKeyPayer,
   type AttemptListEntry,
@@ -394,9 +395,11 @@ export async function listCreatedTests(ownerUserId: string): Promise<CreatedTest
         paperName: questionSets.paperName,
         takerUsername: attempts.takerUsername,
         sourceTemplateId: questionSets.sourceTemplateId,
+        disqualification: conferenceSubmissions.disqualification,
       })
       .from(attempts)
       .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
+      .leftJoin(conferenceSubmissions, eq(conferenceSubmissions.attemptId, attempts.id))
       .where(eq(questionSets.ownerUserId, ownerUserId))
       .orderBy(desc(attempts.createdAt)),
     db
@@ -424,6 +427,7 @@ export async function listCreatedTests(ownerUserId: string): Promise<CreatedTest
       totalQuestions: (JSON.parse(row.questionOrderJson) as string[]).length,
       createdAt: row.createdAt,
       completedAt: row.completedAt,
+      ...(row.disqualification ? { disqualification: row.disqualification } : {}),
     };
     const bySet = attemptsBySet.get(row.questionSetId) ?? [];
     bySet.push(entry);
@@ -437,7 +441,7 @@ export async function listCreatedTests(ownerUserId: string): Promise<CreatedTest
 
   const invitationTemplates = templates.filter(
     (template) =>
-      template.apiKeyPayer !== "creator" || template.materialUploader !== "creator",
+      isInvitationTemplate({ ...template, config: JSON.parse(template.configJson) }),
   );
   const invitationTemplateIds = new Set(invitationTemplates.map((template) => template.id));
   const generatedTests: CreatedTestEntry[] = sets

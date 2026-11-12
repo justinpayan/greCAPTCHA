@@ -10,6 +10,7 @@ import {
   readStoredAllowlist,
 } from "@/lib/allowlist";
 import { currentUser } from "@/lib/session";
+import { proctoredAttempt, sebRequest, verifiedSebSession } from "@/lib/seb";
 
 /**
  * Whether a participant is allowed to work on an attempt right now.
@@ -69,6 +70,24 @@ export async function requireOpenAttempt(
   options: { allowUnclaimed?: boolean; claim?: boolean } = {},
 ) {
   const user = await currentUser();
+  const proctored = proctoredAttempt(attemptId);
+  if (proctored) {
+    const attempt = db.select({ status: attempts.status, takerUserId: attempts.takerUserId }).from(attempts)
+      .where(eq(attempts.id, attemptId)).get();
+    // SEB protects the live assessment; signed-in examinees retain access to their
+    // submitted work, grading, and feedback after the SEB session has ended.
+    if (attempt && attempt.status !== "active" && user && (
+      (user.id === proctored.takerUserId && user.id === attempt.takerUserId) ||
+      (user.id === proctored.administratorUserId && user.id !== proctored.takerUserId)
+    )) return;
+    if (!await verifiedSebSession(attemptId, await sebRequest())) {
+      throw new Error("Open this assessment in Safe Exam Browser.");
+    }
+    const { updateProctoring } = await import("@/lib/proctoring");
+    const state = await updateProctoring(attemptId);
+    if (!state.started && !state.closed) throw new Error("Complete recording setup before opening the assessment.");
+    return;
+  }
   if (!user) throw new Error("Not authorised.");
   const attempt = await db
     .select({

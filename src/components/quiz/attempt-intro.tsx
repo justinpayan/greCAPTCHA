@@ -19,9 +19,11 @@ import { userFacingMessage } from "@/lib/user-facing-error";
 export function AttemptIntroPage({
   intro,
   onStart,
+  proctored = false,
 }: {
   intro: AttemptIntro;
   onStart: () => Promise<void> | void;
+  proctored?: boolean;
 }) {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState("");
@@ -64,8 +66,9 @@ export function AttemptIntroPage({
             submit the assessment.
           </li>
           <li>
-            Submit the assessment when you are finished. Nothing begins until you press Start, so
-            take as long as you need on this page.
+            {proctored
+              ? "Submit the assessment when you are finished. The assessment clock has not started, so take as long as you need on this page. Next, you will record yourself beginning camera setup."
+              : "Submit the assessment when you are finished. Nothing begins until you press Start, so take as long as you need on this page."}
           </li>
         </ul>
 
@@ -76,7 +79,7 @@ export function AttemptIntroPage({
         )}
 
         <button className="primary intro-start" type="button" disabled={starting} onClick={start}>
-          {starting ? "Starting…" : "Start"}
+          {starting ? "Continuing…" : proctored ? "Continue to recording instructions" : "Start"}
         </button>
       </section>
     </main>

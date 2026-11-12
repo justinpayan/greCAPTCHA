@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db } from "@/db";
@@ -41,11 +41,12 @@ export async function POST(
     }
     const answerRow = await getCurrentAnswer(id, submission.questionId);
     if (!answerRow) throw new Error("Visit the question before saving an answer.");
-    await db
+    const saved = await db
       .update(attemptAnswers)
       .set({ answerJson: JSON.stringify(submission.answer) })
-      .where(eq(attemptAnswers.id, answerRow.id))
+      .where(and(eq(attemptAnswers.id, answerRow.id), isNull(attemptAnswers.submittedAt)))
       .run();
+    if (!saved.changes) return NextResponse.json({ error: "This attempt is already complete." }, { status: 409 });
     return NextResponse.json({ saved: true, position: position + 1 });
   } catch (error) {
     if (error instanceof AttemptClosedError) {

@@ -1,0 +1,1 @@
+ALTER TABLE `conference_submissions` ADD `seb_finished_at` integer;

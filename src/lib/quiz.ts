@@ -223,6 +223,9 @@ export function generationInstructions(block: QuestionBlockConfig): string {
  * save fail. The stricter schema still gates generation itself.
  */
 export const studyTemplateConfigSchema = z.object({
+  /** Keeps creator-paid SEB invitations as invitations if proctoring is later disabled. */
+  invitation: z.boolean().optional(),
+  requireSeb: z.boolean().optional(),
   modelId: z.string().max(200).default(""),
   pdfEngine: pdfEngineSchema.default("native"),
   blocks: z.array(questionBlockSchema).max(20).default([]),
@@ -295,6 +298,7 @@ export type QuestionSetOverview = {
 };
 
 export type AttemptListEntry = {
+  disqualification?: string;
   id: string;
   questionSetId: string;
   setLabel: string;
@@ -327,17 +331,21 @@ export type CreatedTestEntry = {
 };
 
 /**
- * A template with a taker side is an invitation test, which keeps its workflow. One with neither is
- * a saved question configuration, which carries no workflow of its own and loads into any.
+ * Taker-side workflows and explicitly marked SEB workflows are invitations. Creator-paid,
+ * creator-uploaded configurations otherwise remain reusable question configurations.
  */
 export function isInvitationTemplate(template: {
   apiKeyPayer: ApiKeyPayer | string;
   materialUploader: MaterialUploader | string;
+  invitation?: boolean;
+  config?: { invitation?: boolean; requireSeb?: boolean };
 }) {
-  return template.apiKeyPayer !== "creator" || template.materialUploader !== "creator";
+  return template.apiKeyPayer !== "creator" || template.materialUploader !== "creator" ||
+    template.invitation === true || template.config?.invitation === true || template.config?.requireSeb === true;
 }
 
 export type StudyTemplateSummary = {
+  invitation?: boolean;
   id: string;
   name: string;
   apiKeyPayer: ApiKeyPayer;
@@ -621,6 +629,8 @@ export type ExamineeFeedback = {
 };
 
 export type AttemptOutline = {
+  disqualification?: string | null;
+  generalFeedback?: string | null;
   attemptId: string;
   questionSetId: string;
   /** Username of the account that claimed this shared attempt, when applicable. */

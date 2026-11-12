@@ -14,6 +14,8 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { startJobWorker } = await import("@/lib/jobs");
     await startJobWorker();
+    const { startProctoringWorker } = await import("@/lib/proctoring");
+    startProctoringWorker();
 
     const { backupIntervalMs, backupKeep, backupRoot, runBackup } = await import("@/lib/backup");
 

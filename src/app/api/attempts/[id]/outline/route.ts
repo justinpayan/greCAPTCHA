@@ -11,6 +11,8 @@ import {
   RateLimitError,
 } from "@/lib/security";
 import { requireUser } from "@/lib/session";
+import { proctoredAttempt } from "@/lib/seb";
+import { requireConferenceCredential } from "@/lib/openrouter-credentials";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -50,6 +52,13 @@ export async function POST(
     await requireAttemptOwner(id, user.id);
     await enforceRateLimit(request, "evaluation", user.id, 20, 60 * 60);
     const outline = await getAttemptOutline(id);
+    const proctored = proctoredAttempt(id);
+    if (proctored?.apiKeyPayer === "taker" && outline.status !== "graded") {
+      if (outline.status !== "submitted") throw new Error("Finish the assessment before grading it.");
+      requireConferenceCredential(proctored.id);
+      const grading = await enqueueGradingJob(id, { conferenceCredentialId: proctored.id });
+      return NextResponse.json(grading, { status: "result" in grading ? 200 : 202 });
+    }
     if (outline.apiKeyPayer === "creator") {
       const grading = await enqueueGradingJob(id, { credentialOwnerUserId: user.id });
       return NextResponse.json(grading, { status: "result" in grading ? 200 : 202 });

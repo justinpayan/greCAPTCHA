@@ -1,10 +1,10 @@
 import "server-only";
 
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, lte } from "drizzle-orm";
 
 import { db } from "@/db";
-import { openRouterCredentials } from "@/db/schema";
+import { conferenceCredentials, openRouterCredentials } from "@/db/schema";
 import { validateOpenRouterKey } from "@/lib/openrouter";
 import { OpenRouterError } from "@/lib/openrouter-errors";
 
@@ -31,7 +31,7 @@ function encrypt(value: string) {
   };
 }
 
-function decrypt(row: typeof openRouterCredentials.$inferSelect) {
+function decrypt(row: { ciphertext: string; iv: string; authTag: string }) {
   const decipher = createDecipheriv(
     "aes-256-gcm",
     encryptionKey(),
@@ -110,5 +110,39 @@ export async function deleteOpenRouterCredential(userId: string) {
   await db
     .delete(openRouterCredentials)
     .where(eq(openRouterCredentials.userId, userId))
+    .run();
+}
+
+export async function saveConferenceCredential(submissionId: string, apiKey: string) {
+  const key = apiKey.trim();
+  const metadata = await validateOpenRouterKey(key, { requireSafeguards: true });
+  if (!metadata.expiresAt) throw new OpenRouterError("The OpenRouter key needs an expiration date.");
+  const values = { ...encrypt(key), expiresAt: new Date(metadata.expiresAt).toISOString() };
+  await db
+    .insert(conferenceCredentials)
+    .values({ submissionId, ...values })
+    .onConflictDoUpdate({ target: conferenceCredentials.submissionId, set: values })
+    .run();
+}
+
+export function requireConferenceCredential(submissionId: string) {
+  const row = db
+    .select()
+    .from(conferenceCredentials)
+    .where(eq(conferenceCredentials.submissionId, submissionId))
+    .get();
+  if (!row || Date.parse(row.expiresAt) <= Date.now()) {
+    throw new OpenRouterError("Reconnect OpenRouter to continue with this assessment.");
+  }
+  return decrypt(row);
+}
+
+export function deleteConferenceCredential(submissionId: string) {
+  db.delete(conferenceCredentials).where(eq(conferenceCredentials.submissionId, submissionId)).run();
+}
+
+export function deleteExpiredConferenceCredentials() {
+  db.delete(conferenceCredentials)
+    .where(lte(conferenceCredentials.expiresAt, new Date().toISOString()))
     .run();
 }

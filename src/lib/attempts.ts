@@ -1,11 +1,11 @@
 import "server-only";
-
 import { randomUUID } from "node:crypto";
 import { and, count, desc, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/db";
 import { AssessmentNotAllowedError, isUsernameAllowed, readStoredAllowlist } from "@/lib/allowlist";
 import { questionSetTestLabel } from "@/lib/catalog";
+import { proctoredAttempt } from "@/lib/seb";
 import {
   attemptAnswers,
   attemptFeedback,
@@ -277,6 +277,7 @@ export async function getAttemptState(
     .run();
 
   const activeQuestionStartedAt = attempt.activeQuestionStartedAt ?? servedAt;
+  const examStartedAt = proctoredAttempt(attemptId)?.examStartedAt;
   if (!attempt.activeQuestionStartedAt) {
     await db
       .update(attempts)
@@ -320,7 +321,9 @@ export async function getAttemptState(
       }),
       firstInteractionRecorded: Boolean(answerRow?.firstInteractionAt),
       overallTimeLimitSeconds: attempt.overallTimeLimitSeconds,
-      overallElapsedMs: attemptElapsedMs(allAnswers, activeQuestionStartedAt),
+      overallElapsedMs: examStartedAt == null
+        ? attemptElapsedMs(allAnswers, activeQuestionStartedAt)
+        : Math.max(0, Date.now() - examStartedAt),
     },
   };
 }
@@ -335,26 +338,21 @@ export async function navigateAttempt(attemptId: string, targetIndex: number) {
   if (targetIndex === quiz.attempt.currentIndex) return getAttemptState(attemptId);
 
   const now = new Date();
-  const current = await getCurrentAnswer(attemptId, quiz.currentQuestion.id);
-  if (current && quiz.attempt.activeQuestionStartedAt) {
-    const visitMs = Math.max(
-      0,
-      now.getTime() - new Date(quiz.attempt.activeQuestionStartedAt).getTime(),
-    );
-    await db
-      .update(attemptAnswers)
-      .set({ durationMs: (current.durationMs ?? 0) + visitMs })
-      .where(eq(attemptAnswers.id, current.id))
-      .run();
-  }
-  await db
-    .update(attempts)
-    .set({
-      currentIndex: targetIndex,
-      activeQuestionStartedAt: now.toISOString(),
-    })
-    .where(eq(attempts.id, attemptId))
-    .run();
+  db.transaction((tx) => {
+    const attempt = tx.select().from(attempts).where(eq(attempts.id, attemptId)).get();
+    if (!attempt || attempt.status !== "active" || attempt.currentIndex === targetIndex) return;
+    const current = tx.select().from(attemptAnswers).where(and(
+      eq(attemptAnswers.attemptId, attemptId),
+      eq(attemptAnswers.questionId, quiz.order[attempt.currentIndex]),
+    )).get();
+    if (current && attempt.activeQuestionStartedAt) {
+      const visitMs = Math.max(0, now.getTime() - Date.parse(attempt.activeQuestionStartedAt));
+      tx.update(attemptAnswers).set({ durationMs: (current.durationMs ?? 0) + visitMs })
+        .where(eq(attemptAnswers.id, current.id)).run();
+    }
+    tx.update(attempts).set({ currentIndex: targetIndex, activeQuestionStartedAt: now.toISOString() })
+      .where(eq(attempts.id, attemptId)).run();
+  }, { behavior: "immediate" });
   return getAttemptState(attemptId);
 }
 
@@ -423,6 +421,7 @@ export async function getAttemptOutline(attemptId: string): Promise<AttemptOutli
   const feedback = await db
     .select({
       submittedAt: attemptFeedback.submittedAt,
+      generalComment: attemptFeedback.generalComment,
     })
     .from(attemptFeedback)
     .where(eq(attemptFeedback.attemptId, attemptId))
@@ -467,6 +466,8 @@ export async function getAttemptOutline(attemptId: string): Promise<AttemptOutli
     apiKeyPayer: quiz.set.apiKeyPayer === "taker" ? "taker" : "creator",
     materialUploader: quiz.set.materialUploader === "taker" ? "taker" : "creator",
     status: quiz.attempt.status,
+    disqualification: proctoredAttempt(attemptId)?.disqualification,
+    generalFeedback: feedback?.generalComment,
     linkEnabled: quiz.attempt.linkEnabled,
     totalQuestions: items.length,
     answeredCount,

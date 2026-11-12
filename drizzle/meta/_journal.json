@@ -204,6 +204,20 @@
       "when": 1791839282761,
       "tag": "0028_grading_instructions",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1794427315133,
+      "tag": "0029_seb_proctoring",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1794434439640,
+      "tag": "0030_seb_finished",
+      "breakpoints": true
     }
   ]
 }

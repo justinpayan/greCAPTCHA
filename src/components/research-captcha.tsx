@@ -331,10 +331,12 @@ function FieldHint({ text }: { text: string }) {
 export function ResearchCaptcha({
   username,
   initialGetStartedHidden = false,
+  initialMode = "default",
 }: {
   username: string;
   /** The account's saved choice to hide the Get started guide, read on the server. */
   initialGetStartedHidden?: boolean;
+  initialMode?: "default" | "mine";
 }) {
   const [getStartedHidden, setGetStartedHidden] = useState(initialGetStartedHidden);
 
@@ -353,7 +355,7 @@ export function ResearchCaptcha({
   }
 
   const [mode, setMode] = useState<"default" | "custom" | "resume" | "mine">(
-    "default",
+    initialMode,
   );
   const [models, setModels] = useState<CatalogModel[]>(FEATURED_MODELS);
   const [selectedModel, setSelectedModel] = useState<CatalogModel | null>(null);
@@ -367,6 +369,7 @@ export function ResearchCaptcha({
   const [poolSizeDrafts, setPoolSizeDrafts] = useState<Record<string, string>>({});
   /** Whole minutes in the form, seconds in the data. Empty means no overall limit. */
   const [overallLimitMinutes, setOverallLimitMinutes] = useState("30");
+  const [requireSeb, setRequireSeb] = useState(false);
   const [gradingInstructions, setGradingInstructions] = useState(DEFAULT_GRADING_INSTRUCTIONS);
   const [loadingModels, setLoadingModels] = useState(false);
   const [working, setWorking] = useState(false);
@@ -461,12 +464,14 @@ export function ResearchCaptcha({
         ? Number(overallLimitMinutes) * 60
         : null,
       gradingInstructions,
+      requireSeb,
     }),
-    [selectedModel, pdfEngine, blocks, overallLimitMinutes, gradingInstructions],
+    [selectedModel, pdfEngine, blocks, overallLimitMinutes, gradingInstructions, requireSeb, apiKeyPayer, materialUploader],
   );
   // Batch applies only where the test creator supplies the manuscripts.
   const isBatch = batchManuscripts && materialUploader === "creator";
   function applyConfig(config: StudyTemplateConfig, catalog: CatalogModel[]) {
+    setRequireSeb(config.requireSeb ?? false);
     setPdfEngine(config.pdfEngine);
     setBlocks(config.blocks);
     setCountDrafts({});
@@ -1121,7 +1126,7 @@ export function ResearchCaptcha({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // Only the question configuration: a saved template carries no workflow or allowed users.
-        body: JSON.stringify({ name: templateName, config: currentConfig }),
+        body: JSON.stringify({ name: templateName, config: { ...currentConfig, requireSeb: false } }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to save the template.");
@@ -2326,6 +2331,7 @@ export function ResearchCaptcha({
                                           ? "Awaiting evaluation"
                                           : "In progress"}
                                     </span>
+                                    {entry.disqualification && <span className="pill" title={entry.disqualification}>Disqualified</span>}
                                   </div>
                                   <span className="catalog-meta">
                                     {entry.paperName} · {entry.answeredCount} of{" "}
@@ -2419,7 +2425,7 @@ export function ResearchCaptcha({
                 `Finish the fixed rubric of ${unfinished.name.trim() || `family ${index + 1}`} first: its problems are listed under the rubric.`,
               );
             }
-            if (apiKeyPayer === "creator" && materialUploader === "creator") {
+            if (apiKeyPayer === "creator" && materialUploader === "creator" && !requireSeb) {
               return isBatch ? generateBatch(event, config) : generateSet(event, config);
             }
             return isBatch
@@ -2428,6 +2434,13 @@ export function ResearchCaptcha({
           }}
         >
           {apiKeyPayer === "creator" && <ProfessorOpenRouterPanel error={keyError} />}
+          <div className="form-section">
+            <label>
+              <input type="checkbox" checked={requireSeb} onChange={(event) => setRequireSeb(event.target.checked)} />
+              Require Safe Exam Browser
+            </label>
+            {requireSeb && <p className="hint">Set an overall time limit below. This creates an invitation for each participant to take the assessment in SEB. {apiKeyPayer === "creator" ? "Your connected OpenRouter account pays for generation and grading; participants do not need an API key." : "Participants connect OpenRouter before launching SEB."}</p>}
+          </div>
           <div className="form-section">
             <div className="form-grid">
               <div className="field full">
@@ -2439,7 +2452,7 @@ export function ResearchCaptcha({
                         ? apiKeyPayer === "taker"
                           ? "Each test is named with this, followed by its manuscript's file name. Test takers don't see it."
                           : "Each test is named with this, followed by its manuscript's file name. Test takers don't see it. Leave blank to name each test after its PDF."
-                        : apiKeyPayer === "taker" || materialUploader === "taker"
+                        : apiKeyPayer === "taker" || materialUploader === "taker" || requireSeb
                           ? "Identifies this test on your dashboard. Test takers don't see it."
                           : "Identifies this test on your dashboard. Test takers don't see it. Leave blank to use the PDF filename; you can rename it later."
                     }
@@ -2978,7 +2991,7 @@ export function ResearchCaptcha({
           {error && <p className="error" role="alert">{error}</p>}
           <div className="submit-row">
             {apiKeyPayer === "creator" &&
-              materialUploader === "creator" &&
+              materialUploader === "creator" && !requireSeb &&
               failedGenerationJobId && (
               <button
                 className="secondary"
@@ -2996,17 +3009,17 @@ export function ResearchCaptcha({
                 working ||
                 !selectedModel ||
                 blocks.length === 0 ||
-                ((apiKeyPayer === "taker" || materialUploader === "taker") &&
+                ((apiKeyPayer === "taker" || materialUploader === "taker" || requireSeb) &&
                   !setName.trim())
               }
             >
               {working
                 ? isBatch
                   ? generationStatus || "Preparing uploads…"
-                  : apiKeyPayer === "taker" || materialUploader === "taker"
+                  : apiKeyPayer === "taker" || materialUploader === "taker" || requireSeb
                     ? "Publishing invitation…"
                     : generationStatus || "Preparing upload…"
-                : apiKeyPayer === "taker" || materialUploader === "taker"
+                : apiKeyPayer === "taker" || materialUploader === "taker" || requireSeb
                   ? isBatch
                     ? "Create invitations"
                     : "Create and copy invitation"
@@ -3078,7 +3091,7 @@ export function ResearchCaptcha({
                 <p>
                   {batchNotice.created.length} of{" "}
                   {batchNotice.created.length + batchNotice.failed.length}{" "}
-                  {apiKeyPayer === "creator" && materialUploader === "creator"
+                  {apiKeyPayer === "creator" && materialUploader === "creator" && !requireSeb
                     ? "assessments"
                     : "invitations"}{" "}
                   created.{" "}

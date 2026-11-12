@@ -13,6 +13,8 @@ const ALWAYS_OPEN = new Set([
   "/api/session",
   "/api/signup",
   "/api/health",
+  "/seb/start",
+  "/seb/quit",
 ]);
 
 function requestOrigin(request: NextRequest): string {
@@ -30,6 +32,9 @@ function requestOrigin(request: NextRequest): string {
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const forwarded = new Headers(request.headers);
+  forwarded.set("x-rc-request-path", pathname + request.nextUrl.search);
+  const next = () => NextResponse.next({ request: { headers: forwarded } });
   const method = request.method;
   const host = request.headers.get("host") ?? "";
   const forwardedProto = request.headers
@@ -52,13 +57,18 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(target, 308);
   }
 
-  if (ALWAYS_OPEN.has(pathname)) {
+  const sebConfig = process.env.SEB_CONFIG_URL;
+  const configPath = sebConfig ? URL.parse(sebConfig, "https://localhost")?.pathname : undefined;
+  if (ALWAYS_OPEN.has(pathname) || (pathname === configPath && pathname.endsWith(".seb"))) {
     logIncoming(method, pathname, "open");
-    return NextResponse.next();
+    return next();
   }
   if (request.cookies.get(SESSION_COOKIE)?.value) {
     logIncoming(method, pathname, "session presented");
-    return NextResponse.next();
+    return next();
+  }
+  if (request.cookies.has("__Host-rc_seb") && /^\/(?:api\/attempts|attempt)\/[^/]+(?:\/|$)/.test(pathname)) {
+    return next();
   }
   if (pathname.startsWith("/api/")) {
     logIncoming(method, pathname, "401 no session");

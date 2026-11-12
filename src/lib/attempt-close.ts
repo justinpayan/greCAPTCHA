@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { attemptAnswers, attempts } from "@/db/schema";
 import { attemptElapsedMs } from "@/lib/attempts";
 import { submitAttempt } from "@/lib/attempt-submit";
+import { proctoredAttempt } from "@/lib/seb";
 
 /**
  * Enforcement of the overall time limit.
@@ -45,7 +46,10 @@ export async function overallBudget(attemptId: string): Promise<OverallBudget> {
     .from(attemptAnswers)
     .where(eq(attemptAnswers.attemptId, attemptId));
 
-  const elapsedMs = attemptElapsedMs(answers, attempt.activeQuestionStartedAt);
+  const start = proctoredAttempt(attemptId)?.examStartedAt;
+  const elapsedMs = start == null
+    ? attemptElapsedMs(answers, attempt.activeQuestionStartedAt)
+    : Math.max(0, Date.now() - start);
   if (attempt.limit === null) {
     return { limitSeconds: null, elapsedMs, remainingMs: null, exhausted: false };
   }
