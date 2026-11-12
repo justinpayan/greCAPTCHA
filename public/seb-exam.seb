@@ -229,7 +229,7 @@
     <key>enableZoomText</key>
     <true />
     <key>examKeySalt</key>
-    <data>C0l93sj7CJo/pTxKh0SLZiP+x0buw6sMTMFRBWoljI0=</data>
+    <data>sJzKeQ8rlPU6rfPwNarrduYVnZrf11NdNBeq/amyc9A=</data>
     <key>examSessionClearCookiesOnEnd</key>
     <true />
     <key>examSessionClearCookiesOnStart</key>
@@ -334,7 +334,7 @@
         <key>iconInTaskbar</key>
         <true />
         <key>runInBackground</key>
-        <false />
+        <true />
         <key>allowUserToChooseApp</key>
         <false />
         <key>strongKill</key>
@@ -368,7 +368,7 @@
         <key>iconInTaskbar</key>
         <true />
         <key>runInBackground</key>
-        <false />
+        <true />
         <key>allowUserToChooseApp</key>
         <false />
         <key>strongKill</key>
