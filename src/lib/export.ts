@@ -8,6 +8,7 @@ import {
   attemptFeedback,
   attemptQuestionFeedback,
   attempts,
+  conferenceSubmissions,
   questionSets,
   users,
 } from "@/db/schema";
@@ -63,6 +64,8 @@ const COLUMNS = [
   "grader_feedback",
   "examinee_feedback",
   "examinee_feedback_submitted_at",
+  "proctoring_disqualification",
+  "examinee_general_feedback",
 ] as const;
 
 /** RFC 4180 quoting: a field is quoted when it holds a quote, comma, or newline. */
@@ -136,12 +139,14 @@ export async function buildAnswerCsv(
       creatorUsername: users.username,
       examineeFeedbackSubmission: attemptFeedback,
       examineeQuestionFeedback: attemptQuestionFeedback,
+      disqualification: conferenceSubmissions.disqualification,
     })
     .from(attemptAnswers)
     .innerJoin(attempts, eq(attempts.id, attemptAnswers.attemptId))
     .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
     .innerJoin(users, eq(users.id, questionSets.ownerUserId))
     .leftJoin(attemptFeedback, eq(attemptFeedback.attemptId, attempts.id))
+    .leftJoin(conferenceSubmissions, eq(conferenceSubmissions.attemptId, attempts.id))
     .leftJoin(
       attemptQuestionFeedback,
       and(
@@ -172,6 +177,7 @@ export async function buildAnswerCsv(
     creatorUsername,
     examineeFeedbackSubmission,
     examineeQuestionFeedback,
+    disqualification,
   } of rows) {
     if (!questionCache.has(set.id)) {
       const parsed = parseJson<StoredQuestion[]>(set.questionsJson, []);
@@ -221,6 +227,8 @@ export async function buildAnswerCsv(
         feedback,
         examineeQuestionFeedback?.comment ?? "",
         examineeFeedbackSubmission?.submittedAt ?? "",
+        disqualification,
+        examineeFeedbackSubmission?.generalComment,
       ]
         .map(csvField)
         .join(","),

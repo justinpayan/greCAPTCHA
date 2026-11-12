@@ -1,13 +1,17 @@
 import { File } from "node:buffer";
+import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 
-const sessionState = vi.hoisted(() => ({ token: "" }));
+const sessionState = vi.hoisted(() => ({ token: "", sebToken: "" }));
 vi.mock("next/headers", () => ({
+  headers: async () => new Headers({ "x-rc-request-path": "/seb/start" }),
   cookies: async () => ({
     get: (name: string) =>
       name === "rc_session" && sessionState.token
         ? { value: sessionState.token }
+        : name === "__Host-rc_seb" && sessionState.sebToken
+        ? { value: sessionState.sebToken }
         : undefined,
   }),
 }));
@@ -16,6 +20,7 @@ import { db } from "@/db";
 import {
   attemptAnswers,
   attempts,
+  conferenceCredentials,
   conferenceSubmissions,
   jobs,
   openRouterCredentials,
@@ -34,12 +39,15 @@ import {
 import {
   createQuestionSetShareLink,
   getAttemptState,
+  getAttemptIntro,
   getAttemptOutline,
   getOrCreateTakerAttempt,
   loadAttemptContext,
 } from "@/lib/attempts";
 import { requireOpenAttempt } from "@/lib/attempt-access";
 import { closeForTimeout } from "@/lib/attempt-close";
+import { hashSecret, newSebSecret, redeemSebLaunch, sebVerificationError, verifySeb } from "@/lib/seb";
+import { updateProctoring } from "@/lib/proctoring";
 import {
   deleteAttempt,
   deleteQuestionSet,
@@ -56,11 +64,18 @@ import {
   getOwnedJob,
 } from "@/lib/jobs";
 import { clearJobKeys, registerJobKey, requireJobKey } from "@/lib/openrouter-key-store";
-import { credentialStatus } from "@/lib/openrouter-credentials";
+import {
+  credentialStatus,
+  deleteExpiredConferenceCredentials,
+  requireConferenceCredential,
+  saveConferenceCredential,
+} from "@/lib/openrouter-credentials";
 import { OpenRouterError } from "@/lib/openrouter-errors";
 import { setOpenRouterTransportForTests, validateOpenRouterKey } from "@/lib/openrouter";
 import type { AssessmentResult, QuestionBlockConfig } from "@/lib/quiz";
 import { POST as submitAnswer } from "@/app/api/attempts/[id]/answers/route";
+import { GET as getParticipantAttempt } from "@/app/api/attempts/[id]/route";
+import { GET as getProctoringCompletion, POST as proctoringAction } from "@/app/api/attempts/[id]/proctoring/route";
 import { POST as navigateAttempt } from "@/app/api/attempts/[id]/navigate/route";
 import { POST as runEvaluation } from "@/app/api/attempts/[id]/outline/route";
 import { POST as submitAttempt } from "@/app/api/attempts/[id]/submit/route";
@@ -80,6 +95,8 @@ import {
   deleteTemplate,
   saveTemplate,
   setTemplateSharing,
+  setTemplateProctoring,
+  getInvitationAttempt,
 } from "@/lib/templates";
 
 let activeProviderCalls = 0;
@@ -589,6 +606,7 @@ describe("public demo account-to-grade flow", () => {
       "duration_ms", "score", "skipped", "timed_out", "response",
       "correct_answer", "correct", "grader_feedback", "examinee_feedback",
       "examinee_feedback_submitted_at",
+      "proctoring_disqualification", "examinee_general_feedback",
     ]);
     sessionState.token = await createAccountSession(bob.id);
     expect((await getAttemptState(attemptId)).result?.overallScore).toBe(100);
@@ -963,13 +981,27 @@ describe("public demo account-to-grade flow", () => {
     for (const dimensions of [
       {
         name: "Creator uploads taker pays",
+        requireSeb: false,
         apiKeyPayer: "taker" as const,
         materialUploader: "creator" as const,
       },
       {
         name: "Taker uploads creator pays",
+        requireSeb: false,
         apiKeyPayer: "creator" as const,
         materialUploader: "taker" as const,
+      },
+      {
+        name: "SEB creator uploads and pays",
+        apiKeyPayer: "creator" as const,
+        materialUploader: "creator" as const,
+        requireSeb: true,
+      },
+      {
+        name: "SEB taker uploads creator pays",
+        apiKeyPayer: "creator" as const,
+        materialUploader: "taker" as const,
+        requireSeb: true,
       },
     ]) {
       const template = await saveTemplate(
@@ -980,7 +1012,8 @@ describe("public demo account-to-grade flow", () => {
           pdfEngine: "native",
           blocks,
           randomize: false,
-          overallTimeLimitSeconds: null,
+          overallTimeLimitSeconds: dimensions.requireSeb ? 300 : null,
+          requireSeb: dimensions.requireSeb,
           gradingInstructions: "",
         },
         dimensions.apiKeyPayer,
@@ -1058,6 +1091,31 @@ describe("public demo account-to-grade flow", () => {
         apiKeyPayer: dimensions.apiKeyPayer,
         materialUploader: dimensions.materialUploader,
       });
+      expect(await getInvitationAttempt(template.id, bob.id)).toEqual({ attemptId });
+      expect(await getInvitationAttempt(template.id, alice.id)).toBeUndefined();
+      if (dimensions.requireSeb) {
+        const snapshot = db.select().from(conferenceSubmissions)
+          .where(eq(conferenceSubmissions.attemptId, attemptId)).get();
+        expect(snapshot).toMatchObject({ requireSeb: true, apiKeyPayer: "creator" });
+        expect(db.select().from(conferenceCredentials)
+          .where(eq(conferenceCredentials.submissionId, snapshot!.id)).get()).toBeUndefined();
+        await closeForTimeout(attemptId);
+        const gradingJob = db.select().from(jobs)
+          .where(and(eq(jobs.attemptId, attemptId), eq(jobs.type, "grading"))).get();
+        expect(gradingJob).toBeDefined();
+        expect(JSON.parse(gradingJob!.payloadJson)).toMatchObject({ credentialOwnerUserId: alice.id });
+        await waitForJob(gradingJob!.id, alice.id);
+        expect(db.select().from(attempts).where(eq(attempts.id, attemptId)).get()?.status).toBe("graded");
+        await expect(setTemplateProctoring(template.id, alice.id, false)).resolves.toBe(false);
+        // Disabling SEB later keeps the invitation and existing proctoring snapshot intact.
+        expect((await listCreatedTests(alice.id)).find(test => test.id === template.id)?.invitationPath)
+          .toBe(`/invite/${sharing.invitationShareToken}`);
+        expect(db.select().from(conferenceSubmissions)
+          .where(eq(conferenceSubmissions.id, snapshot!.id)).get()?.requireSeb).toBe(true);
+      }
+      db.update(attempts).set({ status: "graded" }).where(eq(attempts.id, attemptId)).run();
+      expect(await getInvitationAttempt(template.id, bob.id)).toEqual({ attemptId });
+      expect(await getInvitationAttempt(randomUUID(), bob.id)).toBeUndefined();
       await deleteTemplate(template.id, alice.id);
     }
     await deleteTemplate(directOnly.id, alice.id);
@@ -1229,5 +1287,164 @@ describe("public demo account-to-grade flow", () => {
       expect(await db.select().from(jobs).where(eq(jobs.attemptId, attemptId))).toHaveLength(0);
     }
     expect(await listCreatedTests(bob.id)).toEqual(bobBefore);
+  });
+
+  it("binds SEB handoff to the assigned attempt and starts setup only on request", async () => {
+    const owner = await registerAccount({ username: "seb-organizer", password: "test password for SEB" });
+    const taker = await registerAccount({ username: "seb-author", password: "test password for SEB" });
+    const config = { modelId: "test/model", pdfEngine: "native" as const, blocks: [],
+      randomize: false, overallTimeLimitSeconds: 300, requireSeb: true };
+    const template = await saveTemplate(owner.id, "SEB assessment", config, "taker", "taker");
+    const setId = randomUUID();
+    const attemptId = randomUUID();
+    const now = new Date().toISOString();
+    db.insert(questionSets).values({
+      id: setId, ownerUserId: owner.id, paperName: "paper.pdf", contributions: "",
+      modelId: config.modelId, pdfEngine: "native", configJson: "{}", questionsJson: "[]",
+      createdAt: now,
+    }).run();
+    db.insert(attempts).values({
+      id: attemptId, questionSetId: setId, takerUserId: taker.id, questionOrderJson: "[]",
+      overallTimeLimitSeconds: 300, createdAt: now,
+    }).run();
+    const token = newSebSecret();
+    const submissionId = randomUUID();
+    db.insert(conferenceSubmissions).values({
+      id: submissionId, templateId: template.id, administratorUserId: owner.id,
+      takerUserId: taker.id, questionSetId: setId, attemptId, paperName: "paper.pdf",
+      contributions: "", createdAt: now, updatedAt: now, requireSeb: true, apiKeyPayer: "taker",
+      launchHash: hashSecret(token), launchExpiresAt: Date.now() + 600_000,
+    }).run();
+    await expect(setTemplateProctoring(template.id, taker.id, false)).rejects.toThrow("Template not found");
+    await expect(setTemplateProctoring(template.id, owner.id, false)).resolves.toBe(false);
+    expect(db.select().from(conferenceSubmissions)
+      .where(eq(conferenceSubmissions.id, submissionId)).get()?.requireSeb).toBe(true);
+    const credential = "sk-or-seb-test-credential";
+    await expect(saveConferenceCredential(submissionId, "unsafe")).rejects.toThrow("spending limit");
+    await saveConferenceCredential(submissionId, credential);
+    const stored = db.select().from(conferenceCredentials).where(eq(conferenceCredentials.submissionId, submissionId)).get();
+    expect(stored?.ciphertext).toBeTruthy();
+    expect(JSON.stringify(stored)).not.toContain(credential);
+    expect(requireConferenceCredential(submissionId)).toBe(credential);
+    expect(() => requireConferenceCredential(randomUUID())).toThrow("Reconnect OpenRouter");
+    db.update(conferenceCredentials).set({ expiresAt: "2000-01-01T00:00:00.000Z" })
+      .where(eq(conferenceCredentials.submissionId, submissionId)).run();
+    deleteExpiredConferenceCredentials();
+    expect(() => requireConferenceCredential(submissionId)).toThrow("Reconnect OpenRouter");
+
+    const origin = "https://exam.example.test";
+    const key = "a".repeat(64);
+    vi.stubEnv("SEB_PUBLIC_ORIGIN", origin);
+    vi.stubEnv("SEB_BROWSER_EXAM_KEYS", key);
+    try {
+      const url = origin + "/seb/start?launch=" + token;
+      expect(verifySeb(new Request(url))).toBe(false);
+      expect(sebVerificationError(new Request(url))).toBe("missing-proof");
+      expect(sebVerificationError(new Request(url, {
+        headers: { "x-safeexambrowser-requesthash": "invalid" },
+      }))).toBe("invalid-proof");
+      const signedRequest = new Request(url, {
+        headers: { "x-safeexambrowser-requesthash": hashSecret(url + key) },
+      });
+      expect(sebVerificationError(signedRequest)).toBeNull();
+      vi.stubEnv("SEB_BROWSER_EXAM_KEYS", "b".repeat(64));
+      expect(verifySeb(signedRequest)).toBe(false);
+      expect(sebVerificationError(signedRequest)).toBe("key-mismatch");
+      vi.stubEnv("SEB_BROWSER_EXAM_KEYS", "");
+      expect(sebVerificationError(signedRequest)).toBe("configuration");
+      vi.stubEnv("SEB_BROWSER_EXAM_KEYS", key);
+      expect(verifySeb(new Request(url, {
+        headers: { "x-safeexambrowser-requesthash": hashSecret(url + key) },
+      }))).toBe(true);
+      expect(redeemSebLaunch(newSebSecret())).toBeUndefined();
+      const handoff = redeemSebLaunch(token);
+      expect(handoff?.attemptId).toBe(attemptId);
+      expect(redeemSebLaunch(token)).toBeUndefined();
+      expect(await getAttemptIntro(attemptId)).toMatchObject({
+        overallTimeLimitSeconds: 300, totalQuestions: 0, started: false,
+      });
+      expect(db.select().from(conferenceSubmissions).where(eq(conferenceSubmissions.id, submissionId)).get())
+        .toMatchObject({ setupEndsAt: null, examStartedAt: null });
+      expect(await updateProctoring(attemptId, "check-in")).toMatchObject({ started: false, setupEndsAt: null });
+      const setup = await updateProctoring(attemptId, "setup");
+      expect(setup.started).toBe(false);
+      expect(setup.setupEndsAt).toBeGreaterThan(Date.now() + 295_000);
+      expect(await updateProctoring(attemptId, "setup")).toMatchObject({ setupEndsAt: setup.setupEndsAt });
+      expect(await updateProctoring(attemptId, "continue")).toMatchObject({ started: true, closed: false });
+
+      // Normal-browser review remains available after the SEB session ends.
+      sessionState.token = await createAccountSession(taker.id);
+      await expect(requireOpenAttempt(attemptId)).rejects.toThrow("Safe Exam Browser");
+      db.update(attempts).set({ status: "submitted" }).where(eq(attempts.id, attemptId)).run();
+      await expect(requireOpenAttempt(attemptId)).resolves.toBeUndefined();
+      const result: AssessmentResult = {
+        attemptId, questionSetId: setId, takerUsername: taker.username, paperName: "paper.pdf",
+        contributions: "", overallScore: 80, scoredQuestionCount: 0, warmupQuestionCount: 0, questions: [],
+      };
+      db.update(attempts).set({ status: "graded", score: 80, gradingJson: JSON.stringify(result) })
+        .where(eq(attempts.id, attemptId)).run();
+      const context = { params: Promise.resolve({ id: attemptId }) };
+      const request = new Request(origin + "/api/attempts/" + attemptId);
+      const review = await getParticipantAttempt(request, context);
+      expect(review.status).toBe(200);
+      expect(await review.json()).toMatchObject({ result });
+      const feedback = await getExamineeFeedback(request, context);
+      expect(feedback.status).toBe(200);
+      expect(await feedback.json()).toMatchObject({ submitted: false });
+
+      sessionState.sebToken = handoff!.session;
+      function sebPost(path: string, body: object) {
+        const url = origin + path;
+        return new Request(url, { method: "POST", headers: {
+          "Content-Type": "application/json", origin, host: new URL(origin).host,
+          "x-safeexambrowser-requesthash": hashSecret(url + key),
+        }, body: JSON.stringify(body) });
+      }
+      const proctorPath = `/api/attempts/${attemptId}/proctoring`;
+      const beforeExit = await getProctoringCompletion(request, context);
+      expect(beforeExit.headers.get("cache-control")).toContain("no-store");
+      expect(await beforeExit.json()).toEqual({ finished: false });
+      expect((await proctoringAction(sebPost(proctorPath, { action: "quit" }), context)).status).toBe(409);
+      expect(await (await getProctoringCompletion(request, context)).json()).toEqual({ finished: false });
+      // The old defer flag cannot bypass the feedback requirement.
+      expect((await proctoringAction(sebPost(proctorPath, { action: "quit", deferFeedback: true }), context)).status).toBe(409);
+      expect(await (await getExamineeFeedback(request, context)).json()).toMatchObject({ submitted: false });
+      const outsideFeedback = await submitExamineeFeedback(new Request(origin + `/api/attempts/${attemptId}/feedback`, {
+        method: "POST", headers: { "Content-Type": "application/json", origin, host: new URL(origin).host },
+        body: JSON.stringify({ commentsByQuestionId: {} }),
+      }), context);
+      expect(outsideFeedback.status).toBe(400);
+      expect(await outsideFeedback.json()).toMatchObject({ error: "Submit feedback inside Safe Exam Browser." });
+      db.update(attempts).set({ status: "submitted" }).where(eq(attempts.id, attemptId)).run();
+      const prematureFeedback = await submitExamineeFeedback(sebPost(`/api/attempts/${attemptId}/feedback`, {
+        commentsByQuestionId: {},
+      }), context);
+      expect(prematureFeedback.status).toBe(400);
+      expect((await proctoringAction(sebPost(proctorPath, { action: "quit", deferFeedback: true }), context)).status).toBe(409);
+      db.update(attempts).set({ status: "graded" }).where(eq(attempts.id, attemptId)).run();
+      const savedFeedback = await submitExamineeFeedback(sebPost(`/api/attempts/${attemptId}/feedback`, {
+        commentsByQuestionId: {},
+      }), context);
+      expect(savedFeedback.status).toBe(200);
+      const exit = await proctoringAction(sebPost(proctorPath, { action: "quit" }), context);
+      expect(exit.status).toBe(200);
+      expect(await exit.json()).toEqual({ quitUrl: origin + "/seb/quit" });
+      expect(await (await getProctoringCompletion(request, context)).json()).toEqual({ finished: true });
+      sessionState.sebToken = "";
+
+      sessionState.token = await createAccountSession(owner.id);
+      await expect(requireOpenAttempt(attemptId)).resolves.toBeUndefined();
+      const unrelated = await registerAccount({ username: "seb-unrelated", password: "test password for SEB" });
+      sessionState.token = await createAccountSession(unrelated.id);
+      expect((await getProctoringCompletion(request, context)).status).toBe(404);
+      await expect(requireOpenAttempt(attemptId)).rejects.toThrow("Safe Exam Browser");
+      sessionState.token = "";
+      expect((await getProctoringCompletion(request, context)).status).toBe(401);
+      await expect(requireOpenAttempt(attemptId)).rejects.toThrow("Safe Exam Browser");
+    } finally {
+      sessionState.token = "";
+      sessionState.sebToken = "";
+      vi.unstubAllEnvs();
+    }
   });
 });

@@ -6,7 +6,7 @@ import { db } from "@/db";
 import { conferenceSubmissions } from "@/db/schema";
 import { enqueueGenerationJob } from "@/lib/jobs";
 import { validateOpenRouterKey } from "@/lib/openrouter";
-import { requireOpenRouterCredential } from "@/lib/openrouter-credentials";
+import { requireOpenRouterCredential, saveConferenceCredential } from "@/lib/openrouter-credentials";
 import { errorResponseBody } from "@/lib/openrouter-errors";
 import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
@@ -89,7 +89,9 @@ export async function POST(
     if (template.apiKeyPayer === "taker") {
       apiKey = String(form.get("openrouterApiKey") ?? "").trim();
       const keySource = form.get("keySource") === "oauth" ? "oauth" : "paste";
-      await validateOpenRouterKey(apiKey, { requireSafeguards: keySource === "oauth" });
+      if (!template.config.requireSeb) {
+        await validateOpenRouterKey(apiKey, { requireSafeguards: keySource === "oauth" });
+      }
     } else {
       await requireOpenRouterCredential(template.ownerUserId);
       credentialOwnerUserId = template.ownerUserId;
@@ -111,9 +113,17 @@ export async function POST(
       takerUserId: user.id,
       paperName: file.name,
       contributions,
+      requireSeb: template.config.requireSeb ?? false,
+      apiKeyPayer: template.apiKeyPayer,
       createdAt: now,
       updatedAt: now,
     });
+    const conferenceCredentialId = template.config.requireSeb && template.apiKeyPayer === "taker"
+      ? submissionId : undefined;
+    if (conferenceCredentialId) {
+      await saveConferenceCredential(conferenceCredentialId, apiKey ?? "");
+      apiKey = undefined;
+    }
 
     const created = await enqueueGenerationJob(
       user.id,
@@ -124,6 +134,7 @@ export async function POST(
         apiKeyPayer: template.apiKeyPayer,
         materialUploader: template.materialUploader,
         credentialOwnerUserId,
+        conferenceCredentialId,
         conferenceSubmissionId: submissionId,
         taker: { id: user.id, username: user.username },
         setName: file.name.replace(/\.pdf$/i, ""),

@@ -34,6 +34,7 @@ export type GenerationJobPayload = {
   apiKeyPayer: ApiKeyPayer;
   materialUploader: MaterialUploader;
   credentialOwnerUserId?: string;
+  conferenceCredentialId?: string;
   conferenceSubmissionId?: string;
   taker?: { id: string; username: string };
   filePath: string;

@@ -232,3 +232,5 @@ bak/
 *.migrate.lock
 .DS_STORE
 QualCoder/*
+
+certificates

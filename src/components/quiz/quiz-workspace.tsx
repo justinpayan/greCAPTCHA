@@ -527,11 +527,14 @@ function ResultSections({
 function ExamineeFeedbackReview({
   result,
   onBack,
+  onFinish,
 }: {
   result: AssessmentResult;
   onBack?: () => void;
+  onFinish?: () => Promise<void>;
 }) {
   const [commentsByQuestionId, setCommentsByQuestionId] = useState<Record<string, string>>({});
+  const [canSubmit, setCanSubmit] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -545,12 +548,14 @@ function ExamineeFeedbackReview({
       .then(async (response) => {
         const payload = (await response.json()) as {
           submitted?: boolean;
+          canSubmit?: boolean;
           feedback?: { commentsByQuestionId?: Record<string, string> } | null;
           error?: string;
         };
         if (!response.ok) throw new Error(payload.error ?? "Unable to load feedback.");
         if (active) {
           setSubmitted(payload.submitted === true);
+          setCanSubmit(payload.canSubmit !== false);
           setCommentsByQuestionId(payload.feedback?.commentsByQuestionId ?? {});
         }
       })
@@ -593,6 +598,14 @@ function ExamineeFeedbackReview({
     }
   }
 
+  async function finish() {
+    setSaving(true);
+    setError("");
+    try { await onFinish?.(); }
+    catch (caught) { setError(userFacingMessage(caught, "Unable to close Safe Exam Browser. Please try again.")); }
+    finally { setSaving(false); }
+  }
+
   const hasComment = Object.values(commentsByQuestionId).some((comment) => comment.trim());
 
   return (
@@ -601,7 +614,7 @@ function ExamineeFeedbackReview({
         result={result}
         examineeFeedback={{
           commentsByQuestionId,
-          submitted,
+          submitted: submitted || !canSubmit,
           loading,
           showEmpty: true,
           onChange: (questionId, comment) =>
@@ -617,13 +630,14 @@ function ExamineeFeedbackReview({
         </h2>
         <p className="hint">
           {submitted
-            ? "Your question comments are locked and cannot be changed."
-            : "Each question comment is optional. Submit them together once when you are finished; they cannot be edited afterward."}
+            ? onFinish ? "Your feedback is saved. You can finish reviewing your results, then close Safe Exam Browser below." : "Your question comments are locked and cannot be changed."
+            : !loading && !canSubmit ? "Feedback for this assessment must be submitted inside Safe Exam Browser. You can review your results here."
+            : "Review the PDF, grades, and answers above. Each question comment is optional. Submit them together once when you are finished; they cannot be edited afterward."}
         </p>
         {error && <p className="error" role="alert">{error}</p>}
-        {(!submitted || onBack) && (
+        {(!submitted || onBack || onFinish) && (
           <div className="feedback-submit-actions">
-            {!submitted && (
+            {!submitted && canSubmit && (
               <button
                 className="primary"
                 type="button"
@@ -642,6 +656,9 @@ function ExamineeFeedbackReview({
                 Back to dashboard
               </button>
             )}
+            {submitted && onFinish && <button className="primary" type="button" disabled={saving} onClick={() => void finish()}>
+              {saving ? "Closing SEB…" : "Finish and close Safe Exam Browser"}
+            </button>}
           </div>
         )}
       </section>
@@ -655,6 +672,7 @@ export function ResultView({
   submittedFeedback = null,
   onBack,
   pdfLabel,
+  onFinish,
 }: {
   result: AssessmentResult;
   collectFeedback?: boolean;
@@ -662,12 +680,13 @@ export function ResultView({
   onBack?: () => void;
   /** The creator's report passes the test name; a test taker only ever sees the PDF name. */
   pdfLabel?: string;
+  onFinish?: () => Promise<void>;
 }) {
   return (
     <PdfAssessmentSplit attemptId={result.attemptId} pdfLabel={pdfLabel || result.paperName}>
       <main className="app-shell">
         {collectFeedback ? (
-          <ExamineeFeedbackReview result={result} onBack={onBack} />
+          <ExamineeFeedbackReview result={result} onBack={onBack} onFinish={onFinish} />
         ) : (
           <ResultSections
             result={result}
@@ -863,10 +882,12 @@ export function QuizWorkspace({
   initialAttempt,
   collectFeedback = false,
   onBack,
+  onClosed,
 }: {
   initialAttempt: AttemptView;
   collectFeedback?: boolean;
   onBack?: () => void;
+  onClosed?: () => void;
 }) {
   const [attempt, setAttempt] = useState(initialAttempt);
   const [draft, setDraft] = useState<DraftAnswer>(initialAttempt.draft);
@@ -875,6 +896,9 @@ export function QuizWorkspace({
   const [error, setError] = useState("");
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [pendingEvaluation, setPendingEvaluation] = useState(false);
+  useEffect(() => {
+    if (pendingEvaluation || result) onClosed?.();
+  }, [pendingEvaluation, result, onClosed]);
   const [overallElapsedMs, setOverallElapsedMs] = useState(initialAttempt.overallElapsedMs);
   const interactionReported = useRef(initialAttempt.firstInteractionRecorded);
   const timeoutFired = useRef(false);
@@ -1068,6 +1092,7 @@ export function QuizWorkspace({
     }
   }
 
+  if (onClosed && (result || pendingEvaluation)) return <main className="app-shell seb-launch-page"><p role="status">Your answers are saved. Opening assessment review…</p></main>;
   if (result) {
     return <ResultView result={result} collectFeedback={collectFeedback} onBack={onBack} />;
   }

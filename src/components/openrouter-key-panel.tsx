@@ -21,6 +21,7 @@ export function OpenRouterKeyPanel({
   error: pageError = "",
   notice,
   estimate,
+  storeForAssessment = false,
 }: {
   apiKey: string;
   source: KeySource;
@@ -33,6 +34,7 @@ export function OpenRouterKeyPanel({
   notice?: ReactNode;
   /** The model and estimated cost the key will be used for, shown as part of this panel. */
   estimate?: ReactNode;
+  storeForAssessment?: boolean;
 }) {
   const [browserKey, setBrowserKey] = useState<BrowserOpenRouterKey | null>(null);
   const [checking, setChecking] = useState(false);
@@ -100,12 +102,13 @@ export function OpenRouterKeyPanel({
       <div className="key-source-main">
         <strong>API Access</strong>
         <p>
-          Connect with OpenRouter or paste an API key for this action. A connected key stays in
-          this browser; a pasted key is held only long enough to run the job. Neither is stored by
-          greCAPTCHA.
+          {storeForAssessment
+            ? "Connect with OpenRouter or paste an API key. greCAPTCHA stores an encrypted copy for this assessment's generation and grading."
+            : "Connect with OpenRouter or paste an API key for this action. A connected key stays in this browser; a pasted key is held only long enough to run the job. Neither is stored by greCAPTCHA."}
         </p>
         <p className="key-warning">
-          Connected keys require a <strong>positive spending limit</strong> and{" "}
+          {storeForAssessment ? "Both key options require a " : "Connected keys require a "}
+          <strong>positive spending limit</strong> and{" "}
           <strong>future expiration date</strong>.
         </p>
       </div>

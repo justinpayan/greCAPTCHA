@@ -1071,6 +1071,253 @@ textarea.control {
   text-decoration: none;
 }
 
+.seb-launch-page {
+  max-width: 1080px;
+  display: grid;
+  gap: 24px;
+  line-height: 1.6;
+}
+
+.seb-session-page {
+  max-width: 860px;
+  padding-bottom: 48px;
+}
+
+.seb-setup-timer {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  text-align: center;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--accent-soft, #edf5f0);
+}
+
+.seb-setup-timer strong {
+  font-size: clamp(3rem, 9vw, 5rem);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.seb-next-steps {
+  list-style: decimal;
+  padding-left: 24px;
+  margin: 0;
+}
+
+.seb-next-steps li + li {
+  margin-top: 12px;
+}
+
+.seb-review-notice {
+  margin: 0;
+  padding: 16px 24px;
+  background: #fff4df;
+  color: #614415;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.seb-launch-heading {
+  display: grid;
+  gap: 12px;
+  max-width: 760px;
+  padding: 12px 0 4px;
+}
+
+.seb-launch-heading h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+}
+
+.seb-launch-heading p,
+.seb-launch-card p,
+.seb-launch-notice {
+  margin: 0;
+}
+
+.seb-launch-heading p {
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.seb-preparation-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 24px;
+}
+
+.seb-launch-card {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding: clamp(20px, 3vw, 32px);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+.seb-launch-card h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+}
+
+.seb-launch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.seb-launch-actions > :is(a, button) {
+  max-width: 100%;
+  justify-content: center;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.4;
+}
+
+.seb-launch-page :is(a, button, summary, input):focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 4px;
+}
+
+.seb-launch-page .seb-launch-hint {
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.seb-recording-checklist,
+.seb-launch-fallback ol {
+  margin: 0;
+  padding-left: 22px;
+}
+
+.seb-recording-checklist {
+  list-style: disc;
+}
+
+.seb-launch-fallback ol {
+  list-style: decimal;
+}
+
+.seb-recording-checklist li + li,
+.seb-launch-fallback li + li {
+  margin-top: 10px;
+}
+
+.seb-recording-confirmation {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  cursor: pointer;
+}
+
+.seb-recording-confirmation input {
+  width: 20px;
+  height: 20px;
+  margin: 3px 0 0;
+  flex: 0 0 20px;
+  accent-color: var(--green);
+}
+
+.seb-launch-entry {
+  border-top: 4px solid var(--green);
+}
+
+.seb-launch-expectations {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border-radius: 12px;
+  background: var(--green-soft);
+}
+
+.seb-launch-fallback {
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.seb-launch-fallback summary,
+.seb-payment-settings > summary {
+  cursor: pointer;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.seb-launch-fallback-content {
+  display: grid;
+  gap: 20px;
+  padding-top: 20px;
+}
+
+.seb-pairing-code {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.seb-pairing-code code {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  font-size: 1rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+details.seb-payment-settings {
+  display: block;
+}
+
+.seb-payment-settings .seb-launch-actions {
+  margin-top: 20px;
+}
+
+.seb-launch-notice {
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--green-soft);
+  overflow-wrap: anywhere;
+}
+
+.seb-launch-notice.error {
+  background: #fff3f3;
+}
+
+@media (max-width: 720px) {
+  .seb-preparation-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .seb-launch-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .seb-launch-actions > :is(a, button) {
+    width: 100%;
+  }
+}
+
 .mode-tabs button {
   border: 0;
   border-radius: 8px;

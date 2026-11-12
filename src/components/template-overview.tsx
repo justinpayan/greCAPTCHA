@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Brand } from "@/components/brand";
 import { activeFixedRubric, type InvitationTemplateOverview } from "@/lib/quiz";
 
@@ -24,6 +25,28 @@ export function TemplateOverview({
   onBack: () => void;
 }) {
   const questionCount = overview.config.blocks.reduce((total, block) => total + block.count, 0);
+  const [requireSeb, setRequireSeb] = useState(overview.config.requireSeb ?? false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function updateProctoring(enabled: boolean) {
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/templates/${encodeURIComponent(overview.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requireSeb: enabled }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Unable to save the setting.");
+      setRequireSeb(payload.requireSeb === true);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unable to save the setting.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <main className="app-shell dashboard-shell">
@@ -79,6 +102,12 @@ export function TemplateOverview({
               : "Anyone with the invitation can take this test."}
           </p>
           {overview.materialContributions && <p>{overview.materialContributions}</p>}
+          <label>
+            <input type="checkbox" checked={requireSeb} disabled={saving}
+              onChange={(event) => void updateProctoring(event.target.checked)} />
+            Require Safe Exam Browser for new attempts
+          </label>
+          {error && <p role="alert">{error}</p>}
           {overview.config.gradingInstructions?.trim() && (
             <p>
               <strong>Grading instructions:</strong> {overview.config.gradingInstructions}

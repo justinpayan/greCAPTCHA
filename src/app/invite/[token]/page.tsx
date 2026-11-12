@@ -5,7 +5,7 @@ import { AssessmentNotAllowed } from "@/components/quiz/assessment-not-allowed";
 import { isUsernameAllowed } from "@/lib/allowlist";
 import { invitationCostEstimate } from "@/lib/cost-estimate";
 import { currentUser } from "@/lib/session";
-import { getTemplateByInvitationToken } from "@/lib/templates";
+import { getInvitationAttempt, getTemplateByInvitationToken } from "@/lib/templates";
 
 export default async function InvitationPage({
   params,
@@ -16,32 +16,32 @@ export default async function InvitationPage({
   const user = await currentUser();
   if (!user) redirect(`/login?next=${encodeURIComponent(`/invite/${token}`)}`);
 
-  try {
-    const template = await getTemplateByInvitationToken(token);
-    if (
-      template.ownerUserId !== user.id &&
-      !isUsernameAllowed(user.username, template.takerAllowlist)
-    ) {
-      return <AssessmentNotAllowed username={user.username} />;
-    }
-    // Shown only when the taker's own key pays, so they know the model and cost before using it.
-    const costEstimate =
-      template.apiKeyPayer === "taker" ? await invitationCostEstimate(template) : null;
-    return (
-      <AssessmentInvitation
-        token={token}
-        template={{
-          modelId: template.config.modelId,
-          pdfEngine: template.config.pdfEngine,
-          questionCount: template.config.blocks.reduce((sum, block) => sum + block.count, 0),
-          apiKeyPayer: template.apiKeyPayer,
-          materialUploader: template.materialUploader,
-          materialFileName: template.materialFileName,
-        }}
-        costEstimate={costEstimate}
-      />
-    );
-  } catch {
-    notFound();
+  const template = await getTemplateByInvitationToken(token).catch(() => notFound());
+  const existing = await getInvitationAttempt(template.id, user.id);
+  if (existing) redirect(`/attempt/${encodeURIComponent(existing.attemptId)}`);
+
+  if (
+    template.ownerUserId !== user.id &&
+    !isUsernameAllowed(user.username, template.takerAllowlist)
+  ) {
+    return <AssessmentNotAllowed username={user.username} />;
   }
+  // Shown only when the taker's own key pays, so they know the model and cost before using it.
+  const costEstimate =
+    template.apiKeyPayer === "taker" ? await invitationCostEstimate(template) : null;
+  return (
+    <AssessmentInvitation
+      token={token}
+      template={{
+        modelId: template.config.modelId,
+        pdfEngine: template.config.pdfEngine,
+        questionCount: template.config.blocks.reduce((sum, block) => sum + block.count, 0),
+        apiKeyPayer: template.apiKeyPayer,
+        materialUploader: template.materialUploader,
+        materialFileName: template.materialFileName,
+        requireSeb: template.config.requireSeb,
+      }}
+      costEstimate={costEstimate}
+    />
+  );
 }

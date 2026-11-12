@@ -38,11 +38,14 @@ export async function listTemplates(ownerUserId: string): Promise<StudyTemplateS
       materialUploader: studyTemplates.materialUploader,
       invitationShareToken: studyTemplates.invitationShareToken,
       updatedAt: studyTemplates.updatedAt,
+      configJson: studyTemplates.configJson,
     })
     .from(studyTemplates)
     .where(eq(studyTemplates.ownerUserId, ownerUserId))
     .orderBy(desc(studyTemplates.updatedAt));
-  return rows as StudyTemplateSummary[];
+  return rows.map(({ configJson, ...row }) => ({ ...row,
+    invitation: isInvitationTemplate({ ...row, config: JSON.parse(configJson) }),
+  })) as StudyTemplateSummary[];
 }
 
 export async function getTemplate(id: string, ownerUserId: string) {
@@ -78,9 +81,13 @@ export async function saveTemplate(
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Give the template a name.");
   if (trimmed.length > 120) throw new Error("Template names are limited to 120 characters.");
+  if (config.requireSeb && !config.overallTimeLimitSeconds) {
+    throw new Error("Safe Exam Browser requires a timed invitation assessment.");
+  }
 
   const now = new Date().toISOString();
-  const configJson = JSON.stringify(config);
+  const invitation = isInvitationTemplate({ apiKeyPayer, materialUploader, config });
+  const configJson = JSON.stringify({ ...config, invitation });
   const duplicateTemplate = await db
     .select()
     .from(studyTemplates)
@@ -118,7 +125,7 @@ export async function saveTemplate(
       )
       .get();
     if (!existing) throw new Error("Template not found.");
-    if (!isInvitationTemplate(existing)) {
+    if (!isInvitationTemplate({ ...existing, config: JSON.parse(existing.configJson) })) {
       // Publishing an invitation from a loaded configuration must add a test, not replace the
       // configuration with it.
       throw new Error("A saved question configuration cannot be turned into an invitation.");
@@ -135,7 +142,7 @@ export async function saveTemplate(
         apiKeyPayer,
         materialUploader,
         invitationShareToken:
-          apiKeyPayer === "creator" && materialUploader === "creator"
+          !invitation
             ? null
             : existing.invitationShareToken,
         takerAllowlistJson: nextAllowlistJson,
@@ -149,10 +156,11 @@ export async function saveTemplate(
       apiKeyPayer,
       materialUploader,
       invitationShareToken:
-        apiKeyPayer === "creator" && materialUploader === "creator"
+        !invitation
           ? null
           : existing.invitationShareToken,
       updatedAt: now,
+      invitation,
     };
   }
 
@@ -176,6 +184,7 @@ export async function saveTemplate(
     apiKeyPayer,
     materialUploader,
     invitationShareToken: null,
+    invitation,
     updatedAt: now,
   };
 }
@@ -186,7 +195,7 @@ export async function setTemplateSharing(
   enabled: boolean,
 ) {
   const template = await getTemplate(id, ownerUserId);
-  if (template.apiKeyPayer === "creator" && template.materialUploader === "creator") {
+  if (!isInvitationTemplate(template)) {
     throw new Error("Generate this test before publishing its invitation.");
   }
   if (enabled) {
@@ -210,6 +219,19 @@ export async function setTemplateSharing(
   return { invitationShareToken };
 }
 
+export async function setTemplateProctoring(id: string, ownerUserId: string, requireSeb: boolean) {
+  const template = await getTemplate(id, ownerUserId);
+  if (!isInvitationTemplate(template)) throw new Error("Safe Exam Browser is available on invitations.");
+  if (requireSeb && !template.config.overallTimeLimitSeconds) {
+    throw new Error("Safe Exam Browser requires a timed invitation assessment.");
+  }
+  db.update(studyTemplates).set({
+    configJson: JSON.stringify({ ...template.config, requireSeb }),
+    updatedAt: new Date().toISOString(),
+  }).where(and(eq(studyTemplates.id, id), eq(studyTemplates.ownerUserId, ownerUserId))).run();
+  return requireSeb;
+}
+
 export async function getTemplateByInvitationToken(token: string) {
   const row = await db
     .select()
@@ -228,6 +250,14 @@ export async function getTemplateByInvitationToken(token: string) {
     takerAllowlist: readStoredAllowlist(row.takerAllowlistJson),
     config: studyTemplateConfigSchema.parse(JSON.parse(row.configJson)),
   };
+}
+
+/** Reopening an invitation resumes the taker's latest generated assessment. */
+export async function getInvitationAttempt(templateId: string, takerUserId: string) {
+  return db.select({ attemptId: attempts.id }).from(attempts)
+    .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
+    .where(and(eq(questionSets.sourceTemplateId, templateId), eq(attempts.takerUserId, takerUserId)))
+    .orderBy(desc(attempts.createdAt), desc(attempts.id)).get();
 }
 
 export async function setTemplateAllowlist(

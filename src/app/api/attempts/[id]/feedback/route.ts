@@ -10,13 +10,19 @@ import {
 } from "@/db/schema";
 import { requireOpenAttempt } from "@/lib/attempt-access";
 import { assertSameOrigin } from "@/lib/security";
-import { requireUser } from "@/lib/session";
+import { currentUser } from "@/lib/session";
+import { proctoredAttempt, verifiedSebSession } from "@/lib/seb";
 import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
 
-async function requireFeedbackSubmitter(attemptId: string, userId: string) {
+async function requireFeedbackSubmitter(attemptId: string, request: Request, writing = false) {
   await requireOpenAttempt(attemptId);
+  const seb = await verifiedSebSession(attemptId, request);
+  if (writing && proctoredAttempt(attemptId) && !seb) {
+    throw new Error("Submit feedback inside Safe Exam Browser.");
+  }
+  const userId = seb?.takerUserId ?? (await currentUser())?.id;
   const attempt = await db
     .select({
       status: attempts.status,
@@ -25,31 +31,33 @@ async function requireFeedbackSubmitter(attemptId: string, userId: string) {
     .from(attempts)
     .where(eq(attempts.id, attemptId))
     .get();
-  if (!attempt || attempt.takerUserId !== userId) {
+  if (!userId || !attempt || attempt.takerUserId !== userId) {
     throw new Error("Only the examinee can submit feedback.");
   }
   if (attempt.status !== "graded") {
     throw new Error("Feedback opens after grading is complete.");
   }
+  return userId;
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const user = await requireUser();
     const { id } = await context.params;
-    await requireFeedbackSubmitter(id, user.id);
+    await requireFeedbackSubmitter(id, request);
+    const canSubmit = !proctoredAttempt(id) || Boolean(await verifiedSebSession(id, request));
     const submission = await db
       .select({
         submittedAt: attemptFeedback.submittedAt,
+        generalComment: attemptFeedback.generalComment,
       })
       .from(attemptFeedback)
       .where(eq(attemptFeedback.attemptId, id))
       .get();
     if (!submission) {
-      return NextResponse.json({ submitted: false, feedback: null });
+      return NextResponse.json({ submitted: false, feedback: null, canSubmit });
     }
     const comments = await db
       .select({
@@ -60,11 +68,13 @@ export async function GET(
       .where(eq(attemptQuestionFeedback.attemptId, id));
     return NextResponse.json({
       submitted: true,
+      canSubmit,
       feedback: {
         commentsByQuestionId: Object.fromEntries(
           comments.map((row) => [row.questionId, row.comment]),
         ),
         submittedAt: submission.submittedAt,
+        generalComment: submission.generalComment,
       },
     });
   } catch (error) {
@@ -79,9 +89,8 @@ export async function POST(
 ) {
   try {
     assertSameOrigin(request);
-    const user = await requireUser();
     const { id } = await context.params;
-    await requireFeedbackSubmitter(id, user.id);
+    const userId = await requireFeedbackSubmitter(id, request, true);
     const existingFeedback = await db
       .select({ attemptId: attemptFeedback.attemptId })
       .from(attemptFeedback)
@@ -93,7 +102,9 @@ export async function POST(
         { status: 409 },
       );
     }
-    const body = (await request.json()) as { commentsByQuestionId?: unknown };
+    const body = (await request.json()) as { commentsByQuestionId?: unknown; generalComment?: unknown };
+    const generalComment = proctoredAttempt(id) && typeof body.generalComment === "string"
+      ? body.generalComment.trim() : "";
     const rawComments = body.commentsByQuestionId;
     if (
       !rawComments ||
@@ -110,7 +121,7 @@ export async function POST(
         return { questionId, comment: value.trim() };
       },
     );
-    if (comments.reduce((total, item) => total + item.comment.length, 0) > 10_000) {
+    if (comments.reduce((total, item) => total + item.comment.length, generalComment.length) > 10_000) {
       throw new Error("Feedback is limited to 10,000 characters in total.");
     }
     const answers = await db
@@ -128,7 +139,7 @@ export async function POST(
     db.transaction((tx) => {
       const result = tx
         .insert(attemptFeedback)
-        .values({ attemptId: id, submitterUserId: user.id, submittedAt })
+        .values({ attemptId: id, submitterUserId: userId, submittedAt, generalComment: generalComment || null })
         .onConflictDoNothing()
         .run();
       inserted = result.changes === 1;

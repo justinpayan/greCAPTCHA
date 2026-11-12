@@ -255,6 +255,18 @@ export const conferenceSubmissions = sqliteTable(
     }),
     paperName: text("paper_name").notNull(),
     contributions: text("contributions").notNull(),
+    requireSeb: integer("require_seb", { mode: "boolean" }).notNull().default(false),
+    apiKeyPayer: text("api_key_payer"),
+    launchHash: text("launch_hash"),
+    launchExpiresAt: integer("launch_expires_at"),
+    sebSessionHash: text("seb_session_hash"),
+    sebSessionExpiresAt: integer("seb_session_expires_at"),
+    sebFinishedAt: integer("seb_finished_at"),
+    setupEndsAt: integer("setup_ends_at"),
+    examStartedAt: integer("exam_started_at"),
+    lastCheckInAt: integer("last_check_in_at"),
+    recoveredOutages: integer("recovered_outages").notNull().default(0),
+    disqualification: text("disqualification"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -264,8 +276,19 @@ export const conferenceSubmissions = sqliteTable(
     index("conference_submissions_taker_idx").on(table.takerUserId),
     uniqueIndex("conference_submissions_job_unique").on(table.generationJobId),
     uniqueIndex("conference_submissions_attempt_unique").on(table.attemptId),
+    uniqueIndex("conference_submissions_launch_unique").on(table.launchHash),
   ],
 );
+
+export const conferenceCredentials = sqliteTable("conference_credentials", {
+  submissionId: text("submission_id")
+    .primaryKey()
+    .references(() => conferenceSubmissions.id, { onDelete: "cascade" }),
+  ciphertext: text("ciphertext").notNull(),
+  iv: text("iv").notNull(),
+  authTag: text("auth_tag").notNull(),
+  expiresAt: text("expires_at").notNull(),
+});
 
 export const attemptFeedback = sqliteTable(
   "attempt_feedback",
@@ -277,6 +300,7 @@ export const attemptFeedback = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     submittedAt: text("submitted_at").notNull(),
+    generalComment: text("general_comment"),
   },
   (table) => [index("attempt_feedback_submitter_idx").on(table.submitterUserId)],
 );

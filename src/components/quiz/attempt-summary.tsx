@@ -176,6 +176,7 @@ export function AttemptSummary({
       <header className="quiz-header sequential-header">
         <div>
           <h1>{outline.setLabel}</h1>
+          {outline.disqualification && <p role="status">Disqualified · {outline.disqualification}</p>}
           <div className="quiz-meta">
             {/* Only worth showing when the set was named, otherwise it repeats the title. */}
             {outline.setLabel !== outline.paperName && `${outline.paperName} · `}
@@ -202,6 +203,7 @@ export function AttemptSummary({
 
       {/* Status, tested material, and examinee feedback share one card, divided into sections. */}
       <section className="card report-card">
+        {outline.generalFeedback && <p>Assessment feedback · {outline.generalFeedback}</p>}
         <div className="attempt-start-row">
           <div>
             <strong>

@@ -34,6 +34,7 @@ export function AssessmentInvitation({
     apiKeyPayer: ApiKeyPayer;
     materialUploader: MaterialUploader;
     materialFileName: string | null;
+    requireSeb?: boolean;
   };
 }) {
   const [apiKey, setApiKey] = useState("");
@@ -172,6 +173,7 @@ export function AssessmentInvitation({
         </div>
         {template.apiKeyPayer === "taker" && (
           <OpenRouterKeyPanel
+            storeForAssessment={template.requireSeb}
             estimate={
               costEstimate && <CostEstimateNotice estimate={costEstimate} includeGeneration />
             }
@@ -184,7 +186,7 @@ export function AssessmentInvitation({
               setKeyError("");
             }}
             notice={
-              keySource === "paste" && (
+              !template.requireSeb && keySource === "paste" && (
                 <p className="pasted-key-grading-warning">
                   <strong>Important:</strong> A pasted key is used only to generate this assessment
                   and is not stored. When you finish, you will need to paste an OpenRouter API key

@@ -3,7 +3,7 @@ import "server-only";
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { and, asc, count, desc, eq, inArray, lt } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, lt } from "drizzle-orm";
 
 import { db, databaseFile } from "@/db";
 import { attempts, conferenceSubmissions, jobs, questionSets } from "@/db/schema";
@@ -17,7 +17,13 @@ import {
   requireJobKey,
 } from "@/lib/openrouter-key-store";
 import { hydrateAssessmentResult } from "@/lib/attempts";
-import { credentialStatus, requireOpenRouterCredential } from "@/lib/openrouter-credentials";
+import {
+  credentialStatus,
+  deleteConferenceCredential,
+  deleteExpiredConferenceCredentials,
+  requireConferenceCredential,
+  requireOpenRouterCredential,
+} from "@/lib/openrouter-credentials";
 import { decodeJobError, encodeJobError } from "@/lib/openrouter-errors";
 import { publicErrorMessage } from "@/lib/user-facing-error";
 import type { AssessmentResult } from "@/lib/quiz";
@@ -106,7 +112,7 @@ export async function enqueueGenerationJob(
 
 export async function enqueueGradingJob(
   attemptId: string,
-  credential: { apiKey?: string; credentialOwnerUserId?: string },
+  credential: { apiKey?: string; credentialOwnerUserId?: string; conferenceCredentialId?: string },
 ) {
   const row = await db
     .select({
@@ -156,6 +162,7 @@ export async function enqueueGradingJob(
       payloadJson: JSON.stringify({
         attemptId,
         credentialOwnerUserId: credential.credentialOwnerUserId,
+        conferenceCredentialId: credential.conferenceCredentialId,
       }),
       attemptId,
       createdAt: new Date().toISOString(),
@@ -195,6 +202,14 @@ export async function enqueueAutomaticGrading(attemptId: string) {
     .get();
   if (!row) throw new Error("Attempt not found.");
   if (row.apiKeyPayer === "taker") {
+    const conference = db.select({ id: conferenceSubmissions.id })
+      .from(conferenceSubmissions)
+      .where(and(eq(conferenceSubmissions.attemptId, attemptId), eq(conferenceSubmissions.requireSeb, true)))
+      .get();
+    if (conference) {
+      const grading = await enqueueGradingJob(attemptId, { conferenceCredentialId: conference.id });
+      return { pendingEvaluation: true as const, gradingCredentialRequired: false as const, grading };
+    }
     return { pendingEvaluation: true as const, gradingCredentialRequired: true as const };
   }
   const grading = await enqueueGradingJob(attemptId, {
@@ -369,7 +384,9 @@ async function executeJob(job: typeof jobs.$inferSelect & { runCount: number }) 
     let result: unknown;
     if (job.type === "generation") {
       const payload = JSON.parse(job.payloadJson) as GenerationJobPayload;
-      const apiKey = payload.credentialOwnerUserId
+      const apiKey = payload.conferenceCredentialId
+        ? requireConferenceCredential(payload.conferenceCredentialId)
+        : payload.credentialOwnerUserId
         ? await requireOpenRouterCredential(payload.credentialOwnerUserId)
         : requireJobKey(job.id);
       result = await executeGeneration(job.ownerUserId, payload, apiKey, async (current, total) => {
@@ -381,15 +398,19 @@ async function executeJob(job: typeof jobs.$inferSelect & { runCount: number }) 
       });
       fs.rmSync(payload.filePath, { force: true });
     } else if (job.type === "grading") {
-      const { attemptId, credentialOwnerUserId } = JSON.parse(job.payloadJson) as {
+      const { attemptId, credentialOwnerUserId, conferenceCredentialId } = JSON.parse(job.payloadJson) as {
         attemptId: string;
         credentialOwnerUserId?: string;
+        conferenceCredentialId?: string;
       };
-      const apiKey = credentialOwnerUserId
+      const apiKey = conferenceCredentialId
+        ? requireConferenceCredential(conferenceCredentialId)
+        : credentialOwnerUserId
         ? await requireOpenRouterCredential(credentialOwnerUserId)
         : requireJobKey(job.id);
       const { ensureGraded } = await import("@/lib/grading");
       result = await ensureGraded(attemptId, apiKey);
+      if (conferenceCredentialId) deleteConferenceCredential(conferenceCredentialId);
     } else {
       throw new Error("Unknown job type.");
     }
@@ -443,6 +464,7 @@ async function tick() {
   if (ticking) return;
   ticking = true;
   try {
+    deleteExpiredConferenceCredentials();
     await db
       .update(jobs)
       .set({ status: "queued", leaseUntil: null })
@@ -469,8 +491,11 @@ export async function startJobWorker() {
     .from(jobs)
     .where(inArray(jobs.status, ACTIVE_STATUSES));
   for (const job of interrupted) {
-    const payload = JSON.parse(job.payloadJson) as { credentialOwnerUserId?: string };
-    const resumable = Boolean(payload.credentialOwnerUserId);
+    const payload = JSON.parse(job.payloadJson) as {
+      credentialOwnerUserId?: string;
+      conferenceCredentialId?: string;
+    };
+    const resumable = Boolean(payload.credentialOwnerUserId || payload.conferenceCredentialId);
     await db
       .update(jobs)
       .set({
@@ -487,6 +512,12 @@ export async function startJobWorker() {
       .where(eq(jobs.id, job.id))
       .run();
   }
+  const closedBeforeEnqueue = db.select({ id: attempts.id }).from(attempts)
+    .innerJoin(conferenceSubmissions, eq(conferenceSubmissions.attemptId, attempts.id))
+    .leftJoin(jobs, and(eq(jobs.attemptId, attempts.id), eq(jobs.type, "grading")))
+    .where(and(eq(attempts.status, "submitted"), eq(conferenceSubmissions.requireSeb, true),
+      isNull(jobs.id))).all();
+  for (const attempt of closedBeforeEnqueue) await enqueueAutomaticGrading(attempt.id);
   void tick();
   const timer = setInterval(() => void tick(), 1_000);
   timer.unref();

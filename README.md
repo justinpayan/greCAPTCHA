@@ -318,3 +318,34 @@ If you use our work please use the following citation:
   note          = {Justin Payan and B{\'a}lint Gyevn{\'a}r contributed equally.}
 }
 ```
+
+## Safe Exam Browser for conference invitations
+
+Enable **Require Safe Exam Browser** on a timed conference invitation. For an
+author-paid invitation, configure `OPENROUTER_CREDENTIAL_ENCRYPTION_KEY` before
+publishing. greCAPTCHA uses the author's OpenRouter connection for generation and
+grading. Authors connect from their regular browser. Their SEB session only
+authorizes the assigned assessment.
+
+Set these variables on the deployed service:
+
+| Variable | Value |
+| --- | --- |
+| `SEB_PUBLIC_ORIGIN` | Exact public HTTPS origin, with no trailing slash |
+| `SEB_CONFIG_URL` | Same-origin HTTPS URL or absolute path ending in `.seb` |
+| `SEB_BROWSER_EXAM_KEYS` | Comma-separated Browser Exam Keys for the approved SEB builds |
+
+Create the configuration in the SEB Config Tool. Set the Start URL to
+`<origin>/seb/start` and the Quit URL to `<origin>/seb/quit`. Enable **Allow
+Query Parameter**, **Send Browser Exam Key**, and kiosk restrictions. Turn off
+quit confirmation and application switching. Restrict browsing to the same-origin
+start, attempt, assessment API, asset, and quit routes needed for the assessment.
+Serve the configuration at the configured URL and copy the Browser Exam Keys
+from the saved configuration on each approved Windows and macOS build. Keep
+the keys in server configuration and omit launch query strings from proxy logs.
+
+Pilot with a fresh SEB profile on both platforms before publishing. Check the
+automatic handoff and download-and-code fallback, PDF rendering, early and
+automatic countdown completion, answer autosave during an interruption, flagged
+grading, and SEB exit after feedback. Verify that an author can retry grading
+from the regular browser after an OpenRouter credential failure.
