@@ -1102,7 +1102,7 @@
       </dict>
       <dict>
         <key>active</key>
-        <true />
+        <false />
         <key>currentUser</key>
         <true />
         <key>description</key>
@@ -1114,7 +1114,7 @@
         <key>originalName</key>
         <string>Zoom.exe</string>
         <key>os</key>
-        <integer>1</integer>
+        <integer>0</integer>
         <key>strongKill</key>
         <false />
         <key>user</key>
