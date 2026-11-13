@@ -770,13 +770,6 @@ textarea.control {
   min-width: 0;
 }
 
-.dashboard-notice {
-  margin: 0 0 14px;
-  border-left: 3px solid var(--green);
-  padding: 10px 12px;
-  background: var(--green-soft);
-}
-
 /* A button that reads as a link inside running text. */
 .inline-link {
   border: 0;
@@ -791,18 +784,6 @@ textarea.control {
 
 .inline-link:hover {
   color: var(--green);
-}
-
-.dashboard-notice.submit-notice {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  margin: 16px 0 0;
-}
-
-.dashboard-notice.submit-notice > p {
-  flex: 1;
-  margin: 0;
 }
 
 /* A batch's results: every created test with its link, then any manuscript that failed. */
@@ -835,8 +816,76 @@ textarea.control {
   word-break: break-all;
 }
 
-/* The notice's close control, at its top right. */
-.notice-dismiss {
+/*
+ * Notifications: floating at the bottom of the window over whatever the page shows, newest last.
+ * The stack itself lets clicks through to the page; only the notifications catch them.
+ */
+.toast-stack {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  z-index: 1000;
+  display: grid;
+  gap: 8px;
+  width: min(640px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--green);
+  border-radius: 10px;
+  padding: 10px 10px 10px 14px;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgba(25, 49, 39, 0.18);
+  font-size: 1rem;
+  line-height: 1.5;
+  pointer-events: auto;
+  animation: toast-in 200ms ease-out;
+  transition:
+    opacity 300ms ease,
+    transform 300ms ease;
+}
+
+.toast-success {
+  border-left-color: var(--green);
+  background: var(--green-soft);
+}
+
+.toast-error {
+  border-left-color: var(--danger);
+  color: #8f2929;
+  background: #fdecec;
+}
+
+.toast-leaving {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+/* A long batch result scrolls inside its notification rather than covering the window. */
+.toast-body {
+  flex: 1;
+  min-width: 0;
+  max-height: 45vh;
+  overflow-y: auto;
+}
+
+.toast-body p {
+  margin: 0;
+}
+
+/* Links inside a notification keep their monospace face, at the notification's larger size. */
+.toast-body .notice-link {
+  font-size: 0.92rem;
+}
+
+.toast-close {
   display: grid;
   width: 24px;
   height: 24px;
@@ -845,15 +894,38 @@ textarea.control {
   border: 0;
   border-radius: 6px;
   padding: 0;
-  color: var(--green-dark);
+  color: inherit;
   background: transparent;
   font-size: 1.15rem;
   line-height: 1;
 }
 
-.notice-dismiss:hover,
-.notice-dismiss:focus-visible {
-  background: rgba(23, 107, 75, 0.12);
+.toast-close:hover,
+.toast-close:focus-visible {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+
+  .toast-leaving {
+    transform: none;
+  }
+}
+
+@media print {
+  .toast-stack {
+    display: none;
+  }
 }
 
 /* The heading, then the two questions side by side in equal columns across the full width. */

@@ -68,17 +68,21 @@ function keySummary(status: Extract<CredentialStatus, { connected: true }>) {
  *
  * `error` is a key problem the page ran into elsewhere (generating, grading, finishing the
  * OpenRouter sign-in); it is shown here, under the key controls, alongside the panel's own errors.
+ * Given `onNotify`, the panel instead reports its errors, and confirms saved, connected, and
+ * removed keys, through the page's notifications, and shows no messages of its own.
  */
 export function ProfessorOpenRouterPanel({
   error: pageError = "",
   endpoint = "openrouter",
   endpoints = null,
   onEndpointChange,
+  onNotify,
 }: {
   error?: string;
   endpoint?: string;
   endpoints?: EndpointInfo[] | null;
   onEndpointChange?: (endpoint: string) => void;
+  onNotify?: (tone: "success" | "error", message: string) => void;
 }) {
   const [status, setStatus] = useState<CredentialStatus>({ connected: false });
   const [busy, setBusy] = useState<"save" | "disconnect" | null>(null);
@@ -87,6 +91,14 @@ export function ProfessorOpenRouterPanel({
   // An institution gateway has no sign-in flow: its keys are pasted.
   const institution = endpoint !== "openrouter";
   const label = endpoints?.find((entry) => entry.id === endpoint)?.label ?? "OpenRouter";
+  const notify = useRef(onNotify);
+  notify.current = onNotify;
+  /** An error through the page's notifications when it has them, otherwise under the controls. */
+  const report = useCallback((message: string) => {
+    if (notify.current) notify.current("error", message);
+    else setError(message);
+  }, []);
+  const confirm = (message: string) => notify.current?.("success", message);
   // A status that arrives after a switch belongs to the other endpoint and is dropped.
   const shownEndpoint = useRef(endpoint);
   shownEndpoint.current = endpoint;
@@ -104,12 +116,12 @@ export function ProfessorOpenRouterPanel({
     setStatus({ connected: false });
     setError("");
     void refresh().catch((caught) =>
-      setError(userFacingMessage(caught, "Unable to load the API key status.")),
+      report(userFacingMessage(caught, "Unable to load the API key status.")),
     );
     const listener = () => void refresh();
     window.addEventListener("grecaptcha:openrouter-credential-changed", listener);
     return () => window.removeEventListener("grecaptcha:openrouter-credential-changed", listener);
-  }, [refresh]);
+  }, [refresh, report]);
 
   async function connect() {
     setBusy("save");
@@ -117,8 +129,9 @@ export function ProfessorOpenRouterPanel({
     try {
       await beginOpenRouterOAuth("server");
       await refresh();
+      confirm("Connected your OpenRouter key.");
     } catch (caught) {
-      setError(userFacingMessage(caught, "Unable to start OpenRouter sign-in."));
+      report(userFacingMessage(caught, "Unable to start OpenRouter sign-in."));
     } finally {
       setBusy(null);
     }
@@ -135,8 +148,9 @@ export function ProfessorOpenRouterPanel({
       if (!response.ok) throw new Error(payload.error ?? `Unable to disconnect ${label}.`);
       setStatus(payload);
       window.dispatchEvent(new Event("grecaptcha:openrouter-credential-changed"));
+      confirm(`Disconnected your ${label} key.`);
     } catch (caught) {
-      setError(userFacingMessage(caught, `Unable to disconnect ${label}.`));
+      report(userFacingMessage(caught, `Unable to disconnect ${label}.`));
     } finally {
       setBusy(null);
     }
@@ -158,8 +172,9 @@ export function ProfessorOpenRouterPanel({
       if (!response.ok) throw new Error(payload.error ?? `Unable to save the ${label} key.`);
       setStatus(payload);
       window.dispatchEvent(new Event("grecaptcha:openrouter-credential-changed"));
+      confirm(`Saved your ${label} key.`);
     } catch (caught) {
-      setError(userFacingMessage(caught, `Unable to save the ${label} key.`));
+      report(userFacingMessage(caught, `Unable to save the ${label} key.`));
     } finally {
       setBusy(null);
     }

@@ -33,6 +33,7 @@ import {
 import { FieldHint } from "@/components/field-hint";
 import { ManuscriptField } from "@/components/manuscript-field";
 import { ProfessorOpenRouterPanel } from "@/components/professor-openrouter-panel";
+import { ToastStack, type ToastItem } from "@/components/toast-stack";
 import { PrintableQuestionSet } from "@/components/printable-question-set";
 import { SetOverview } from "@/components/set-overview";
 import { WorkflowTag } from "@/components/workflow-tag";
@@ -505,9 +506,19 @@ export function ResearchCaptcha({
   const [expandedTestIds, setExpandedTestIds] = useState<Set<string>>(new Set());
   const [allowlistOpenTestIds, setAllowlistOpenTestIds] = useState<Set<string>>(new Set());
   const [paperError, setPaperError] = useState("");
-  // OpenRouter problems, shown under the key controls in the API Access panel rather than at the
-  // bottom of the form.
+  // Key problems found while generating or grading (a rejected or expired key), shown as a
+  // notification like every other page-wide message.
   const [keyError, setKeyError] = useState("");
+  /** The API Access panel's own messages: failed saves and loads, and confirmed key changes. */
+  const [panelNotices, setPanelNotices] = useState<
+    Array<{ id: number; tone: "success" | "error"; message: string }>
+  >([]);
+  const nextPanelNoticeId = useRef(0);
+  const notifyFromPanel = useCallback((tone: "success" | "error", message: string) => {
+    nextPanelNoticeId.current += 1;
+    const id = nextPanelNoticeId.current;
+    setPanelNotices((current) => [...current, { id, tone, message }]);
+  }, []);
   // A newly saved or connected key answers the last complaint about the old one.
   useEffect(() => {
     const clear = () => setKeyError("");
@@ -1647,8 +1658,8 @@ export function ResearchCaptcha({
   }
 
   /**
-   * Shows a failure where it belongs: OpenRouter problems in the API Access panel (on the course
-   * workflow, the only one that has it on this page), everything else below the form.
+   * Reports a failure as a notification. Key problems are kept apart (`keyError`) so that saving or
+   * connecting a new key clears them.
    */
   function reportError(caught: unknown, fallback: string) {
     const message = userFacingMessage(caught, fallback);
@@ -2007,6 +2018,170 @@ export function ResearchCaptcha({
     );
   }
 
+
+  // Every page-wide message, as notifications floating at the bottom of the window. Problems tied
+  // to one control (a file that is too large, a rejected key) stay beside that control.
+  const toasts: ToastItem[] = [];
+  if (templateStatus) {
+    toasts.push({
+      id: `status:${templateStatus}`,
+      tone: "success",
+      content: <p>{templateStatus}</p>,
+      onClose: () => setTemplateStatus(""),
+    });
+  }
+  if (generationNotice) {
+    toasts.push({
+      id: `created:${generationNotice.link}`,
+      tone: "success",
+      // The new test's link: kept until dismissed, so it is not gone before it is copied.
+      persistent: true,
+      content: (
+        <p>
+          {generationNotice.copied ? (
+            <>
+              Assessment created. A reusable assessment link has been copied to your
+              clipboard.
+            </>
+          ) : (
+            <>
+              Assessment created. Its reusable assessment link is ready:{" "}
+              <span className="notice-link">{generationNotice.link}</span>{" "}
+              <button
+                className="inline-link"
+                type="button"
+                onClick={async () => {
+                  // This click is the user activation the automatic copy lacked.
+                  const copied = await tryCopyToClipboard(generationNotice.link);
+                  setGenerationNotice({ ...generationNotice, copied, copyBlocked: !copied });
+                }}
+              >
+                Copy link
+              </button>
+              .
+              {generationNotice.copyBlocked && (
+                <>
+                  {" "}
+                  Your browser did not allow copying to the clipboard, so select the link
+                  and copy it yourself.
+                </>
+              )}
+            </>
+          )}{" "}
+          <button
+            className="inline-link"
+            type="button"
+            onClick={() => {
+              setMode("resume");
+              // The tabs are at the top; the notice is at the foot of a long form.
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+          >
+            See Tests You&apos;ve Created
+          </button>
+        </p>
+      ),
+      onClose: () => setGenerationNotice(null),
+    });
+  }
+  if (batchNotice) {
+    toasts.push({
+      id: `batch:${batchNotice.created.map((entry) => entry.link).join(",")}:${batchNotice.failed.length}`,
+      tone: batchNotice.created.length === 0 ? "error" : "success",
+      persistent: true,
+      content: (
+        <div className="batch-notice">
+          <p>
+            {batchNotice.created.length} of{" "}
+            {batchNotice.created.length + batchNotice.failed.length}{" "}
+            {apiKeyPayer === "creator" && materialUploader === "creator" && !requireSeb
+              ? "assessments"
+              : "invitations"}{" "}
+            created.{" "}
+            {batchNotice.created.length > 0 && (
+              <button
+                className="inline-link"
+                type="button"
+                onClick={async () => {
+                  // Tab-separated, so the list pastes into a spreadsheet as two columns.
+                  const copied = await tryCopyToClipboard(
+                    batchNotice.created
+                      .map((entry) => `${entry.name}\t${entry.link}`)
+                      .join("\n"),
+                  );
+                  setBatchNotice({ ...batchNotice, copied });
+                }}
+              >
+                {batchNotice.copied ? "Links copied" : "Copy all links"}
+              </button>
+            )}
+            {batchNotice.copied === false && (
+              <>
+                {" "}
+                Your browser did not allow copying to the clipboard, so select the links
+                and copy them yourself.
+              </>
+            )}{" "}
+            <button
+              className="inline-link"
+              type="button"
+              onClick={() => {
+                setMode("resume");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+            >
+              See Tests You&apos;ve Created
+            </button>
+          </p>
+          {batchNotice.created.length > 0 && (
+            <ul className="batch-list">
+              {batchNotice.created.map((entry) => (
+                <li key={entry.link}>
+                  <strong>{entry.name}</strong>{" "}
+                  <span className="notice-link">{entry.link}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {batchNotice.failed.length > 0 && (
+            <>
+              <p className="batch-failed-heading">Not created:</p>
+              <ul className="batch-list">
+                {batchNotice.failed.map((entry, index) => (
+                  <li key={`${entry.name}-${index}`}>
+                    <strong>{entry.name}</strong>: {entry.message}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      ),
+      onClose: () => setBatchNotice(null),
+    });
+  }
+  for (const notice of panelNotices) {
+    toasts.push({
+      id: `panel:${notice.id}`,
+      tone: notice.tone,
+      content: <p>{notice.message}</p>,
+      onClose: () => setPanelNotices((current) => current.filter((entry) => entry.id !== notice.id)),
+    });
+  }
+  if (keyError) {
+    toasts.push({ id: `key:${keyError}`, tone: "error", content: <p>{keyError}</p>, onClose: () => setKeyError("") });
+  }
+  if (shareError) {
+    toasts.push({
+      id: `share:${shareError}`,
+      tone: "error",
+      content: <p>{shareError}</p>,
+      onClose: () => setShareError(""),
+    });
+  }
+  if (error) {
+    toasts.push({ id: `error:${error}`, tone: "error", content: <p>{error}</p>, onClose: () => setError("") });
+  }
   return (
     <main className="app-shell dashboard-shell">
       <div className="brand">
@@ -2183,12 +2358,6 @@ export function ResearchCaptcha({
         </div>
       )}
 
-      {mode !== "custom" && templateStatus && (
-        <p className="template-status dashboard-notice" role="status">
-          {templateStatus}
-        </p>
-      )}
-
       {mode === "custom" && (
         <section className="card template-card">
           <div className="template-heading">
@@ -2259,7 +2428,6 @@ export function ResearchCaptcha({
               </button>
             </div>
           </div>
-          {templateStatus && <p className="template-status">{templateStatus}</p>}
         </section>
       )}
 
@@ -2381,16 +2549,6 @@ export function ResearchCaptcha({
             </div>
           ) : (
             <>
-              {error && (
-                <p className="error" role="alert">
-                  {error}
-                </p>
-              )}
-              {shareError && (
-                <p className="error" role="alert">
-                  {shareError}
-                </p>
-              )}
               <div className="catalog-list">
                 {visibleCreatedTests.length === 0 && (
                   <p className="hint catalog-empty">
@@ -2664,7 +2822,7 @@ export function ResearchCaptcha({
         >
           {apiKeyPayer === "creator" && (
             <ProfessorOpenRouterPanel
-              error={keyError}
+              onNotify={notifyFromPanel}
               endpoint={endpoint}
               endpoints={endpoints}
               onEndpointChange={chooseEndpoint}
@@ -3286,7 +3444,6 @@ export function ResearchCaptcha({
             </div>
           )}
 
-          {error && <p className="error" role="alert">{error}</p>}
           <div className="submit-row">
             {apiKeyPayer === "creator" &&
               materialUploader === "creator" && !requireSeb &&
@@ -3326,142 +3483,6 @@ export function ResearchCaptcha({
                     : "Generate question set"}
             </button>
           </div>
-          {/* Beneath the button that produced it, so the result appears where the eye already is. */}
-          {generationNotice && (
-            <div className="template-status dashboard-notice submit-notice" role="status">
-              <p>
-                {generationNotice.copied ? (
-                  <>
-                    Assessment created. A reusable assessment link has been copied to your
-                    clipboard.
-                  </>
-                ) : (
-                  <>
-                    Assessment created. Its reusable assessment link is ready:{" "}
-                    <span className="notice-link">{generationNotice.link}</span>{" "}
-                    <button
-                      className="inline-link"
-                      type="button"
-                      onClick={async () => {
-                        // This click is the user activation the automatic copy lacked.
-                        const copied = await tryCopyToClipboard(generationNotice.link);
-                        setGenerationNotice({ ...generationNotice, copied, copyBlocked: !copied });
-                      }}
-                    >
-                      Copy link
-                    </button>
-                    .
-                    {generationNotice.copyBlocked && (
-                      <>
-                        {" "}
-                        Your browser did not allow copying to the clipboard, so select the link
-                        and copy it yourself.
-                      </>
-                    )}
-                  </>
-                )}{" "}
-                <button
-                  className="inline-link"
-                  type="button"
-                  onClick={() => {
-                    setMode("resume");
-                    // The tabs are at the top; the notice is at the foot of a long form.
-                    window.scrollTo({ top: 0, behavior: "smooth" });
-                  }}
-                >
-                  See Tests You&apos;ve Created
-                </button>
-              </p>
-              <button
-                className="notice-dismiss"
-                type="button"
-                aria-label="Dismiss this notice"
-                title="Dismiss"
-                onClick={() => setGenerationNotice(null)}
-              >
-                ×
-              </button>
-            </div>
-          )}
-          {batchNotice && (
-            <div className="template-status dashboard-notice submit-notice" role="status">
-              <div className="batch-notice">
-                <p>
-                  {batchNotice.created.length} of{" "}
-                  {batchNotice.created.length + batchNotice.failed.length}{" "}
-                  {apiKeyPayer === "creator" && materialUploader === "creator" && !requireSeb
-                    ? "assessments"
-                    : "invitations"}{" "}
-                  created.{" "}
-                  {batchNotice.created.length > 0 && (
-                    <button
-                      className="inline-link"
-                      type="button"
-                      onClick={async () => {
-                        // Tab-separated, so the list pastes into a spreadsheet as two columns.
-                        const copied = await tryCopyToClipboard(
-                          batchNotice.created
-                            .map((entry) => `${entry.name}\t${entry.link}`)
-                            .join("\n"),
-                        );
-                        setBatchNotice({ ...batchNotice, copied });
-                      }}
-                    >
-                      {batchNotice.copied ? "Links copied" : "Copy all links"}
-                    </button>
-                  )}
-                  {batchNotice.copied === false && (
-                    <>
-                      {" "}
-                      Your browser did not allow copying to the clipboard, so select the links
-                      and copy them yourself.
-                    </>
-                  )}{" "}
-                  <button
-                    className="inline-link"
-                    type="button"
-                    onClick={() => {
-                      setMode("resume");
-                      window.scrollTo({ top: 0, behavior: "smooth" });
-                    }}
-                  >
-                    See Tests You&apos;ve Created
-                  </button>
-                </p>
-                {batchNotice.created.length > 0 && (
-                  <ul className="batch-list">
-                    {batchNotice.created.map((entry) => (
-                      <li key={entry.link}>
-                        <strong>{entry.name}</strong>{" "}
-                        <span className="notice-link">{entry.link}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {batchNotice.failed.length > 0 && (
-                  <>
-                    <p className="batch-failed-heading">Not created:</p>
-                    <ul className="batch-list">
-                      {batchNotice.failed.map((entry, index) => (
-                        <li key={`${entry.name}-${index}`}>
-                          <strong>{entry.name}</strong>: {entry.message}
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-              </div>
-              <button
-                className="notice-dismiss"
-                type="button"
-                aria-label="Dismiss this notice"
-                title="Dismiss"
-                onClick={() => setBatchNotice(null)}
-              >
-                ×
-              </button>
-            </div>
-          )}
         </form>
       )}
       </div>
@@ -3480,6 +3501,7 @@ export function ResearchCaptcha({
           </div>,
           document.body,
         )}
+      <ToastStack items={toasts} />
     </main>
   );
 }
