@@ -5,17 +5,20 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { attempts, conferenceSubmissions, questionSets } from "@/db/schema";
 import { createAttempt } from "@/lib/attempts";
+import { assertBundleFits, parseBundle } from "@/lib/code-bundle";
 import { readEncryptedFile } from "@/lib/data-encryption";
 import { serializeAllowlist } from "@/lib/allowlist";
 import { persistManuscript } from "@/lib/manuscripts";
 import { extractPdfTitle } from "@/lib/pdf-title";
 import {
+  type GenerationMaterial,
   generateQuestionBlock,
   getOpenRouterModels,
 } from "@/lib/openrouter";
 import {
   orderQuestions,
   type ApiKeyPayer,
+  type MaterialKind,
   type MaterialUploader,
   prepareFillQuestions,
   prepareFixedRubricQuestions,
@@ -39,6 +42,8 @@ export type GenerationJobPayload = {
   taker?: { id: string; username: string };
   filePath: string;
   fileName: string;
+  /** Absent on jobs queued before codebases were supported, which were all PDFs. */
+  materialKind?: MaterialKind;
   setName: string;
   contributions: string;
   modelId: string;
@@ -100,25 +105,35 @@ export async function executeGeneration(
     (model) => model.id === payload.modelId,
   );
   if (!selectedModel) throw new Error("The selected OpenRouter model is no longer available.");
-  if (payload.pdfEngine === "native" && !selectedModel.inputModalities.includes("file")) {
-    throw new Error("The selected model does not advertise native PDF support.");
-  }
-
+  const materialKind = payload.materialKind ?? "pdf";
   const bytes = readEncryptedFile(payload.filePath, "job-upload");
-  const file = new File([new Uint8Array(bytes)], payload.fileName, {
-    type: "application/pdf",
-  });
+  let material: GenerationMaterial;
+  if (materialKind === "code") {
+    const bundle = parseBundle(bytes);
+    // Checked again here, against the model the job actually runs on, because the catalog the
+    // form was checked against can change between submission and the job starting.
+    assertBundleFits(bundle, selectedModel);
+    material = { kind: "code", bundle };
+  } else {
+    if (payload.pdfEngine === "native" && !selectedModel.inputModalities.includes("file")) {
+      throw new Error("The selected model does not advertise native PDF support.");
+    }
+    material = {
+      kind: "pdf",
+      file: new File([new Uint8Array(bytes)], payload.fileName, { type: "application/pdf" }),
+      pdfEngine: payload.pdfEngine,
+    };
+  }
   const questions: StoredQuestion[] = [];
   for (let index = 0; index < payload.blocks.length; index += 1) {
     const block = payload.blocks[index];
     const generated = await generateQuestionBlock({
       apiKey,
-      file,
+      material,
       contributions: payload.contributions,
       block,
       previousQuestions: questions,
       modelId: payload.modelId,
-      pdfEngine: payload.pdfEngine,
     });
     if (generated.type === "fill_blank") {
       questions.push(
@@ -145,15 +160,16 @@ export async function executeGeneration(
 
   // The job upload is temporary. Preserve the exact manuscript used for generation before the
   // question set becomes visible, so every attempt can display the same source document.
-  persistManuscript(payload.filePath, payload.questionSetId);
+  persistManuscript(payload.filePath, payload.questionSetId, materialKind);
   // Read once here rather than on every attempt load; null when the PDF declares no usable title.
-  const paperTitle = await extractPdfTitle(bytes);
+  const paperTitle = materialKind === "pdf" ? await extractPdfTitle(bytes) : null;
   await db.insert(questionSets).values({
     id: payload.questionSetId,
     ownerUserId,
     sourceTemplateId: payload.sourceTemplateId ?? null,
     apiKeyPayer: payload.apiKeyPayer,
     materialUploader: payload.materialUploader,
+    materialKind,
     schemaVersion: 1,
     name: payload.setName || null,
     paperName: payload.fileName,

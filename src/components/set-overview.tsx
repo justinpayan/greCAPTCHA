@@ -235,7 +235,9 @@ export function SetOverview({
 
       const notes: string[] = [];
       if (nameChanged) {
-        notes.push(savedName ? "Name saved." : "Name cleared — the PDF filename is used instead.");
+        notes.push(savedName ? "Name saved." : overview.materialKind === "code"
+          ? "Name cleared — the codebase's name is used instead."
+          : "Name cleared — the PDF filename is used instead.");
       }
       if (limitChanged) {
         notes.push(
@@ -283,7 +285,11 @@ export function SetOverview({
           <h1>{name.trim() || overview.paperName}</h1>
           <div className="quiz-meta">
             {overview.paperName} · {overview.modelId} ·{" "}
-            {overview.pdfEngine === "native" ? "native parsing" : overview.pdfEngine}
+            {overview.materialKind === "code"
+              ? "codebase"
+              : overview.pdfEngine === "native"
+                ? "native parsing"
+                : overview.pdfEngine}
           </div>
         </div>
         <div className="summary-header-side">

@@ -28,6 +28,7 @@ import {
   type AttemptView,
   type CriterionGrade,
   type FillReview,
+  type MaterialKind,
   type QuestionReview,
   type QuestionTiming,
   type Rubric,
@@ -303,6 +304,7 @@ export async function getAttemptState(
       attemptId,
       questionSetId: set.id,
       paperName: set.paperName,
+      materialKind: set.materialKind === "code" ? "code" : "pdf",
       paperTitle: set.paperTitle ?? null,
       currentIndex: attempt.currentIndex,
       totalQuestions: order.length,
@@ -551,6 +553,7 @@ export function buildResult(input: {
   questionSetId: string;
   takerUsername: string | null;
   paperName: string;
+  materialKind?: MaterialKind;
   contributions: string;
   order: string[];
   questions: StoredQuestion[];
@@ -630,6 +633,7 @@ export function buildResult(input: {
     questionSetId: input.questionSetId,
     takerUsername: input.takerUsername,
     paperName: input.paperName,
+    ...(input.materialKind === "code" ? { materialKind: "code" as const } : {}),
     contributions: input.contributions,
     overallScore: scoredReviews.length ? Math.round(overallScore * 10) / 10 : 0,
     scoredQuestionCount: scoredReviews.length,

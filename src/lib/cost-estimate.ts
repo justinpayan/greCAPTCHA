@@ -9,8 +9,9 @@ import { attemptAnswers } from "@/db/schema";
 import { loadAttemptContext } from "@/lib/attempts";
 import { manuscriptPath, readManuscript, readTemplateMaterial, templateMaterialPath } from "@/lib/manuscripts";
 import { getOpenRouterModels } from "@/lib/openrouter";
+import { bundleTokens, parseBundle } from "@/lib/code-bundle";
 import { countPdfPages } from "@/lib/pdf-title";
-import type { PdfEngine, QuestionBlockConfig, StoredQuestion } from "@/lib/quiz";
+import { materialKindOf, type PdfEngine, type QuestionBlockConfig, type StoredQuestion } from "@/lib/quiz";
 
 /**
  * Rough OpenRouter cost estimates for a test taker who pays with their own key.
@@ -26,6 +27,36 @@ import type { PdfEngine, QuestionBlockConfig, StoredQuestion } from "@/lib/quiz"
 const PDF_TOKENS_PER_PAGE = { low: 700, high: 1_600 };
 /** The manuscript length assumed when the taker has not uploaded theirs yet. */
 export const TYPICAL_PAGE_COUNT = 20;
+/** A student project's source when the taker has not uploaded theirs yet, in tokens. */
+export const TYPICAL_CODE_TOKENS = 40_000;
+/**
+ * A codebase's tokens at the low end, relative to the stored estimate, which counts three
+ * characters a token so as to refuse a codebase too large rather than fail on it; real tokenizers
+ * manage closer to four.
+ */
+const CODE_TOKENS_LOW_SHARE = 0.75;
+
+/**
+ * The source material as model input on one request, and what any per-request extraction costs:
+ * the PDF's pages, or for a codebase its line-numbered text, which needs no extraction.
+ */
+function materialInput(
+  input: { pages?: number; pdfEngine?: PdfEngine; codeTokens?: number },
+  bound: "low" | "high",
+): { tokens: number; fee: number } {
+  if (input.codeTokens !== undefined) {
+    return {
+      tokens: bound === "low" ? input.codeTokens * CODE_TOKENS_LOW_SHARE : input.codeTokens,
+      fee: 0,
+    };
+  }
+  const pages = input.pages ?? TYPICAL_PAGE_COUNT;
+  return {
+    tokens: pages * PDF_TOKENS_PER_PAGE[bound],
+    fee: pages * (OCR_PRICE_PER_PAGE[input.pdfEngine ?? "native"] ?? 0),
+  };
+}
+
 /** Generation instructions, the contribution statement, and the questions made so far. */
 const GENERATION_PROMPT_TOKENS = 2_500;
 const PREVIOUS_QUESTION_TOKENS = 350;
@@ -51,30 +82,33 @@ function cost(tokens: Tokens, price: ModelPrice) {
 }
 
 /**
- * Generating a set: one request per question family, each sending the whole PDF. The OCR engine,
- * where one is used, is charged per page on each of those requests.
+ * Generating a set: one request per question family, each sending the whole PDF or codebase. The
+ * OCR engine, where one is used, is charged per page on each of those requests. `codeTokens`, when
+ * given, replaces the PDF: the codebase's size in tokens.
  */
 export function generationCost(input: {
   price: ModelPrice;
   blocks: Array<Pick<QuestionBlockConfig, "count" | "candidatePoolSize">>;
   pages: number;
   pdfEngine: PdfEngine;
+  codeTokens?: number;
 }): CostRange {
   const range = (bound: "low" | "high") => {
+    const material = materialInput(input, bound);
     let total = 0;
     let generatedSoFar = 0;
     for (const block of input.blocks) {
       total += cost(
         {
           input:
-            input.pages * PDF_TOKENS_PER_PAGE[bound] +
+            material.tokens +
             GENERATION_PROMPT_TOKENS +
             generatedSoFar * PREVIOUS_QUESTION_TOKENS,
           output: block.candidatePoolSize * GENERATED_QUESTION_TOKENS[bound],
         },
         input.price,
       );
-      total += input.pages * (OCR_PRICE_PER_PAGE[input.pdfEngine] ?? 0);
+      total += material.fee;
       generatedSoFar += block.count;
     }
     return total;
@@ -94,25 +128,29 @@ export function gradingCost(input: {
   answerTokens?: number[];
   pages?: number;
   pdfEngine?: PdfEngine;
+  /** For a codebase: its size in tokens, in place of the PDF's pages. */
+  codeTokens?: number;
 }): CostRange {
   const questions = input.freeResponseBlocks.reduce((sum, count) => sum + count, 0);
   if (questions === 0) return { low: 0, high: 0 };
   const answers =
     input.answerTokens?.reduce((sum, tokens) => sum + tokens, 0) ??
     questions * TYPICAL_ANSWER_TOKENS;
-  const range = (bound: "low" | "high") =>
-    cost(
-      {
-        input:
-          input.freeResponseBlocks.length * (GRADING_PROMPT_TOKENS +
-            (input.pages ?? TYPICAL_PAGE_COUNT) * PDF_TOKENS_PER_PAGE[bound]) +
-          questions * GRADING_RUBRIC_TOKENS +
-          answers,
-        output: questions * GRADED_ANSWER_TOKENS[bound],
-      },
-      input.price,
-    ) + input.freeResponseBlocks.length * (input.pages ?? TYPICAL_PAGE_COUNT) *
-      (OCR_PRICE_PER_PAGE[input.pdfEngine ?? "native"] ?? 0);
+  const range = (bound: "low" | "high") => {
+    const material = materialInput(input, bound);
+    return (
+      cost(
+        {
+          input:
+            input.freeResponseBlocks.length * (GRADING_PROMPT_TOKENS + material.tokens) +
+            questions * GRADING_RUBRIC_TOKENS +
+            answers,
+          output: questions * GRADED_ANSWER_TOKENS[bound],
+        },
+        input.price,
+      ) + input.freeResponseBlocks.length * material.fee
+    );
+  };
   return { low: range("low"), high: range("high") };
 }
 
@@ -166,6 +204,8 @@ export type CostEstimate = {
   /** The page count the generation estimate uses, and whether it is the real manuscript's. */
   pages: number;
   pagesKnown: boolean;
+  /** For a codebase, its size in tokens in place of pages; `pagesKnown` says whether it is real. */
+  codeTokens?: number;
 };
 
 /**
@@ -175,17 +215,26 @@ export type CostEstimate = {
 export async function invitationCostEstimate(template: {
   id: string;
   materialUploader: string;
-  config: { modelId: string; pdfEngine: PdfEngine; blocks: QuestionBlockConfig[] };
+  config: {
+    modelId: string;
+    pdfEngine: PdfEngine;
+    blocks: QuestionBlockConfig[];
+    materialKind?: "pdf" | "code";
+  };
 }): Promise<CostEstimate> {
   const details = await modelDetails(template.config.modelId);
+  const code = materialKindOf(template.config) === "code";
   let pages: number | null = null;
+  let knownCodeTokens: number | null = null;
   if (template.materialUploader === "creator") {
-    const materialPath = templateMaterialPath(template.id);
+    const materialPath = templateMaterialPath(template.id, code ? "code" : "pdf");
     if (fs.existsSync(materialPath)) {
-      pages = await countPdfPages(readTemplateMaterial(template.id));
+      if (code) knownCodeTokens = bundleTokens(parseBundle(readTemplateMaterial(template.id, "code")));
+      else pages = await countPdfPages(readTemplateMaterial(template.id));
     }
   }
   const pageCount = pages ?? TYPICAL_PAGE_COUNT;
+  const codeTokens = code ? (knownCodeTokens ?? TYPICAL_CODE_TOKENS) : undefined;
   const freeResponseBlocks = template.config.blocks
     .filter((block) => block.type === "free_response")
     .map((block) => block.count);
@@ -198,20 +247,25 @@ export async function invitationCostEstimate(template: {
           blocks: template.config.blocks,
           pages: pageCount,
           pdfEngine: template.config.pdfEngine,
+          codeTokens,
         })
       : null,
     grading: details?.price ? gradingCost({ price: details.price, freeResponseBlocks,
-      pages: pageCount, pdfEngine: template.config.pdfEngine }) : null,
+      pages: pageCount, pdfEngine: template.config.pdfEngine, codeTokens }) : null,
     pages: pageCount,
-    pagesKnown: pages !== null,
+    pagesKnown: code ? knownCodeTokens !== null : pages !== null,
+    ...(codeTokens !== undefined ? { codeTokens } : {}),
   };
 }
 
 /** The estimate for grading one attempt, from its actual free-response answers. */
 export async function attemptGradingCostEstimate(attemptId: string): Promise<CostEstimate> {
   const context = await loadAttemptContext(attemptId);
-  const pages = fs.existsSync(manuscriptPath(context.set.id))
+  const code = context.set.materialKind === "code";
+  const pages = !code && fs.existsSync(manuscriptPath(context.set.id))
     ? await countPdfPages(readManuscript(context.set.id)) : null;
+  const codeTokens = code && fs.existsSync(manuscriptPath(context.set.id, "code"))
+    ? bundleTokens(parseBundle(readManuscript(context.set.id, "code"))) : undefined;
   const details = await modelDetails(context.set.modelId);
   const answers = await db
     .select({ questionId: attemptAnswers.questionId, answerJson: attemptAnswers.answerJson })
@@ -241,6 +295,7 @@ export async function attemptGradingCostEstimate(attemptId: string): Promise<Cos
           price: details.price,
           pages: pages ?? TYPICAL_PAGE_COUNT,
           pdfEngine: context.set.pdfEngine as PdfEngine,
+          codeTokens,
           freeResponseBlocks: [...perBlock.values()],
           answerTokens: gradable.map((question) =>
             tokensForText(responseById.get(question.id) ?? ""),
@@ -248,6 +303,7 @@ export async function attemptGradingCostEstimate(attemptId: string): Promise<Cos
         })
       : null,
     pages: pages ?? TYPICAL_PAGE_COUNT,
-    pagesKnown: pages !== null,
+    pagesKnown: code ? codeTokens !== undefined : pages !== null,
+    ...(codeTokens !== undefined ? { codeTokens } : {}),
   };
 }

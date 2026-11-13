@@ -683,7 +683,11 @@ export function ResultView({
   onFinish?: () => Promise<void>;
 }) {
   return (
-    <PdfAssessmentSplit attemptId={result.attemptId} pdfLabel={pdfLabel || result.paperName}>
+    <PdfAssessmentSplit
+      attemptId={result.attemptId}
+      pdfLabel={pdfLabel || result.paperName}
+      materialKind={result.materialKind}
+    >
       <main className="app-shell">
         {collectFeedback ? (
           <ExamineeFeedbackReview result={result} onBack={onBack} onFinish={onFinish} />
@@ -1107,7 +1111,12 @@ export function QuizWorkspace({
   }
 
   return (
-    <PdfAssessmentSplit attemptId={attempt.attemptId} pdfLabel={attempt.paperName}>
+    <PdfAssessmentSplit
+      attemptId={attempt.attemptId}
+      pdfLabel={attempt.paperName}
+      materialKind={attempt.materialKind}
+      anchor={attempt.question.sourceLocation}
+    >
       <main className="app-shell assessment-layout">
       <header className="quiz-header sequential-header">
         <div>

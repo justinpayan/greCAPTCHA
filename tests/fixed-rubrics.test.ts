@@ -114,12 +114,11 @@ describe("fixed rubrics", () => {
     });
     const result = await generateQuestionBlock({
       apiKey: "sk-or-test",
-      file: new File([new Uint8Array([37, 80, 68, 70])], "paper.pdf"),
+      material: { kind: "pdf", file: new File([new Uint8Array([37, 80, 68, 70])], "paper.pdf"), pdfEngine: "native" },
       contributions: "",
       block: setAside,
       previousQuestions: [],
       modelId: "test/model",
-      pdfEngine: "native",
     });
     expect(sent[0]).toBe("research_captcha_free_response_questions");
     expect(sent[1]).toContain("Rubric generation instructions:\nWrite criteria with three levels.");
@@ -159,12 +158,11 @@ describe("fixed rubrics", () => {
     const sent = stubProvider({ questions: [generatedQuestion] });
     const result = await generateQuestionBlock({
       apiKey: "sk-or-test",
-      file: new File([new Uint8Array([37, 80, 68, 70])], "paper.pdf", { type: "application/pdf" }),
+      material: { kind: "pdf", file: new File([new Uint8Array([37, 80, 68, 70])], "paper.pdf", { type: "application/pdf" }), pdfEngine: "native" },
       contributions: "",
       block,
       previousQuestions: [],
       modelId: "test/model",
-      pdfEngine: "native",
     });
     expect(sent[0]).toBe("research_captcha_fixed_rubric_questions");
     expect(sent[1]).toContain(JSON.stringify(fixedRubricSchema.parse(rubric)));
@@ -177,12 +175,11 @@ describe("fixed rubrics", () => {
     await expect(
       generateQuestionBlock({
         apiKey: "sk-or-test",
-        file: new File([new Uint8Array([37, 80, 68, 70])], "paper.pdf"),
+        material: { kind: "pdf", file: new File([new Uint8Array([37, 80, 68, 70])], "paper.pdf"), pdfEngine: "native" },
         contributions: "",
         block,
         previousQuestions: [],
         modelId: "test/model",
-        pdfEngine: "native",
       }),
     ).rejects.toThrow(/1 rubric notes instead of 2/);
   });
@@ -220,8 +217,7 @@ describe("fixed rubrics", () => {
       }],
     });
     const graded = await gradeFreeResponseBlock({
-    file: new File(["%PDF-1.7 grading source"], "source.pdf", { type: "application/pdf" }),
-    pdfEngine: "native",
+    material: { kind: "pdf", file: new File(["%PDF-1.7 grading source"], "source.pdf", { type: "application/pdf" }), pdfEngine: "native" },
       apiKey: "sk-or-test",
       modelId: "test/model",
       questions: [question as StoredFreeResponseQuestion],
@@ -264,8 +260,7 @@ describe("fixed rubrics", () => {
       }],
     });
     const graded = await gradeFreeResponseBlock({
-    file: new File(["%PDF-1.7 grading source"], "source.pdf", { type: "application/pdf" }),
-    pdfEngine: "native",
+    material: { kind: "pdf", file: new File(["%PDF-1.7 grading source"], "source.pdf", { type: "application/pdf" }), pdfEngine: "native" },
       apiKey: "sk-or-test",
       modelId: "test/model",
       questions: [question],

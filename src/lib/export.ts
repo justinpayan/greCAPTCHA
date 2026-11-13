@@ -66,7 +66,20 @@ const COLUMNS = [
   "examinee_feedback_submitted_at",
   "proctoring_disqualification",
   "examinee_general_feedback",
+  // Appended rather than placed by `paper_name`, so analyses that read columns by position keep
+  // working on exports made before codebases were supported.
+  "material_kind",
+  "source_location",
 ] as const;
+
+/** Where a question draws on: its PDF page, or its file and lines in a codebase. */
+function sourceLocationLabel(question: StoredQuestion | undefined): string {
+  if (question?.sourceLocation) {
+    const { path, startLine, endLine } = question.sourceLocation;
+    return startLine === endLine ? `${path}:${startLine}` : `${path}:${startLine}-${endLine}`;
+  }
+  return question?.sourcePage ? `page ${question.sourcePage}` : "";
+}
 
 /** RFC 4180 quoting: a field is quoted when it holds a quote, comma, or newline. */
 function csvField(value: unknown): string {
@@ -229,6 +242,8 @@ export async function buildAnswerCsv(
         examineeFeedbackSubmission?.submittedAt ?? "",
         disqualification,
         examineeFeedbackSubmission?.generalComment,
+        set.materialKind,
+        sourceLocationLabel(question),
       ]
         .map(csvField)
         .join(","),

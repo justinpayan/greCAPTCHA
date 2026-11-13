@@ -104,6 +104,7 @@ export async function getQuestionSetOverview(id: string, ownerUserId: string): P
     paperName: set.paperName,
     modelId: set.modelId,
     pdfEngine: set.pdfEngine,
+    materialKind: set.materialKind === "code" ? "code" : "pdf",
     overallTimeLimitSeconds: set.overallTimeLimitSeconds,
     attemptCount: attemptTotal?.total ?? 0,
     createdAt: set.createdAt,

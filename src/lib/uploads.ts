@@ -86,3 +86,18 @@ export function uploadTooLargeMessage(bytes: number | null): string {
     `Use a smaller PDF, or a shorter statement, and try again.`
   );
 }
+
+/** The most a codebase ZIP may weigh: the same share of the request budget a PDF gets. */
+export const MAX_ZIP_BYTES = MAX_PDF_BYTES;
+
+/** Advertised ZIP ceiling, e.g. "9.9 MiB". */
+export const MAX_ZIP_LABEL = formatBytes(MAX_ZIP_BYTES);
+
+/** Why an oversized ZIP was refused, and the usual way out: dependencies and build output. */
+export function zipTooLargeMessage(bytes: number): string {
+  return (
+    `This ZIP is ${formatBytes(bytes - MAX_ZIP_BYTES)} over the limit. An upload may total ` +
+    `${MAX_UPLOAD_LABEL}, so the archive itself must be ${MAX_ZIP_LABEL} or smaller. Leave out ` +
+    `dependency folders (such as node_modules or .venv), build output, and data files, and zip it again.`
+  );
+}

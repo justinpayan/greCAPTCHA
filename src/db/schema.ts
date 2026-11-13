@@ -162,6 +162,8 @@ export const questionSets = sqliteTable(
     }),
     apiKeyPayer: text("api_key_payer").notNull().default("creator"),
     materialUploader: text("material_uploader").notNull().default("creator"),
+    /** "pdf" for a manuscript, "code" for a codebase; decides how the stored material is read. */
+    materialKind: text("material_kind").notNull().default("pdf"),
     schemaVersion: integer("schema_version").notNull().default(1),
     /** Human-chosen label for the set. Falls back to the PDF filename when left blank. */
     name: text("name"),

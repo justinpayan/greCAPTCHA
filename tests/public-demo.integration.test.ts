@@ -607,6 +607,7 @@ describe("public demo account-to-grade flow", () => {
       "correct_answer", "correct", "grader_feedback", "examinee_feedback",
       "examinee_feedback_submitted_at",
       "proctoring_disqualification", "examinee_general_feedback",
+      "material_kind", "source_location",
     ]);
     sessionState.token = await createAccountSession(bob.id);
     expect((await getAttemptState(attemptId)).result?.overallScore).toBe(100);

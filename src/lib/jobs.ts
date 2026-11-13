@@ -76,7 +76,7 @@ export async function enqueueGenerationJob(
   const id = randomUUID();
   const root = uploadRoot();
   fs.mkdirSync(root, { recursive: true });
-  const filePath = path.join(root, `${id}.pdf`);
+  const filePath = path.join(root, `${id}${input.materialKind === "code" ? ".code.json" : ".pdf"}`);
   writeEncryptedFile(
     filePath,
     Buffer.from(await file.arrayBuffer()),

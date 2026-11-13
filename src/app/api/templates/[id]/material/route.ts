@@ -5,6 +5,8 @@ import { db } from "@/db";
 import { studyTemplates } from "@/db/schema";
 import { loadManuscript, ManuscriptTooLargeError, readManuscriptSource } from "@/lib/manuscript-input";
 import { persistTemplateMaterial } from "@/lib/manuscripts";
+import { bundleUpload, loadCodebase, readCodebaseSource } from "@/lib/codebase-input";
+import { materialKindOf } from "@/lib/quiz";
 import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
 import { getTemplate } from "@/lib/templates";
@@ -25,9 +27,13 @@ export async function POST(
       throw new Error("This test is configured for the test taker to upload source material.");
     }
     const form = await request.formData();
-    const file = await loadManuscript(readManuscriptSource(form));
+    const materialKind = materialKindOf(template.config);
+    const file =
+      materialKind === "code"
+        ? bundleUpload(await loadCodebase(readCodebaseSource(form), template.config.modelId))
+        : await loadManuscript(readManuscriptSource(form));
     const contributions = String(form.get("contributions") ?? "");
-    await persistTemplateMaterial(file, id);
+    await persistTemplateMaterial(file, id, materialKind);
     await db
       .update(studyTemplates)
       .set({

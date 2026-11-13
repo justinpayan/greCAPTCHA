@@ -8,6 +8,14 @@ export const apiKeyPayers = ["creator", "taker"] as const;
 export const apiKeyPayerSchema = z.enum(apiKeyPayers);
 export type ApiKeyPayer = z.infer<typeof apiKeyPayerSchema>;
 
+/** What questions are generated from: a manuscript PDF, or a code repository. */
+export const materialKinds = ["pdf", "code"] as const;
+export const materialKindSchema = z.enum(materialKinds);
+export type MaterialKind = z.infer<typeof materialKindSchema>;
+
+/** Where in a codebase a question draws on: a file and a line range, both 1-based and inclusive. */
+export type SourceLocation = { path: string; startLine: number; endLine: number };
+
 export const materialUploaders = ["creator", "taker"] as const;
 export const materialUploaderSchema = z.enum(materialUploaders);
 export type MaterialUploader = z.infer<typeof materialUploaderSchema>;
@@ -226,6 +234,8 @@ export const studyTemplateConfigSchema = z.object({
   /** Keeps creator-paid SEB invitations as invitations if proctoring is later disabled. */
   invitation: z.boolean().optional(),
   requireSeb: z.boolean().optional(),
+  /** Absent on configurations saved before codebases were supported, which were all PDFs. */
+  materialKind: materialKindSchema.optional(),
   modelId: z.string().max(200).default(""),
   pdfEngine: pdfEngineSchema.default("native"),
   blocks: z.array(questionBlockSchema).max(20).default([]),
@@ -242,6 +252,11 @@ export const studyTemplateConfigSchema = z.object({
   gradingInstructions: z.string().max(20_000).optional(),
 });
 export type StudyTemplateConfig = z.infer<typeof studyTemplateConfigSchema>;
+
+/** A configuration's material kind, reading an absent one as the PDF every older one was. */
+export function materialKindOf(config: { materialKind?: MaterialKind | null }): MaterialKind {
+  return config.materialKind ?? "pdf";
+}
 
 export type QuestionSetListEntry = {
   id: string;
@@ -287,6 +302,8 @@ export type QuestionSetOverview = {
   paperName: string;
   modelId: string;
   pdfEngine: string;
+  /** Absent means a PDF. */
+  materialKind?: MaterialKind;
   overallTimeLimitSeconds: number | null;
   attemptCount: number;
   createdAt: string;
@@ -375,6 +392,10 @@ export const generatedFillSetSchema = z.object({
       description: z.string().min(1),
       /** The PDF page (from 1) the question draws on; orders the set through the paper. */
       page: z.number().int().min(1).optional(),
+      /** For a codebase: the file and lines the question draws on, in place of a page. */
+      path: z.string().optional(),
+      startLine: z.number().int().min(1).optional(),
+      endLine: z.number().int().min(1).optional(),
       blanks: z.array(generatedBlankSchema).min(1),
     }),
   ),
@@ -393,6 +414,10 @@ export const generatedFreeResponseSetSchema = z.object({
       description: z.string().min(1),
       /** The PDF page (from 1) the question draws on; orders the set through the paper. */
       page: z.number().int().min(1).optional(),
+      /** For a codebase: the file and lines the question draws on, in place of a page. */
+      path: z.string().optional(),
+      startLine: z.number().int().min(1).optional(),
+      endLine: z.number().int().min(1).optional(),
       rubric: z.object({
         summary: z.string().min(1),
         criteria: z.array(rubricCriterionSchema).min(1),
@@ -410,6 +435,10 @@ export const generatedMultipleChoiceSetSchema = z.object({
       description: z.string().min(1),
       /** The PDF page (from 1) the question draws on; orders the set through the paper. */
       page: z.number().int().min(1).optional(),
+      /** For a codebase: the file and lines the question draws on, in place of a page. */
+      path: z.string().optional(),
+      startLine: z.number().int().min(1).optional(),
+      endLine: z.number().int().min(1).optional(),
       answer: z.string().min(1),
       distractors: z.array(z.string().min(1)).min(1),
       rationale: z.string().min(1),
@@ -452,6 +481,10 @@ export const generatedFixedRubricSetSchema = z.object({
       description: z.string().min(1),
       /** The PDF page (from 1) the question draws on; orders the set through the paper. */
       page: z.number().int().min(1).optional(),
+      /** For a codebase: the file and lines the question draws on, in place of a page. */
+      path: z.string().optional(),
+      startLine: z.number().int().min(1).optional(),
+      endLine: z.number().int().min(1).optional(),
       /** One per fixed criterion, in order: what earns full and half credit on this question. */
       criterionNotes: z.array(z.string().min(1)).min(1),
       sampleAnswers: z.object({ partial: z.string().min(1), full: z.string().min(1) }),
@@ -483,6 +516,8 @@ export type StoredFillQuestion = {
   description?: string;
   /** The PDF page the question draws on, when the generator reported one. */
   sourcePage?: number;
+  /** For a codebase: the file and lines the question draws on, when the generator reported them. */
+  sourceLocation?: SourceLocation;
   segments: QuestionSegment[];
   choices: QuizChoice[];
   blanks: StoredBlank[];
@@ -517,6 +552,8 @@ export type StoredFreeResponseQuestion = {
   description?: string;
   /** The PDF page the question draws on, when the generator reported one. */
   sourcePage?: number;
+  /** For a codebase: the file and lines the question draws on, when the generator reported them. */
+  sourceLocation?: SourceLocation;
   prompt: string;
   rubric: Rubric;
 };
@@ -530,6 +567,8 @@ export type StoredMultipleChoiceQuestion = {
   description?: string;
   /** The PDF page the question draws on, when the generator reported one. */
   sourcePage?: number;
+  /** For a codebase: the file and lines the question draws on, when the generator reported them. */
+  sourceLocation?: SourceLocation;
   prompt: string;
   /** Already shuffled at generation, so every attempt on this set sees the same order. */
   options: QuizChoice[];
@@ -584,6 +623,8 @@ export type AttemptView = {
   attemptId: string;
   questionSetId: string;
   paperName: string;
+  /** Which viewer shows the source material beside the questions; absent means a PDF. */
+  materialKind?: MaterialKind;
   /** The PDF's own title from its metadata, or null when it declares none worth showing. */
   paperTitle: string | null;
   // No model ID. The participant is not shown which model generated or grades their items, and
@@ -812,6 +853,8 @@ export type AssessmentResult = {
   /** Username of the account that completed the attempt, when applicable. */
   takerUsername: string | null;
   paperName: string;
+  /** Absent on results stored before codebases were supported, which were all from PDFs. */
+  materialKind?: MaterialKind;
   /** The “what is being tested” statement stored with the question set. */
   contributions: string;
   /** Equal-weight average across scored questions only; warm-ups are excluded. */
@@ -898,11 +941,32 @@ export function prepareFillQuestions(
       blockName: block.name,
       description: question.description.trim(),
       sourcePage: question.page,
+      sourceLocation: locationOf(question),
       segments: parseSegments(question.prompt, new Set(ids)),
       choices: shuffled(choices),
       blanks,
     };
   });
+}
+
+/** The generator's location fields as one value, or nothing when it reported no file. */
+function locationOf(question: {
+  path?: string;
+  startLine?: number;
+  endLine?: number;
+}): SourceLocation | undefined {
+  if (!question.path) return undefined;
+  const startLine = question.startLine ?? 1;
+  return { path: question.path, startLine, endLine: Math.max(startLine, question.endLine ?? startLine) };
+}
+
+/** Code locations in file-tree order: by path, then by first line. */
+function compareLocations(a?: SourceLocation, b?: SourceLocation): number {
+  if (!a || !b) return a ? -1 : b ? 1 : 0;
+  return (
+    a.path.localeCompare(b.path, "en", { sensitivity: "base", numeric: true }) ||
+    a.startLine - b.startLine
+  );
 }
 
 const QUESTION_TYPE_ORDER = {
@@ -913,11 +977,14 @@ const QUESTION_TYPE_ORDER = {
 
 /**
  * Attempt order: question type first (multiple choice, fill in the blank, free
- * response), then the PDF page each item draws on. The sort is stable, so items
- * of the same type on the same page keep their generated order, and a question
- * with no reported page sits after the paged ones of that type.
+ * response), then the PDF page each item draws on, or for a codebase its file and
+ * line. The sort is stable, so items of the same type on the same page keep their
+ * generated order, and a question with no reported place sits after the placed
+ * ones of that type.
  */
-export function orderQuestions<T extends { type?: string; sourcePage?: number }>(
+export function orderQuestions<
+  T extends { type?: string; sourcePage?: number; sourceLocation?: SourceLocation },
+>(
   questions: T[],
 ): T[] {
   return questions
@@ -933,6 +1000,7 @@ export function orderQuestions<T extends { type?: string; sourcePage?: number }>
         typeA - typeB ||
         (a.question.sourcePage ?? Number.POSITIVE_INFINITY) -
           (b.question.sourcePage ?? Number.POSITIVE_INFINITY) ||
+        compareLocations(a.question.sourceLocation, b.question.sourceLocation) ||
         a.index - b.index
       );
     })
@@ -951,6 +1019,7 @@ export function prepareFreeResponseQuestions(
     blockName: block.name,
     description: question.description.trim(),
     sourcePage: question.page,
+    sourceLocation: locationOf(question),
     prompt: question.prompt.trim(),
     rubric: question.rubric,
   }));
@@ -1000,6 +1069,7 @@ export function prepareFixedRubricQuestions(
     blockName: block.name,
     description: question.description.trim(),
     sourcePage: question.page,
+    sourceLocation: locationOf(question),
     prompt: `${question.prompt.trim()}${GRADING_SUMMARY_SEPARATOR}${rubric.summary}`,
     rubric: {
       summary: rubric.summary,
@@ -1063,6 +1133,7 @@ export function prepareMultipleChoiceQuestions(
       blockName: block.name,
       description: question.description.trim(),
       sourcePage: question.page,
+      sourceLocation: locationOf(question),
       prompt: question.prompt.trim(),
       options,
       correctOptionId: correctOption.id,

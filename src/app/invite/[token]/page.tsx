@@ -40,6 +40,7 @@ export default async function InvitationPage({
         materialUploader: template.materialUploader,
         materialFileName: template.materialFileName,
         requireSeb: template.config.requireSeb,
+        materialKind: template.config.materialKind ?? "pdf",
       }}
       costEstimate={costEstimate}
     />

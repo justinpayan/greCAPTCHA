@@ -38,8 +38,7 @@ async function gradingPrompt(gradingInstructions?: string) {
     return Response.json({ choices: [{ message: { content: JSON.stringify(grades) } }] });
   });
   await gradeFreeResponseBlock({
-    file: new File(["%PDF-1.7 grading source"], "source.pdf", { type: "application/pdf" }),
-    pdfEngine: "native",
+    material: { kind: "pdf", file: new File(["%PDF-1.7 grading source"], "source.pdf", { type: "application/pdf" }), pdfEngine: "native" },
     apiKey: "sk-or-test",
     modelId: "test/model",
     questions: [question],

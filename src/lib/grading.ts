@@ -7,7 +7,8 @@ import { attemptAnswers, attempts } from "@/db/schema";
 import { buildResult, hydrateAssessmentResult, loadAttemptContext } from "@/lib/attempts";
 import { backupInBackground } from "@/lib/backup";
 import { locateEvidence } from "@/lib/evidence";
-import { gradeFreeResponseBlock } from "@/lib/openrouter";
+import { parseBundle } from "@/lib/code-bundle";
+import { type GenerationMaterial, gradeFreeResponseBlock } from "@/lib/openrouter";
 import { readManuscript } from "@/lib/manuscripts";
 import type { AssessmentResult, PdfEngine, StoredFreeResponseQuestion } from "@/lib/quiz";
 
@@ -32,7 +33,7 @@ export async function finalizeAttempt(
     freeByBlock.set(question.blockId, [...(freeByBlock.get(question.blockId) ?? []), question]);
   }
 
-  let manuscript: File | undefined;
+  let material: GenerationMaterial | undefined;
   for (const blockQuestions of freeByBlock.values()) {
     // A skipped question, or one the overall budget never reached, already holds its score and
     // feedback, so it is withheld from the grader: an empty response marked against a rubric is
@@ -43,9 +44,18 @@ export async function finalizeAttempt(
       return !answer?.skipped && !answer?.timedOut;
     });
     if (questions.length === 0) continue;
-    manuscript ??= new File([new Uint8Array(readManuscript(input.set.id))], input.set.paperName, {
-      type: "application/pdf",
-    });
+    // Read once, on the first block that needs grading: graded against the same stored material
+    // the questions were generated from.
+    material ??=
+      input.set.materialKind === "code"
+        ? { kind: "code", bundle: parseBundle(readManuscript(input.set.id, "code")) }
+        : {
+            kind: "pdf",
+            file: new File([new Uint8Array(readManuscript(input.set.id))], input.set.paperName, {
+              type: "application/pdf",
+            }),
+            pdfEngine: input.set.pdfEngine as PdfEngine,
+          };
 
     const responses: Record<string, string> = {};
     for (const question of questions) {
@@ -57,8 +67,7 @@ export async function finalizeAttempt(
     const grades = await gradeFreeResponseBlock({
       apiKey,
       modelId: input.set.modelId,
-      file: manuscript,
-      pdfEngine: input.set.pdfEngine as PdfEngine,
+      material,
       questions,
       answers: responses,
       gradingInstructions: input.set.gradingInstructions ?? "",
@@ -107,6 +116,7 @@ export async function finalizeAttempt(
     questionSetId: input.set.id,
     takerUsername: input.attempt.takerUsername,
     paperName: input.set.paperName,
+    materialKind: input.set.materialKind === "code" ? "code" : "pdf",
     contributions: input.set.contributions,
     order: input.order,
     questions: input.questions,

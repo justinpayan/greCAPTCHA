@@ -104,7 +104,7 @@ export function parsePdfLink(raw: string, base?: URL, allowTestHttp = false): UR
 const blockedHostMessage =
   "That link points to a private or local address. Link to a PDF on the public internet.";
 
-type AddressPolicy = (address: string) => boolean;
+export type AddressPolicy = (address: string) => boolean;
 
 /**
  * A DNS lookup for the socket that refuses to hand back any address the policy rejects.
@@ -126,11 +126,19 @@ function guardedLookup(allow: AddressPolicy): net.LookupFunction {
   };
 }
 
-function requestOnce(
+/**
+ * One GET to a vetted address, without following redirects. Shared with repository downloads,
+ * which send their own headers (an API version, an access token) through the same guards.
+ */
+export function requestOnce(
   url: URL,
   allow: AddressPolicy,
   signal: AbortSignal,
   allowTestHttp = false,
+  headers: Record<string, string> = {
+    Accept: "application/pdf, */*;q=0.5",
+    "User-Agent": "greCAPTCHA-demo/1.0 (manuscript fetch; +https://grecaptcha.com)",
+  },
 ): Promise<IncomingMessage> {
   // A literal IP address is connected to without a lookup, so it is checked here instead.
   const literal = url.hostname.replace(/^\[|\]$/g, "");
@@ -141,17 +149,14 @@ function requestOnce(
     return Promise.reject(new PdfLinkError(blockedHostMessage));
   }
   if (url.protocol !== "https:" && !(allowTestHttp && url.protocol === "http:")) {
-    return Promise.reject(new PdfLinkError("The PDF link must use HTTPS."));
+    return Promise.reject(new PdfLinkError("The link must use HTTPS."));
   }
   return new Promise((resolve, reject) => {
     const client = url.protocol === "https:" ? https : http;
     const request = client.get(
       url,
       {
-        headers: {
-          Accept: "application/pdf, */*;q=0.5",
-          "User-Agent": "greCAPTCHA-demo/1.0 (manuscript fetch; +https://grecaptcha.com)",
-        },
+        headers,
         lookup: guardedLookup(allow),
         signal,
       },

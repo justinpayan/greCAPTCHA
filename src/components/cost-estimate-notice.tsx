@@ -85,9 +85,13 @@ export function CostEstimateNotice({
           <p className="cost-estimate-note">
             Estimated from OpenRouter&apos;s published prices for this model
             {includeGeneration &&
-              (estimate.pagesKnown
-                ? ` and the ${estimate.pages}-page source material`
-                : `, assuming a ${estimate.pages}-page paper; longer papers cost proportionally more`)}
+              (estimate.codeTokens !== undefined
+                ? estimate.pagesKnown
+                  ? ` and the size of the codebase (about ${Math.round(estimate.codeTokens / 1000)}k tokens)`
+                  : `, assuming a codebase of about ${Math.round(estimate.codeTokens / 1000)}k tokens; larger codebases cost proportionally more`
+                : estimate.pagesKnown
+                  ? ` and the ${estimate.pages}-page source material`
+                  : `, assuming a ${estimate.pages}-page paper; longer papers cost proportionally more`)}
             . The actual charge depends on answer length and how much the model reasons, and is
             billed to your OpenRouter account.
           </p>

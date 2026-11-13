@@ -18,6 +18,8 @@ import {
 } from "@/lib/allowlist";
 import { getTemplateByInvitationToken } from "@/lib/templates";
 import { loadManuscript, readManuscriptSource } from "@/lib/manuscript-input";
+import { bundleUpload, loadCodebase, readCodebaseSource } from "@/lib/codebase-input";
+import { materialKindOf } from "@/lib/quiz";
 import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
@@ -96,14 +98,23 @@ export async function POST(
       await requireOpenRouterCredential(template.ownerUserId);
       credentialOwnerUserId = template.ownerUserId;
     }
+    const materialKind = materialKindOf(template.config);
     const file =
       template.materialUploader === "taker"
-        ? await loadManuscript(readManuscriptSource(form))
-        : new File(
-            [new Uint8Array(readTemplateMaterial(template.id))],
-            template.materialFileName ?? "source-material.pdf",
-            { type: "application/pdf" },
-          );
+        ? materialKind === "code"
+          ? bundleUpload(await loadCodebase(readCodebaseSource(form), template.config.modelId))
+          : await loadManuscript(readManuscriptSource(form))
+        : materialKind === "code"
+          ? new File(
+              [new Uint8Array(readTemplateMaterial(template.id, "code"))],
+              template.materialFileName ?? "codebase",
+              { type: "application/json" },
+            )
+          : new File(
+              [new Uint8Array(readTemplateMaterial(template.id))],
+              template.materialFileName ?? "source-material.pdf",
+              { type: "application/pdf" },
+            );
 
     const now = new Date().toISOString();
     await db.insert(conferenceSubmissions).values({
@@ -129,6 +140,7 @@ export async function POST(
       user.id,
       file,
       {
+        materialKind,
         questionSetOwnerUserId: template.ownerUserId,
         sourceTemplateId: template.id,
         apiKeyPayer: template.apiKeyPayer,
@@ -137,7 +149,7 @@ export async function POST(
         conferenceCredentialId,
         conferenceSubmissionId: submissionId,
         taker: { id: user.id, username: user.username },
-        setName: file.name.replace(/\.pdf$/i, ""),
+        setName: file.name.replace(/\.(pdf|zip)$/i, ""),
         contributions,
         modelId: template.config.modelId,
         pdfEngine: template.config.pdfEngine,

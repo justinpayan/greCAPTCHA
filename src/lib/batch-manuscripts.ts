@@ -1,4 +1,4 @@
-import { MAX_PDF_BYTES, pdfTooLargeMessage } from "@/lib/uploads";
+import { MAX_PDF_BYTES, MAX_ZIP_BYTES, pdfTooLargeMessage, zipTooLargeMessage } from "@/lib/uploads";
 
 /**
  * Batch generation: one test per manuscript, built from the same form.
@@ -12,7 +12,64 @@ export const MAX_BATCH_MANUSCRIPTS = 20;
 
 export type BatchManuscript =
   | { kind: "file"; label: string; file: File }
-  | { kind: "link"; label: string; url: string };
+  | { kind: "link"; label: string; url: string }
+  /** A codebase ZIP (`codebase`). */
+  | { kind: "zip"; label: string; file: File }
+  /** A repository link (`repoUrls`, one per line), downloaded with the batch's shared token, if any. */
+  | { kind: "repo"; label: string; url: string };
+
+/** A repository's name for a test: `owner/repo` or `group/project`, from the link's path. */
+export function repositoryLabel(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    const dash = segments.indexOf("-");
+    const project = (dash >= 0 ? segments.slice(0, dash) : segments.slice(0, 2)).map((segment) =>
+      segment.replace(/\.git$/i, ""),
+    );
+    return project.slice(-2).join("/") || parsed.hostname;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Reads the batch codebase fields: every picked ZIP (`codebase`), or one repository link per line
+ * of `repoUrls`. Throws a message the creator can act on when the batch cannot be sent.
+ */
+function readBatchCodebases(form: FormData): BatchManuscript[] {
+  const files = form
+    .getAll("codebase")
+    .filter((entry): entry is File => entry instanceof File && entry.size > 0);
+  const links = String(form.get("repoUrls") ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const items: BatchManuscript[] = files.length
+    ? files.map((file) => ({
+        kind: "zip",
+        label: file.name.replace(/\.zip$/i, "").trim() || "Codebase",
+        file,
+      }))
+    : [...new Set(links)].map((url) => ({ kind: "repo", label: repositoryLabel(url), url }));
+
+  if (items.length === 0) throw new Error("Choose at least one codebase ZIP, or link to a repository.");
+  if (items.length > MAX_BATCH_MANUSCRIPTS) {
+    throw new Error(
+      `A batch may contain at most ${MAX_BATCH_MANUSCRIPTS} codebases; you added ${items.length}.`,
+    );
+  }
+  for (const item of items) {
+    if (item.kind !== "zip") continue;
+    if (!item.file.name.toLowerCase().endsWith(".zip")) {
+      throw new Error(`“${item.file.name}” is not a ZIP. Only ZIP archives are supported.`);
+    }
+    if (item.file.size > MAX_ZIP_BYTES) {
+      throw new Error(`“${item.file.name}”: ${zipTooLargeMessage(item.file.size)}`);
+    }
+  }
+  return items;
+}
 
 /** A short, readable name for a manuscript: the file name, or the last part of a link's path. */
 export function manuscriptLabel(source: { file: File } | { url: string }): string {
@@ -31,6 +88,7 @@ export function manuscriptLabel(source: { file: File } | { url: string }): strin
  * `paperUrls`. Throws a message the researcher can act on when the batch cannot be sent.
  */
 export function readBatchManuscripts(form: FormData): BatchManuscript[] {
+  if (form.has("codebase") || form.has("repoUrls")) return readBatchCodebases(form);
   const files = form
     .getAll("paper")
     .filter((entry): entry is File => entry instanceof File && entry.size > 0);

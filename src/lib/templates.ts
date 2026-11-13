@@ -1,6 +1,7 @@
 import "server-only";
 
 import { randomBytes, randomUUID } from "node:crypto";
+import fs from "node:fs";
 import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 
 import { db } from "@/db";
@@ -12,7 +13,7 @@ import {
   questionSets,
   studyTemplates,
 } from "@/db/schema";
-import { deleteManuscript, deleteTemplateMaterial } from "@/lib/manuscripts";
+import { deleteManuscript, deleteTemplateMaterial, templateMaterialPath } from "@/lib/manuscripts";
 import {
   readStoredAllowlist,
   serializeAllowlist,
@@ -20,6 +21,7 @@ import {
 import {
   generationConfigSchema,
   isInvitationTemplate,
+  materialKindOf,
   studyTemplateConfigSchema,
   type ApiKeyPayer,
   type MaterialUploader,
@@ -130,6 +132,12 @@ export async function saveTemplate(
       // configuration with it.
       throw new Error("A saved question configuration cannot be turned into an invitation.");
     }
+    // Material of the other kind can no longer be generated from, so it is dropped rather than
+    // left to fail when the first taker opens the invitation.
+    const kindChanged =
+      materialKindOf(JSON.parse(existing.configJson) as StudyTemplateConfig) !==
+      materialKindOf(config);
+    if (kindChanged) deleteTemplateMaterial(existing.id);
     const nextAllowlistJson =
       takerAllowlist === undefined
         ? existing.takerAllowlistJson
@@ -146,6 +154,7 @@ export async function saveTemplate(
             ? null
             : existing.invitationShareToken,
         takerAllowlistJson: nextAllowlistJson,
+        ...(kindChanged ? { materialFileName: null, materialContributions: null } : {}),
         updatedAt: now,
       })
       .where(eq(studyTemplates.id, existing.id))
@@ -206,7 +215,11 @@ export async function setTemplateSharing(
     if (blocks.reduce((total, block) => total + block.count, 0) > 50) {
       throw new Error("An invitation template may contain at most 50 questions.");
     }
-    if (template.materialUploader === "creator" && !template.materialFileName) {
+    if (
+      template.materialUploader === "creator" &&
+      (!template.materialFileName ||
+        !fs.existsSync(templateMaterialPath(id, materialKindOf(template.config))))
+    ) {
       throw new Error("Upload the source material before publishing the invitation.");
     }
   }

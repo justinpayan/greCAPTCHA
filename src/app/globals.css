@@ -207,6 +207,15 @@ h2 {
   margin: 0 0 18px;
 }
 
+/* A heading over a lone toggle: the toggle sits close beneath it rather than a grid's distance away. */
+.form-section > .section-heading-compact {
+  margin-bottom: 10px;
+}
+
+.form-section > .section-heading-compact + .toggle-row {
+  margin-top: 0;
+}
+
 .form-section > .section-heading .hint {
   max-width: 640px;
   margin: 4px 0 0;
@@ -379,6 +388,16 @@ textarea.control {
   border-radius: 9px;
   padding: 3px;
   background: white;
+}
+
+.codebase-token-label {
+  margin-top: 12px;
+}
+
+/* Standing alone in a field, as the source-material choice does, rather than in a heading row:
+   the field is a grid, which would stretch it across the form. */
+.field > .manuscript-source {
+  justify-self: start;
 }
 
 .manuscript-source button {
@@ -3299,6 +3318,174 @@ mark.evidence:focus-visible {
 .pdf-message {
   margin: 24px;
   text-align: center;
+}
+
+/* The codebase viewer: the PDF viewer's frame, with a file list beside the selected file. */
+.code-viewer {
+  --code-line-height: 1.55em;
+  background: var(--surface);
+}
+
+.code-viewer-body {
+  display: grid;
+  grid-template-columns: minmax(150px, 32%) minmax(0, 1fr);
+  min-height: 0;
+}
+
+.code-viewer-body.files-hidden {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.code-file-list {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  padding: 10px 8px;
+  background: var(--paper);
+}
+
+.code-file-list .control {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+}
+
+.code-file-list ul {
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.code-file-list button {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: var(--ink);
+  background: transparent;
+  font-size: 0.8rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.code-file-list button:hover {
+  background: var(--green-soft);
+}
+
+.code-file-list button.active {
+  color: var(--green-dark);
+  background: var(--green-soft);
+  font-weight: 720;
+}
+
+.code-file-dir {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.code-file-empty {
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.code-scroll-area {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.code-file {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: var(--code-line-height);
+}
+
+.code-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+  padding: 10px 10px 10px 12px;
+  color: var(--muted);
+  background: var(--paper);
+  text-align: right;
+  user-select: none;
+}
+
+.code-gutter .marked {
+  color: var(--green-dark);
+  font-weight: 760;
+}
+
+.code-source {
+  position: relative;
+  margin: 0;
+  padding: 10px 16px;
+  font: inherit;
+  white-space: pre;
+}
+
+.code-source .hljs {
+  position: relative;
+  padding: 0;
+  background: transparent;
+}
+
+.code-mark {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  margin-top: 10px;
+  border-left: 3px solid var(--green);
+  background: var(--green-soft);
+}
+
+/* Code quoted in a question. Inline code follows the prose's size; a block is set at reading size,
+   because a question's own text is large enough that a block at that size scrolls sideways. */
+.prompt-inline-code,
+.prompt-code-block code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.prompt-inline-code {
+  font-size: 0.82em;
+}
+
+.prompt-code-block code {
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.prompt-inline-code {
+  border-radius: 5px;
+  padding: 1px 5px;
+  background: var(--green-soft);
+}
+
+.prompt-code-block {
+  display: block;
+  margin: 10px 0;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--paper);
+  white-space: pre;
 }
 
 .pdf-assessment-divider {

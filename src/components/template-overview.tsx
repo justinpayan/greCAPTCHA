@@ -58,9 +58,11 @@ export function TemplateOverview({
           <h1>{overview.name}</h1>
           <div className="quiz-meta">
             {overview.config.modelId} ·{" "}
-            {overview.config.pdfEngine === "native"
-              ? "native parsing"
-              : overview.config.pdfEngine}
+            {overview.config.materialKind === "code"
+              ? "codebase"
+              : overview.config.pdfEngine === "native"
+                ? "native parsing"
+                : overview.config.pdfEngine}
           </div>
         </div>
         <div className="summary-header-side">
@@ -84,15 +86,15 @@ export function TemplateOverview({
             <strong>
               {overview.materialUploader === "creator" ? "Test creator" : "Test taker"}
             </strong>{" "}
-            uploads the manuscript.
+            uploads the {overview.config.materialKind === "code" ? "codebase" : "manuscript"}.
           </p>
         </div>
         <div className="report-card-section">
           <p className="eyebrow">Material and access</p>
           <p>
             {overview.materialFileName
-              ? `Manuscript: ${overview.materialFileName}`
-              : "The test taker supplies the manuscript."}
+              ? `${overview.config.materialKind === "code" ? "Codebase" : "Manuscript"}: ${overview.materialFileName}`
+              : `The test taker supplies the ${overview.config.materialKind === "code" ? "codebase" : "manuscript"}.`}
           </p>
           <p>
             {overview.takerAllowlist?.length

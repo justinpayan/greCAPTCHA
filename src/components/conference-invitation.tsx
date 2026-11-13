@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Brand } from "@/components/brand";
 import { CostEstimateNotice } from "@/components/cost-estimate-notice";
 import { AssessmentNotAllowed } from "@/components/quiz/assessment-not-allowed";
+import { CodebaseField } from "@/components/codebase-field";
 import { ManuscriptField } from "@/components/manuscript-field";
 import { OpenRouterKeyPanel } from "@/components/openrouter-key-panel";
 import {
@@ -13,7 +14,7 @@ import {
   type KeySource,
 } from "@/lib/openrouter-browser-key";
 import { errorFromPayload, isOpenRouterError, OpenRouterError } from "@/lib/openrouter-errors";
-import { MAX_PDF_BYTES, pdfTooLargeMessage } from "@/lib/uploads";
+import { MAX_PDF_BYTES, MAX_ZIP_BYTES, pdfTooLargeMessage, zipTooLargeMessage } from "@/lib/uploads";
 import type { CostEstimate } from "@/lib/cost-estimate";
 import type { ApiKeyPayer, MaterialUploader } from "@/lib/quiz";
 import { userFacingMessage } from "@/lib/user-facing-error";
@@ -35,6 +36,8 @@ export function AssessmentInvitation({
     materialUploader: MaterialUploader;
     materialFileName: string | null;
     requireSeb?: boolean;
+    /** "code" when the assessment is generated from a codebase; absent or "pdf" for a manuscript. */
+    materialKind?: "pdf" | "code";
   };
 }) {
   const [apiKey, setApiKey] = useState("");
@@ -68,13 +71,16 @@ export function AssessmentInvitation({
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const paper = form.get("paper");
-    if (
-      template.materialUploader === "taker" &&
-      paper instanceof File &&
-      paper.size > MAX_PDF_BYTES
-    ) {
-      setError(pdfTooLargeMessage(paper.size));
-      return;
+    const codebase = form.get("codebase");
+    if (template.materialUploader === "taker") {
+      if (paper instanceof File && paper.size > MAX_PDF_BYTES) {
+        setError(pdfTooLargeMessage(paper.size));
+        return;
+      }
+      if (codebase instanceof File && codebase.size > MAX_ZIP_BYTES) {
+        setError(zipTooLargeMessage(codebase.size));
+        return;
+      }
     }
     setWorking(true);
     setError("");
@@ -82,7 +88,7 @@ export function AssessmentInvitation({
     setStatus(
       template.materialUploader === "creator"
         ? "Preparing assessment…"
-        : form.get("paperUrl")
+        : form.get("paperUrl") || form.get("repoUrl")
           ? "Fetching source material…"
           : "Uploading source material…",
     );
@@ -168,7 +174,10 @@ export function AssessmentInvitation({
           <div>
             <span className="eyebrow">Assessment invitation</span>
             {/* The taker knows the test by its paper; before they upload one there is none. */}
-            <h1>{template.materialFileName ?? "Upload your paper"}</h1>
+            <h1>
+              {template.materialFileName ??
+                (template.materialKind === "code" ? "Upload your code" : "Upload your paper")}
+            </h1>
           </div>
         </div>
         {template.apiKeyPayer === "taker" && (
@@ -198,16 +207,26 @@ export function AssessmentInvitation({
         )}
         {template.materialUploader === "taker" && (
           <div className="form-grid">
-            <ManuscriptField id="invitation-paper" />
+            {template.materialKind === "code" ? (
+              <CodebaseField id="invitation-codebase" />
+            ) : (
+              <ManuscriptField id="invitation-paper" />
+            )}
             <div className="field full">
               <label htmlFor="invitation-contributions">
-                Your contributions to the manuscript PDF
+                {template.materialKind === "code"
+                  ? "Which parts of the code did you write?"
+                  : "Your contributions to the manuscript PDF"}
               </label>
               <textarea
                 className="control"
                 id="invitation-contributions"
                 name="contributions"
-                placeholder="Describe what sections or aspects of the manuscript PDF you have contributed to."
+                placeholder={
+                  template.materialKind === "code"
+                    ? "Name the files, modules, or features that are yours. Leave blank if you wrote all of it."
+                    : "Describe what sections or aspects of the manuscript PDF you have contributed to."
+                }
               />
             </div>
           </div>

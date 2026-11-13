@@ -1,0 +1,1 @@
+ALTER TABLE `question_sets` ADD `material_kind` text DEFAULT 'pdf' NOT NULL;

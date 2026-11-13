@@ -13,6 +13,7 @@ import {
   ManuscriptTooLargeError,
   readManuscriptSource,
 } from "@/lib/manuscript-input";
+import { bundleUpload, loadCodebase, readCodebaseSource } from "@/lib/codebase-input";
 import { errorResponseBody } from "@/lib/openrouter-errors";
 import { MAX_UPLOAD_BYTES, uploadTooLargeMessage } from "@/lib/uploads";
 import { parseAllowlist } from "@/lib/allowlist";
@@ -21,6 +22,7 @@ import { assertSameOrigin } from "@/lib/security";
 import {
   apiKeyPayerSchema,
   generationConfigSchema,
+  materialKindSchema,
   materialUploaderSchema,
   pdfEngineSchema,
 } from "@/lib/quiz";
@@ -94,7 +96,9 @@ export async function POST(request: Request) {
     // one problem the researcher has already spent an upload on, and hearing about a mis-set
     // block count instead would send them looking in the wrong place. A linked PDF is only
     // checked for shape here; it is downloaded once everything else has been validated.
-    const manuscript = readManuscriptSource(form);
+    const materialKind = materialKindSchema.parse(form.get("materialKind") ?? "pdf");
+    const manuscript = materialKind === "pdf" ? readManuscriptSource(form) : null;
+    const codebase = materialKind === "code" ? readCodebaseSource(form) : null;
 
     const contributions = String(form.get("contributions") ?? "").trim();
     const apiKeyPayer = apiKeyPayerSchema.parse(form.get("apiKeyPayer") ?? "creator");
@@ -167,8 +171,11 @@ export async function POST(request: Request) {
       .max(20_000, "Grading instructions may be at most 20,000 characters.")
       .parse(String(form.get("gradingInstructions") ?? "").trim());
 
-    const file = await loadManuscript(manuscript);
+    const file = codebase
+      ? bundleUpload(await loadCodebase(codebase, modelId))
+      : await loadManuscript(manuscript!);
     const created = await enqueueGenerationJob(user.id, file, {
+      materialKind,
       setName,
       sourceTemplateId,
       apiKeyPayer,

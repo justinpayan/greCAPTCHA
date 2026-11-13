@@ -4,6 +4,7 @@ import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from "reac
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 
+import type { MaterialKind, SourceLocation } from "@/lib/quiz";
 import { userFacingMessage } from "@/lib/user-facing-error";
 
 const PdfViewer = dynamic(
@@ -14,15 +15,32 @@ const PdfViewer = dynamic(
   },
 );
 
+const CodeViewer = dynamic(
+  () => import("@/components/quiz/code-viewer").then((module) => module.CodeViewer),
+  {
+    ssr: false,
+    loading: () => <p className="pdf-message">Loading code viewer…</p>,
+  },
+);
+
 const MIN_PANE_PX = 340;
 
+/**
+ * The source material beside the assessment, in a resizable pane: the manuscript PDF, or for a
+ * codebase the code viewer.
+ */
 export function PdfAssessmentSplit({
   attemptId,
   pdfLabel,
+  materialKind = "pdf",
+  anchor,
   children,
 }: {
   attemptId: string;
   pdfLabel: string;
+  materialKind?: MaterialKind;
+  /** For a codebase, the current question's file and lines, offered as a jump in the viewer. */
+  anchor?: SourceLocation;
   children: ReactNode;
 }) {
   const shellRef = useRef<HTMLDivElement>(null);
@@ -31,6 +49,7 @@ export function PdfAssessmentSplit({
   const [pdfError, setPdfError] = useState("");
 
   useEffect(() => {
+    if (materialKind !== "pdf") return;
     const controller = new AbortController();
     let objectUrl = "";
     setPdfFileUrl(null);
@@ -63,7 +82,7 @@ export function PdfAssessmentSplit({
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [attemptId]);
+  }, [attemptId, materialKind]);
 
   function resize(clientX: number) {
     const shell = shellRef.current;
@@ -98,17 +117,21 @@ export function PdfAssessmentSplit({
   return (
     <div className="pdf-assessment-shell" ref={shellRef} style={style}>
       <div className="pdf-assessment-document">
-        <PdfViewer
-          fileUrl={pdfFileUrl}
-          error={pdfError}
-          label={pdfLabel}
-        />
+        {materialKind === "code" ? (
+          <CodeViewer attemptId={attemptId} label={pdfLabel} anchor={anchor} />
+        ) : (
+          <PdfViewer
+            fileUrl={pdfFileUrl}
+            error={pdfError}
+            label={pdfLabel}
+          />
+        )}
       </div>
       <div
         className="pdf-assessment-divider"
         role="separator"
         tabIndex={0}
-        aria-label="Resize manuscript and assessment panes"
+        aria-label={`Resize ${materialKind === "code" ? "code" : "manuscript"} and assessment panes`}
         aria-orientation="vertical"
         aria-valuemin={25}
         aria-valuemax={75}

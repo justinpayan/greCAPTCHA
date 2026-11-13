@@ -16,7 +16,7 @@ import {
   type BatchManuscript,
 } from "@/lib/batch-manuscripts";
 import { errorFromPayload, isOpenRouterError } from "@/lib/openrouter-errors";
-import { MAX_PDF_BYTES, pdfTooLargeMessage } from "@/lib/uploads";
+import { MAX_PDF_BYTES, MAX_ZIP_BYTES, pdfTooLargeMessage, zipTooLargeMessage } from "@/lib/uploads";
 import {
   completeOpenRouterOAuth,
   readBrowserOpenRouterKey,
@@ -25,6 +25,12 @@ import {
 } from "@/lib/openrouter-browser-key";
 
 import { FixedRubricEditor, starterFixedRubric } from "@/components/fixed-rubric-editor";
+import { CodebaseField } from "@/components/codebase-field";
+import {
+  createDefaultCodeBlocks,
+  DEFAULT_CODE_GRADING_INSTRUCTIONS,
+} from "@/lib/default-code-template";
+import { FieldHint } from "@/components/field-hint";
 import { ManuscriptField } from "@/components/manuscript-field";
 import { ProfessorOpenRouterPanel } from "@/components/professor-openrouter-panel";
 import { PrintableQuestionSet } from "@/components/printable-question-set";
@@ -50,6 +56,8 @@ import {
   activeFixedRubric,
   fixedRubricProblems,
   isInvitationTemplate,
+  materialKindOf,
+  questionBlockSchema,
   type AssessmentResult,
   type AttemptIntro,
   type AttemptListEntry,
@@ -57,6 +65,7 @@ import {
   type AttemptView,
   type ApiKeyPayer,
   type CreatedTestEntry,
+  type MaterialKind,
   type MaterialUploader,
   type QuestionSetOverview,
   type PdfEngine,
@@ -102,7 +111,52 @@ type BatchNotice = {
   copied?: boolean;
 };
 
-const MANUSCRIPT_FIELDS = new Set(["paper", "paperUrl", "paperUrls"]);
+const MANUSCRIPT_FIELDS = new Set(["paper", "paperUrl", "paperUrls", "codebase", "repoUrl", "repoToken"]);
+
+/** JSON with object keys sorted, so two equal values serialize the same whatever their key order. */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, inner: unknown) =>
+    inner && typeof inner === "object" && !Array.isArray(inner)
+      ? Object.fromEntries(Object.entries(inner).sort(([a], [b]) => a.localeCompare(b)))
+      : inner,
+  );
+}
+
+/**
+ * Whether two card lists are the same configuration. Both are normalized first: a draft restored
+ * from the server has been through the schema, which fills in defaults and reorders keys.
+ */
+function sameBlocks(a: QuestionBlockConfig[], b: QuestionBlockConfig[]): boolean {
+  const normalize = (blocks: QuestionBlockConfig[]) =>
+    canonicalJson(blocks.map((block) => questionBlockSchema.parse(block)));
+  try {
+    return normalize(a) === normalize(b);
+  } catch {
+    return false;
+  }
+}
+
+/** The standard question families and grading instructions for each kind of source material. */
+function standardDefaults(kind: MaterialKind) {
+  return kind === "code"
+    ? { blocks: createDefaultCodeBlocks(), gradingInstructions: DEFAULT_CODE_GRADING_INSTRUCTIONS }
+    : { blocks: createDefaultStudyBlocks(), gradingInstructions: DEFAULT_GRADING_INSTRUCTIONS };
+}
+
+/**
+ * Why the form's uploaded material is too big to send, or "" when it fits. Checked before the
+ * upload starts: the server can only refuse an oversized file once it has arrived, and over a
+ * tunnel that is minutes of waiting for a no.
+ */
+function oversizedMaterial(form: FormData): string {
+  const paper = form.get("paper");
+  if (paper instanceof File && paper.size > MAX_PDF_BYTES) return pdfTooLargeMessage(paper.size);
+  const codebase = form.get("codebase");
+  if (codebase instanceof File && codebase.size > MAX_ZIP_BYTES) {
+    return zipTooLargeMessage(codebase.size);
+  }
+  return "";
+}
 
 /** A copy of the form carrying one batch manuscript in place of the whole batch. */
 function formForManuscript(form: FormData, item: BatchManuscript): FormData {
@@ -111,7 +165,14 @@ function formForManuscript(form: FormData, item: BatchManuscript): FormData {
     if (!MANUSCRIPT_FIELDS.has(key)) copy.append(key, value);
   }
   if (item.kind === "file") copy.set("paper", item.file, item.file.name);
-  else copy.set("paperUrl", item.url);
+  else if (item.kind === "link") copy.set("paperUrl", item.url);
+  else if (item.kind === "zip") copy.set("codebase", item.file, item.file.name);
+  else {
+    copy.set("repoUrl", item.url);
+    // One token for the whole batch, e.g. a course organisation's, sent with every repository.
+    const token = form.get("repoToken");
+    if (typeof token === "string" && token.trim()) copy.set("repoToken", token);
+  }
   return copy;
 }
 const FEATURED_MODEL_IDS = [
@@ -311,23 +372,6 @@ function newBlock(type: QuestionBlockConfig["type"]): QuestionBlockConfig {
   };
 }
 
-/**
- * Helper text for a field that shares a grid row with another field. Rendered as a bubble
- * anchored to the label so it takes no vertical space and cannot misalign its neighbour.
- */
-function FieldHint({ text }: { text: string }) {
-  return (
-    <span className="field-hint" tabIndex={0}>
-      <span className="field-hint-mark" aria-hidden="true">
-        ?
-      </span>
-      <span className="field-hint-bubble" role="tooltip">
-        {text}
-      </span>
-    </span>
-  );
-}
-
 export function ResearchCaptcha({
   username,
   initialGetStartedHidden = false,
@@ -362,6 +406,8 @@ export function ResearchCaptcha({
   const [modelSearch, setModelSearch] = useState("");
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [pdfEngine, setPdfEngine] = useState<PdfEngine>("native");
+  /** Whether questions come from a manuscript PDF or a codebase. */
+  const [materialKind, setMaterialKind] = useState<MaterialKind>("pdf");
   const [blocks, setBlocks] = useState<QuestionBlockConfig[]>(createDefaultStudyBlocks);
   /** In-progress count text so clearing a card's question count does not snap to 0. */
   const [countDrafts, setCountDrafts] = useState<Record<string, string>>({});
@@ -458,6 +504,7 @@ export function ResearchCaptcha({
     () => ({
       modelId: selectedModel?.id ?? "",
       pdfEngine,
+      materialKind,
       blocks,
       randomize: false,
       overallTimeLimitSeconds: overallLimitMinutes
@@ -466,13 +513,43 @@ export function ResearchCaptcha({
       gradingInstructions,
       requireSeb,
     }),
-    [selectedModel, pdfEngine, blocks, overallLimitMinutes, gradingInstructions, requireSeb, apiKeyPayer, materialUploader],
+    [selectedModel, pdfEngine, materialKind, blocks, overallLimitMinutes, gradingInstructions, requireSeb, apiKeyPayer, materialUploader],
   );
-  // Batch applies only where the test creator supplies the manuscripts.
+  // Batch applies only where the test creator supplies the manuscripts, and only to PDFs so far.
   const isBatch = batchManuscripts && materialUploader === "creator";
+
+  /**
+   * Switches between a manuscript and a codebase. Question families and grading instructions still
+   * at the standard defaults for the old kind are swapped for the new kind's, since a manuscript's
+   * families make no sense for code; anything the creator has edited is kept as it is.
+   */
+  function chooseMaterialKind(next: MaterialKind) {
+    setPaperError("");
+    if (next === materialKind) return;
+    const from = standardDefaults(materialKind);
+    const to = standardDefaults(next);
+    const blocksUntouched = sameBlocks(blocks, from.blocks);
+    if (blocksUntouched) {
+      setBlocks(to.blocks);
+      setCountDrafts({});
+      setPoolSizeDrafts({});
+    }
+    if (gradingInstructions === from.gradingInstructions) {
+      setGradingInstructions(to.gradingInstructions);
+    }
+    setMaterialKind(next);
+    setTemplateStatus(
+      blocksUntouched
+        ? `Loaded the standard question families for ${next === "code" ? "a codebase" : "a manuscript"}.`
+        : `Kept your edited question families. They were set up before you chose ${
+            next === "code" ? "a codebase" : "a manuscript"
+          }, so check that their prompts fit it.`,
+    );
+  }
   function applyConfig(config: StudyTemplateConfig, catalog: CatalogModel[]) {
     setRequireSeb(config.requireSeb ?? false);
     setPdfEngine(config.pdfEngine);
+    setMaterialKind(materialKindOf(config));
     setBlocks(config.blocks);
     setCountDrafts({});
     setPoolSizeDrafts({});
@@ -1220,14 +1297,10 @@ export function ResearchCaptcha({
     setGenerationNotice(null);
     setBatchNotice(null);
     const form = new FormData(event.currentTarget);
-    const paper = form.get("paper");
-    if (
-      materialUploader === "creator" &&
-      paper instanceof File &&
-      paper.size > MAX_PDF_BYTES
-    ) {
+    const oversized = materialUploader === "creator" ? oversizedMaterial(form) : "";
+    if (oversized) {
       setWorking(false);
-      return setPaperError(pdfTooLargeMessage(paper.size));
+      return setPaperError(oversized);
     }
     try {
       const response = await fetch("/api/templates", {
@@ -1287,7 +1360,7 @@ export function ResearchCaptcha({
       items = readBatchManuscripts(form);
     } catch (caught) {
       setError("");
-      return setPaperError(userFacingMessage(caught, "Unable to read the manuscripts."));
+      return setPaperError(userFacingMessage(caught, "Unable to read the batch."));
     }
     const names = batchTestNames(setName, items);
     setPaperError("");
@@ -1380,11 +1453,23 @@ export function ResearchCaptcha({
 
   function resetCustomTemplate() {
     const model = selectedModel ?? preferredModel(models);
-    applyConfig(createDefaultStudyTemplate(model?.id ?? ""), models);
+    // Reset within the chosen kind of material: a codebase resets to the code families.
+    const defaults = standardDefaults(materialKind);
+    applyConfig(
+      {
+        ...createDefaultStudyTemplate(model?.id ?? ""),
+        materialKind,
+        blocks: defaults.blocks,
+        gradingInstructions: defaults.gradingInstructions,
+      },
+      models,
+    );
     setTemplateId("");
     setError("");
     setTemplateStatus(
-      "Reset to the standard eight-question template. Your selected model was retained.",
+      materialKind === "code"
+        ? "Reset to the standard ten-question codebase template. Your selected model was retained."
+        : "Reset to the standard eight-question template. Your selected model was retained.",
     );
   }
 
@@ -1441,6 +1526,7 @@ export function ResearchCaptcha({
   function setGenerationFields(form: FormData, config: StudyTemplateConfig, name: string) {
     form.set("modelId", config.modelId);
     form.set("pdfEngine", config.pdfEngine);
+    form.set("materialKind", materialKindOf(config));
     form.set("blocks", JSON.stringify(config.blocks));
     form.set("randomize", "false");
     form.set(
@@ -1474,7 +1560,7 @@ export function ResearchCaptcha({
       items = readBatchManuscripts(form);
     } catch (caught) {
       setError("");
-      return setPaperError(userFacingMessage(caught, "Unable to read the manuscripts."));
+      return setPaperError(userFacingMessage(caught, "Unable to read the batch."));
     }
     const names = batchTestNames(setName, items);
     setPaperError("");
@@ -1491,7 +1577,11 @@ export function ResearchCaptcha({
         const failed = outcome.failed.length;
         const prefix = `Test ${index + 1} of ${items.length}${failed ? ` (${failed} failed)` : ""}`;
         setGenerationStatus(
-          item.kind === "link" ? `${prefix}: fetching the linked PDF…` : `${prefix}: uploading…`,
+          item.kind === "link"
+            ? `${prefix}: fetching the linked PDF…`
+            : item.kind === "repo"
+              ? `${prefix}: downloading the repository…`
+              : `${prefix}: uploading…`,
         );
         const itemForm = formForManuscript(form, item);
         // Without a shared name, each test is named after its PDF by the server, as for one.
@@ -1564,18 +1654,22 @@ export function ResearchCaptcha({
     if (!config.modelId) return setError("No compatible OpenRouter model is available.");
     if (config.blocks.length === 0) return setError("Add at least one question family.");
     const form = new FormData(event.currentTarget);
-    // Checked before the upload starts, not after: the server can only refuse an oversized PDF
-    // once it has arrived, and over a tunnel that is minutes of waiting for a no.
-    const paper = form.get("paper");
-    if (paper instanceof File && paper.size > MAX_PDF_BYTES) {
+    const oversized = oversizedMaterial(form);
+    if (oversized) {
       setError("");
-      return setPaperError(pdfTooLargeMessage(paper.size));
+      return setPaperError(oversized);
     }
     setPaperError("");
     setWorking(true);
     // A linked PDF is downloaded by the server before the job is queued, which can take a moment.
     setGenerationStatus(
-      form.get("paperUrl") ? "Fetching the linked PDF…" : "Queued for generation…",
+      form.get("paperUrl")
+        ? "Fetching the linked PDF…"
+        : form.get("repoUrl")
+          ? "Downloading the repository…"
+          : form.get("codebase")
+          ? "Unpacking the codebase…"
+          : "Queued for generation…",
     );
     setGenerationNotice(null);
     setBatchNotice(null);
@@ -2435,13 +2529,6 @@ export function ResearchCaptcha({
         >
           {apiKeyPayer === "creator" && <ProfessorOpenRouterPanel error={keyError} />}
           <div className="form-section">
-            <label>
-              <input type="checkbox" checked={requireSeb} onChange={(event) => setRequireSeb(event.target.checked)} />
-              Require Safe Exam Browser
-            </label>
-            {requireSeb && <p className="hint">Set an overall time limit below. This creates an invitation for each participant to take the assessment in SEB. {apiKeyPayer === "creator" ? "Your connected OpenRouter account pays for generation and grading; participants do not need an API key." : "Participants connect OpenRouter before launching SEB."}</p>}
-          </div>
-          <div className="form-section">
             <div className="form-grid">
               <div className="field full">
                 <label htmlFor="setName">
@@ -2467,19 +2554,63 @@ export function ResearchCaptcha({
                   onChange={(event) => setSetName(event.target.value)}
                 />
               </div>
+              <div className="field full">
+                <span className="field-label field-label-row">
+                  Source material
+                  <FieldHint text="Generate questions from a manuscript PDF, or from a codebase to test whether students understand code they wrote." />
+                </span>
+                <div className="manuscript-source" role="radiogroup" aria-label="Source material">
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={materialKind === "pdf"}
+                    className={materialKind === "pdf" ? "active" : ""}
+                    onClick={() => chooseMaterialKind("pdf")}
+                  >
+                    Manuscript PDF
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={materialKind === "code"}
+                    className={materialKind === "code" ? "active" : ""}
+                    onClick={() => chooseMaterialKind("code")}
+                  >
+                    Codebase
+                  </button>
+                </div>
+              </div>
               {materialUploader === "creator" && (
                 <>
-                  <ManuscriptField
-                    id="paper"
-                    error={paperError}
-                    onError={setPaperError}
-                    batch={batchManuscripts}
-                    onBatchChange={setBatchManuscripts}
-                  />
+                  {materialKind === "code" ? (
+                    <CodebaseField
+                      id="codebase"
+                      error={paperError}
+                      onError={setPaperError}
+                      batch={batchManuscripts}
+                      onBatchChange={setBatchManuscripts}
+                    />
+                  ) : (
+                    <ManuscriptField
+                      id="paper"
+                      error={paperError}
+                      onError={setPaperError}
+                      batch={batchManuscripts}
+                      onBatchChange={setBatchManuscripts}
+                    />
+                  )}
                   <div className="field full">
                     <label htmlFor="contributions">
-                      What material can we test on?
-                      <FieldHint text="In batch generation, this same statement is used for every manuscript in the batch." />
+                      {materialKind === "code"
+                        ? "Which parts of the code did you write?"
+                        : "What material can we test on?"}
+                      <FieldHint
+                        text={
+                          materialKind === "code"
+                            ? "Questions test only the code named here. Leave blank to test the whole codebase."
+                            : "In batch generation, this same statement is used for every manuscript in the batch."
+                        }
+                      />
                     </label>
                     {/* No length constraint, blank included: with no statement the generator is told
                         there is no declared scope and covers the whole manuscript. */}
@@ -2487,7 +2618,11 @@ export function ResearchCaptcha({
                       className="control"
                       id="contributions"
                       name="contributions"
-                      placeholder="Describe which sections or aspects of the source material the assessment should address."
+                      placeholder={
+                        materialKind === "code"
+                          ? "Name the files, modules, or features that are yours, e.g. src/parser/ and the caching layer in api/cache.py."
+                          : "Describe which sections or aspects of the source material the assessment should address."
+                      }
                     />
                   </div>
                 </>
@@ -2513,6 +2648,19 @@ export function ResearchCaptcha({
                 </div>
               )}
             </div>
+          </div>
+
+          <div className="form-section">
+            <div className="section-heading section-heading-compact">
+              <div>
+                <span className="field-label">Proctoring</span>
+              </div>
+            </div>
+            <label className="toggle-row">
+              <input type="checkbox" checked={requireSeb} onChange={(event) => setRequireSeb(event.target.checked)} />
+              Require Safe Exam Browser
+            </label>
+            {requireSeb && <p className="hint">Set an overall time limit. This creates an invitation for each participant to take the assessment in SEB. {apiKeyPayer === "creator" ? "Your connected OpenRouter account pays for generation and grading; participants do not need an API key." : "Participants connect OpenRouter before launching SEB."}</p>}
           </div>
 
           {mode === "custom" && (
@@ -2553,6 +2701,7 @@ export function ResearchCaptcha({
               </small>
             </div>
 
+            {materialKind === "pdf" && (
             <div className="field full">
               <label htmlFor="pdfEngine">PDF text extractor</label>
               <select
@@ -2566,6 +2715,7 @@ export function ResearchCaptcha({
                 <option value="mistral-ocr">Mistral OCR — paid, best for scans</option>
               </select>
             </div>
+            )}
 
             <div className="field">
               <label htmlFor="overallLimit">
