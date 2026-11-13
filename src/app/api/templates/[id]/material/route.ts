@@ -6,7 +6,7 @@ import { studyTemplates } from "@/db/schema";
 import { loadManuscript, ManuscriptTooLargeError, readManuscriptSource } from "@/lib/manuscript-input";
 import { persistTemplateMaterial } from "@/lib/manuscripts";
 import { bundleUpload, loadCodebase, readCodebaseSource } from "@/lib/codebase-input";
-import { materialKindOf } from "@/lib/quiz";
+import { endpointOf, materialKindOf } from "@/lib/quiz";
 import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
 import { getTemplate } from "@/lib/templates";
@@ -30,7 +30,11 @@ export async function POST(
     const materialKind = materialKindOf(template.config);
     const file =
       materialKind === "code"
-        ? bundleUpload(await loadCodebase(readCodebaseSource(form), template.config.modelId))
+        ? bundleUpload(
+            await loadCodebase(readCodebaseSource(form), template.config.modelId, {
+              endpoint: endpointOf(template.config),
+            }),
+          )
         : await loadManuscript(readManuscriptSource(form));
     const contributions = String(form.get("contributions") ?? "");
     await persistTemplateMaterial(file, id, materialKind);

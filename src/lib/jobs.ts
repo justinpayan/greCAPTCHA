@@ -26,7 +26,18 @@ import {
 } from "@/lib/openrouter-credentials";
 import { decodeJobError, encodeJobError } from "@/lib/openrouter-errors";
 import { publicErrorMessage } from "@/lib/user-facing-error";
-import type { AssessmentResult } from "@/lib/quiz";
+import { type AssessmentResult, endpointOf } from "@/lib/quiz";
+
+/** The endpoint of the set an attempt belongs to, whose stored key grades it. */
+export function attemptEndpoint(attemptId: string): string {
+  const row = db
+    .select({ endpoint: questionSets.endpoint })
+    .from(attempts)
+    .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
+    .where(eq(attempts.id, attemptId))
+    .get();
+  return endpointOf(row);
+}
 
 const ACTIVE_STATUSES = ["queued", "running"];
 const MAX_RUNS = 3;
@@ -266,7 +277,7 @@ export async function retryOwnedJob(id: string, ownerUserId: string, apiKey?: st
       throw new Error("The uploaded PDF is no longer available. Start generation again.");
     }
     if (!apiKey && payload.credentialOwnerUserId) {
-      apiKey = await requireOpenRouterCredential(payload.credentialOwnerUserId);
+      apiKey = await requireOpenRouterCredential(payload.credentialOwnerUserId, endpointOf(payload));
     }
   }
   if (!apiKey) throw new Error("Supply an OpenRouter key to retry this job.");
@@ -295,6 +306,7 @@ export async function getAttemptGradingJob(attemptId: string) {
       apiKeyPayer: questionSets.apiKeyPayer,
       ownerUserId: questionSets.ownerUserId,
       contributions: questionSets.contributions,
+      endpoint: questionSets.endpoint,
     })
     .from(attempts)
     .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
@@ -325,9 +337,10 @@ export async function getAttemptGradingJob(attemptId: string) {
   }
   let creatorCredentialUnavailable = false;
   if (attempt.apiKeyPayer === "creator" && job.status === "failed") {
-    const credential = await credentialStatus(attempt.ownerUserId);
+    const credential = await credentialStatus(attempt.ownerUserId, endpointOf(attempt));
     creatorCredentialUnavailable =
-      !credential.connected || new Date(credential.expiresAt).getTime() <= Date.now();
+      !credential.connected ||
+      (credential.expiresAt !== null && new Date(credential.expiresAt).getTime() <= Date.now());
   }
   return {
     ...publicJob(job),
@@ -387,7 +400,7 @@ async function executeJob(job: typeof jobs.$inferSelect & { runCount: number }) 
       const apiKey = payload.conferenceCredentialId
         ? requireConferenceCredential(payload.conferenceCredentialId)
         : payload.credentialOwnerUserId
-        ? await requireOpenRouterCredential(payload.credentialOwnerUserId)
+        ? await requireOpenRouterCredential(payload.credentialOwnerUserId, endpointOf(payload))
         : requireJobKey(job.id);
       result = await executeGeneration(job.ownerUserId, payload, apiKey, async (current, total) => {
         await db
@@ -406,7 +419,7 @@ async function executeJob(job: typeof jobs.$inferSelect & { runCount: number }) 
       const apiKey = conferenceCredentialId
         ? requireConferenceCredential(conferenceCredentialId)
         : credentialOwnerUserId
-        ? await requireOpenRouterCredential(credentialOwnerUserId)
+        ? await requireOpenRouterCredential(credentialOwnerUserId, attemptEndpoint(attemptId))
         : requireJobKey(job.id);
       const { ensureGraded } = await import("@/lib/grading");
       result = await ensureGraded(attemptId, apiKey);

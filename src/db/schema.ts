@@ -45,19 +45,25 @@ export const openRouterCredentials = sqliteTable(
   "openrouter_credentials",
   {
     userId: text("user_id")
-      .primaryKey()
+      .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    /** "openrouter" or an institution group's ID: a creator may store one key for each. */
+    endpoint: text("endpoint").notNull().default("openrouter"),
     ciphertext: text("ciphertext").notNull(),
     iv: text("iv").notNull(),
     authTag: text("auth_tag").notNull(),
     label: text("label"),
-    spendingLimit: real("spending_limit").notNull(),
+    /** Always set for OpenRouter keys; null for an institution key whose gateway reports none. */
+    spendingLimit: real("spending_limit"),
     limitRemaining: real("limit_remaining"),
-    expiresAt: text("expires_at").notNull(),
+    expiresAt: text("expires_at"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (table) => [index("openrouter_credentials_expiry_idx").on(table.expiresAt)],
+  (table) => [
+    primaryKey({ columns: [table.userId, table.endpoint] }),
+    index("openrouter_credentials_expiry_idx").on(table.expiresAt),
+  ],
 );
 
 export const jobs = sqliteTable(
@@ -164,6 +170,8 @@ export const questionSets = sqliteTable(
     materialUploader: text("material_uploader").notNull().default("creator"),
     /** "pdf" for a manuscript, "code" for a codebase; decides how the stored material is read. */
     materialKind: text("material_kind").notNull().default("pdf"),
+    /** "openrouter" or the institution group the set was generated through, and is graded through. */
+    endpoint: text("endpoint").notNull().default("openrouter"),
     schemaVersion: integer("schema_version").notNull().default(1),
     /** Human-chosen label for the set. Falls back to the PDF filename when left blank. */
     name: text("name"),

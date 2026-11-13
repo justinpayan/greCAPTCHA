@@ -225,6 +225,13 @@
       "when": 1794526874749,
       "tag": "0031_code_material",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1794605736578,
+      "tag": "0032_institution_endpoints",
+      "breakpoints": true
     }
   ]
 }

@@ -7,6 +7,7 @@ import { questionSets, studyTemplates } from "@/db/schema";
 import { listQuestionSets } from "@/lib/catalog";
 import { enqueueGenerationJob } from "@/lib/jobs";
 import { validateOpenRouterKey } from "@/lib/openrouter";
+import { assertEndpointAllowed } from "@/lib/llm-endpoints";
 import { requireOpenRouterCredential } from "@/lib/openrouter-credentials";
 import {
   loadManuscript,
@@ -22,6 +23,7 @@ import { assertSameOrigin } from "@/lib/security";
 import {
   apiKeyPayerSchema,
   generationConfigSchema,
+  endpointIdSchema,
   materialKindSchema,
   materialUploaderSchema,
   pdfEngineSchema,
@@ -146,8 +148,11 @@ export async function POST(request: Request) {
         throw new Error(`You already have a test named “${setName}”. Choose a different name.`);
       }
     }
-    const apiKey = await requireOpenRouterCredential(user.id);
-    await validateOpenRouterKey(apiKey, { requireSafeguards: true });
+    // OpenRouter, or the institution endpoint the operator assigned this account to.
+    const endpoint = endpointIdSchema.parse(form.get("endpoint") ?? "openrouter");
+    assertEndpointAllowed(user.username, endpoint);
+    const apiKey = await requireOpenRouterCredential(user.id, endpoint);
+    await validateOpenRouterKey(apiKey, { requireSafeguards: true, endpoint });
     const modelId = String(form.get("modelId") ?? "").trim();
     const pdfEngine = pdfEngineSchema.parse(form.get("pdfEngine"));
     const overallRaw = String(form.get("overallTimeLimitSeconds") ?? "").trim();
@@ -172,10 +177,11 @@ export async function POST(request: Request) {
       .parse(String(form.get("gradingInstructions") ?? "").trim());
 
     const file = codebase
-      ? bundleUpload(await loadCodebase(codebase, modelId))
+      ? bundleUpload(await loadCodebase(codebase, modelId, { apiKey, endpoint }))
       : await loadManuscript(manuscript!);
     const created = await enqueueGenerationJob(user.id, file, {
       materialKind,
+      endpoint,
       setName,
       sourceTemplateId,
       apiKeyPayer,

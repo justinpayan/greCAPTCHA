@@ -45,9 +45,16 @@ export function readCodebaseSource(form: FormData): CodebaseSource {
  * The model's context comes from the public catalog; when the catalog cannot be reached only the
  * fixed ceiling is checked here, and the generation job checks the model again before it runs.
  */
-export async function loadCodebase(source: CodebaseSource, modelId: string): Promise<CodeBundle> {
+export async function loadCodebase(
+  source: CodebaseSource,
+  modelId: string,
+  options: { apiKey?: string; endpoint?: string } = {},
+): Promise<CodeBundle> {
+  // An institution's model list needs a key; without one only the fixed ceiling is checked here.
   const model = modelId
-    ? ((await getOpenRouterModels().catch(() => [])).find((entry) => entry.id === modelId) ?? null)
+    ? ((await getOpenRouterModels(options.apiKey, options.endpoint).catch(() => [])).find(
+        (entry) => entry.id === modelId,
+      ) ?? null)
     : null;
   try {
     const bundle =

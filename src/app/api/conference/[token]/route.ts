@@ -19,7 +19,8 @@ import {
 import { getTemplateByInvitationToken } from "@/lib/templates";
 import { loadManuscript, readManuscriptSource } from "@/lib/manuscript-input";
 import { bundleUpload, loadCodebase, readCodebaseSource } from "@/lib/codebase-input";
-import { materialKindOf } from "@/lib/quiz";
+import { endpointOf, materialKindOf } from "@/lib/quiz";
+import { assertEndpointAllowedForUserId } from "@/lib/llm-endpoints";
 import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
@@ -88,6 +89,15 @@ export async function POST(
         : template.materialContributions ?? "";
     let apiKey: string | undefined;
     let credentialOwnerUserId: string | undefined;
+    // An institution endpoint is paid for by the creator's stored key, never by takers, and only
+    // while the creator is still assigned to it.
+    const endpoint = endpointOf(template.config);
+    if (endpoint !== "openrouter") {
+      if (template.apiKeyPayer === "taker") {
+        throw new Error("This invitation is misconfigured: its creator must pay for its model endpoint.");
+      }
+      assertEndpointAllowedForUserId(template.ownerUserId, endpoint);
+    }
     if (template.apiKeyPayer === "taker") {
       apiKey = String(form.get("openrouterApiKey") ?? "").trim();
       const keySource = form.get("keySource") === "oauth" ? "oauth" : "paste";
@@ -95,14 +105,16 @@ export async function POST(
         await validateOpenRouterKey(apiKey, { requireSafeguards: keySource === "oauth" });
       }
     } else {
-      await requireOpenRouterCredential(template.ownerUserId);
+      await requireOpenRouterCredential(template.ownerUserId, endpoint);
       credentialOwnerUserId = template.ownerUserId;
     }
     const materialKind = materialKindOf(template.config);
     const file =
       template.materialUploader === "taker"
         ? materialKind === "code"
-          ? bundleUpload(await loadCodebase(readCodebaseSource(form), template.config.modelId))
+          ? bundleUpload(
+              await loadCodebase(readCodebaseSource(form), template.config.modelId, { apiKey, endpoint }),
+            )
           : await loadManuscript(readManuscriptSource(form))
         : materialKind === "code"
           ? new File(
@@ -141,6 +153,7 @@ export async function POST(
       file,
       {
         materialKind,
+        endpoint,
         questionSetOwnerUserId: template.ownerUserId,
         sourceTemplateId: template.id,
         apiKeyPayer: template.apiKeyPayer,

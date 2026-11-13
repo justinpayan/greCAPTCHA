@@ -13,6 +13,18 @@ export const materialKinds = ["pdf", "code"] as const;
 export const materialKindSchema = z.enum(materialKinds);
 export type MaterialKind = z.infer<typeof materialKindSchema>;
 
+/**
+ * The model endpoint a test's requests go to: "openrouter", or the ID of an institution group the
+ * operator configured (see `llm-endpoints.ts`). Model IDs are the endpoint's own, so a test keeps
+ * the endpoint it was made with.
+ */
+export const endpointIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/, "Unknown model endpoint.");
+
+/** A stored value's endpoint, reading an absent one as the OpenRouter every older one used. */
+export function endpointOf(value: { endpoint?: string | null } | null | undefined): string {
+  return value?.endpoint || "openrouter";
+}
+
 /** Where in a codebase a question draws on: a file and a line range, both 1-based and inclusive. */
 export type SourceLocation = { path: string; startLine: number; endLine: number };
 
@@ -236,6 +248,8 @@ export const studyTemplateConfigSchema = z.object({
   requireSeb: z.boolean().optional(),
   /** Absent on configurations saved before codebases were supported, which were all PDFs. */
   materialKind: materialKindSchema.optional(),
+  /** Absent on configurations saved before institution endpoints existed, which all used OpenRouter. */
+  endpoint: endpointIdSchema.optional(),
   modelId: z.string().max(200).default(""),
   pdfEngine: pdfEngineSchema.default("native"),
   blocks: z.array(questionBlockSchema).max(20).default([]),

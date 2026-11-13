@@ -505,7 +505,7 @@ describe("public demo account-to-grade flow", () => {
       .where(eq(openRouterCredentials.userId, alice.id));
     expect(credentialRows).toHaveLength(1);
     expect(JSON.stringify(credentialRows)).not.toContain("sk-or-professor");
-    const credentialStatusResponse = await getOpenRouterCredentialStatus();
+    const credentialStatusResponse = await getOpenRouterCredentialStatus(new Request("http://localhost/api/openrouter/credential"));
     expect(credentialStatusResponse.status).toBe(200);
     const publicCredentialStatus = await credentialStatusResponse.json();
     expect(publicCredentialStatus).not.toHaveProperty("label");

@@ -5,6 +5,7 @@ import {
   renderBundleForModel,
   resolveLocation,
 } from "@/lib/code-bundle";
+import { type Endpoint, endpointById, OPENROUTER_ENDPOINT } from "@/lib/llm-endpoints";
 import { OpenRouterError } from "@/lib/openrouter-errors";
 import { logOutgoing } from "@/lib/request-log";
 
@@ -23,7 +24,6 @@ import {
   type StoredQuestion,
 } from "@/lib/quiz";
 
-const OPENROUTER_URL = "https://openrouter.ai/api/v1";
 export type OpenRouterTransport = (
   input: string | URL | Request,
   init?: RequestInit,
@@ -45,39 +45,118 @@ export type OpenRouterKeyMetadata = {
 };
 
 /**
- * One request to OpenRouter. A failure to reach it at all (DNS, refused connection, timeout) is
- * reported as an OpenRouter problem, so it is shown beside the key controls like its other errors.
+ * One request to a model endpoint: OpenRouter, or an institution's gateway. A failure to reach it
+ * at all (DNS, refused connection, timeout) is reported as an endpoint problem, so it is shown
+ * beside the key controls like its other errors. Logs name the endpoint's ID and the path, never
+ * an institution's address.
  */
 async function contactOpenRouter(
   detail: string,
   run: () => Promise<Response>,
+  endpoint: Endpoint,
 ): Promise<Response> {
   try {
-    return await logOutgoing("openrouter", detail, run);
+    return await logOutgoing(endpoint.id, detail, run);
   } catch (error) {
     if (error instanceof OpenRouterError) throw error;
     const timedOut = error instanceof Error && error.name === "TimeoutError";
     throw new OpenRouterError(
       timedOut
-        ? "OpenRouter did not respond in time. Try again in a moment."
-        : "OpenRouter could not be reached. Try again in a moment.",
+        ? `${endpoint.label} did not respond in time. Try again in a moment.`
+        : `${endpoint.label} could not be reached. Try again in a moment.`,
     );
   }
 }
 
+/** The JSON body of a response, or null when it is not JSON (a gateway's HTML error page). */
+async function jsonOrNull(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function getFrom(endpoint: Endpoint, path: string, key: string | null, detail = `GET ${path}`) {
+  return contactOpenRouter(
+    detail,
+    () =>
+      openRouterTransport(`${endpoint.baseUrl}${path}`, {
+        headers: key ? { Authorization: `Bearer ${key}` } : undefined,
+        cache: "no-store",
+        signal: AbortSignal.timeout(15_000),
+      }),
+    endpoint,
+  );
+}
+
+/**
+ * Checks a key for an institution endpoint. The operator vouches for the institution's gateway,
+ * and the key's budget is the institution's to set, so no budget or expiry is required; whatever
+ * the gateway does report is kept and shown, and a key it reports as blocked, expired, or spent is
+ * refused. A LiteLLM gateway describes the key at `/key/info`; when it does not let ordinary keys
+ * read that, or the gateway is not LiteLLM, the key is accepted if it can list the models.
+ */
+async function validateInstitutionKey(endpoint: Endpoint, key: string): Promise<OpenRouterKeyMetadata> {
+  const rejected = () => new OpenRouterError(`${endpoint.label} rejected that API key.`);
+  if (endpoint.kind === "litellm") {
+    const response = await getFrom(endpoint, "/key/info", key);
+    if (response.status === 401) throw rejected();
+    if (response.ok) {
+      const info = ((await jsonOrNull(response)) as {
+        info?: {
+          key_alias?: string | null;
+          spend?: number | null;
+          max_budget?: number | null;
+          expires?: string | null;
+          blocked?: boolean | null;
+          status?: string | null;
+          litellm_budget_table?: { max_budget?: number | null } | null;
+        };
+      } | null)?.info;
+      if (info) {
+        if (info.blocked || (info.status && info.status !== "active")) {
+          throw new OpenRouterError(
+            info.status === "expired"
+              ? `That ${endpoint.label} key has expired.`
+              : `That ${endpoint.label} key is blocked.`,
+          );
+        }
+        const budget = info.max_budget ?? info.litellm_budget_table?.max_budget ?? null;
+        const limit = typeof budget === "number" && Number.isFinite(budget) ? budget : null;
+        const spend = typeof info.spend === "number" && Number.isFinite(info.spend) ? info.spend : 0;
+        const limitRemaining =
+          limit === null ? null : Math.max(0, Math.round((limit - spend) * 1e6) / 1e6);
+        if (limitRemaining !== null && limitRemaining <= 0) {
+          throw new OpenRouterError(`That ${endpoint.label} key has spent its budget.`);
+        }
+        const expires = info.expires ? new Date(info.expires) : null;
+        return {
+          limit,
+          limitRemaining,
+          expiresAt: expires && Number.isFinite(expires.getTime()) ? expires.toISOString() : null,
+          label: info.key_alias ?? null,
+        };
+      }
+    }
+  }
+  const probe = await getFrom(endpoint, "/models", key);
+  if (probe.status === 401 || probe.status === 403) throw rejected();
+  if (!probe.ok) throw new OpenRouterError(`${endpoint.label} returned ${probe.status} for that key.`);
+  return { limit: null, limitRemaining: null, expiresAt: null, label: null };
+}
+
 export async function validateOpenRouterKey(
   apiKey: string,
-  options: { requireSafeguards?: boolean } = {},
+  options: { requireSafeguards?: boolean; endpoint?: string } = {},
 ): Promise<OpenRouterKeyMetadata> {
+  const endpoint = endpointById(options.endpoint);
   const trimmed = apiKey.trim();
-  if (!trimmed || trimmed.length > 512) throw new OpenRouterError("Enter a valid OpenRouter API key.");
-  const response = await contactOpenRouter("GET /key", () =>
-    openRouterTransport(`${OPENROUTER_URL}/key`, {
-      headers: { Authorization: `Bearer ${trimmed}` },
-      cache: "no-store",
-      signal: AbortSignal.timeout(15_000),
-    }),
-  );
+  if (!trimmed || trimmed.length > 512) {
+    throw new OpenRouterError(`Enter a valid ${endpoint.label} API key.`);
+  }
+  if (endpoint.kind !== "openrouter") return validateInstitutionKey(endpoint, trimmed);
+  const response = await getFrom(endpoint, "/key", trimmed);
   if (!response.ok) throw new OpenRouterError("OpenRouter rejected that API key.");
   const payload = (await response.json()) as {
     data?: {
@@ -140,14 +219,88 @@ const recommendedPatterns = [
   /deepseek\/deepseek/i,
 ];
 
-export async function getOpenRouterModels(apiKey?: string): Promise<OpenRouterModel[]> {
-  const response = await contactOpenRouter("GET /models", () =>
-    openRouterTransport(`${OPENROUTER_URL}/models`, {
-      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
-      cache: "no-store",
-      signal: AbortSignal.timeout(15_000),
-    }),
-  );
+type LiteLLMModelEntry = {
+  model_name?: string;
+  model_info?: {
+    max_input_tokens?: number | null;
+    input_cost_per_token?: number | null;
+    output_cost_per_token?: number | null;
+    mode?: string | null;
+    supports_pdf_input?: boolean | null;
+  } | null;
+};
+
+/** A per-token price as OpenRouter writes it (a decimal string), or none when it is unknown. */
+function priceString(value: number | null | undefined): string | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? String(value) : undefined;
+}
+
+/**
+ * An institution endpoint's models. A LiteLLM gateway's `/model/info` narrows the list to the
+ * key's models and adds prices and context sizes (one public name can front several deployments;
+ * the first describes it, and only chat models are kept). Where that is not available, the plain
+ * OpenAI-style `/models` gives the names alone. A model is taken to read PDFs unless the gateway
+ * says it cannot, since many entries leave the flag unset and a refusal is reported clearly.
+ */
+async function getInstitutionModels(endpoint: Endpoint, apiKey?: string): Promise<OpenRouterModel[]> {
+  const key = apiKey || endpoint.catalogKey;
+  if (!key) throw new OpenRouterError(`Add your ${endpoint.label} API key to load its models.`);
+  if (endpoint.kind === "litellm") {
+    const response = await getFrom(endpoint, "/model/info", key);
+    if (response.status === 401) throw new OpenRouterError(`${endpoint.label} rejected that API key.`);
+    if (response.ok) {
+      const payload = (await jsonOrNull(response)) as { data?: LiteLLMModelEntry[] } | null;
+      const seen = new Map<string, OpenRouterModel>();
+      for (const entry of payload?.data ?? []) {
+        const id = entry.model_name?.trim();
+        const info = entry.model_info ?? {};
+        if (!id || seen.has(id) || id.includes("*")) continue;
+        if (info.mode && info.mode !== "chat" && info.mode !== "responses") continue;
+        const prompt = priceString(info.input_cost_per_token);
+        const completion = priceString(info.output_cost_per_token);
+        seen.set(id, {
+          id,
+          name: id,
+          contextLength:
+            typeof info.max_input_tokens === "number" && info.max_input_tokens > 0
+              ? info.max_input_tokens
+              : undefined,
+          inputModalities: info.supports_pdf_input === false ? ["text"] : ["text", "file"],
+          pricing: prompt !== undefined && completion !== undefined ? { prompt, completion } : undefined,
+          // The institution chose every model on its gateway; none is singled out.
+          recommended: false,
+        });
+      }
+      if (seen.size) return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+    }
+  }
+  const response = await getFrom(endpoint, "/models", key);
+  if (response.status === 401 || response.status === 403) {
+    throw new OpenRouterError(`${endpoint.label} rejected that API key.`);
+  }
+  if (!response.ok) {
+    throw new OpenRouterError(`${endpoint.label}'s model list returned ${response.status}.`);
+  }
+  const payload = (await jsonOrNull(response)) as { data?: Array<{ id?: string }> } | null;
+  const ids = [...new Set((payload?.data ?? []).map((model) => model.id?.trim() ?? "").filter(Boolean))];
+  return ids
+    .filter((id) => !id.includes("*"))
+    .sort((a, b) => a.localeCompare(b))
+    .map((id) => ({ id, name: id, inputModalities: ["text", "file"], recommended: false }));
+}
+
+/**
+ * The models on offer at an endpoint (OpenRouter by default). OpenRouter's catalog is public, so
+ * `apiKey` is optional there; an institution's lists only what a key may call, so without one it
+ * uses the group's `catalogKey`, and throws when that is unset too.
+ */
+export async function getOpenRouterModels(
+  apiKey?: string,
+  endpointId: string = OPENROUTER_ENDPOINT,
+): Promise<OpenRouterModel[]> {
+  const endpoint = endpointById(endpointId);
+  if (endpoint.kind !== "openrouter") return getInstitutionModels(endpoint, apiKey);
+  const response = await getFrom(endpoint, "/models", apiKey ?? null);
 
   if (!response.ok) {
     throw new OpenRouterError(`OpenRouter model catalog returned ${response.status}.`);
@@ -464,7 +617,11 @@ async function callOpenRouter(input: {
   prompt: string;
   responseSchema: object;
   material?: GenerationMaterial;
+  /** The test's endpoint ID; absent means OpenRouter. */
+  endpoint?: string;
 }) {
+  const endpoint = endpointById(input.endpoint);
+  const openRouter = endpoint.kind === "openrouter";
   const content: Array<Record<string, unknown>> = [];
   const material = input.material;
   const pdf = material?.kind === "pdf" ? material : undefined;
@@ -493,18 +650,21 @@ async function callOpenRouter(input: {
       pdf ? " with pdf" : material?.kind === "code" ? " with code" : ""
     }`,
     () =>
-      openRouterTransport(`${OPENROUTER_URL}/chat/completions`, {
+      openRouterTransport(`${endpoint.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${input.apiKey}`,
           "Content-Type": "application/json",
-          "HTTP-Referer": "http://localhost:3000",
-          "X-Title": "ResearchCAPTCHA",
+          ...(openRouter
+            ? { "HTTP-Referer": "http://localhost:3000", "X-Title": "ResearchCAPTCHA" }
+            : {}),
         },
         body: JSON.stringify({
           model: input.modelId,
           messages: [{ role: "user", content }],
-          ...(pdf
+          // OpenRouter's file-parser plugin picks how the PDF is read. Other endpoints have no
+          // plugins: the PDF goes to the model as a standard file input, which it reads itself.
+          ...(pdf && openRouter
             ? {
                 plugins: [
                   {
@@ -522,15 +682,16 @@ async function callOpenRouter(input: {
         }),
         signal: AbortSignal.timeout(180_000),
       }),
+    endpoint,
   );
 
-  const payload = (await response.json()) as {
+  const payload = ((await jsonOrNull(response)) ?? {}) as {
     error?: { message?: string };
     choices?: Array<{ message?: { content?: unknown } }>;
   };
   if (!response.ok) {
     throw new OpenRouterError(
-      payload.error?.message ?? `OpenRouter returned ${response.status}.`,
+      payload.error?.message ?? `${endpoint.label} returned ${response.status}.`,
     );
   }
 
@@ -549,6 +710,8 @@ export async function generateQuestionBlock(input: {
   block: QuestionBlockConfig;
   previousQuestions: StoredQuestion[];
   modelId: string;
+  /** The test's endpoint ID; absent means OpenRouter. */
+  endpoint?: string;
 }) {
   const material = input.material;
   const previousQuestionContext = input.previousQuestions.map((question) => {
@@ -598,6 +761,7 @@ export async function generateQuestionBlock(input: {
     callOpenRouter({
       apiKey: input.apiKey,
       modelId: input.modelId,
+      endpoint: input.endpoint,
       material,
       responseSchema: schemaFor(responseSchema, material),
       prompt: `${sharedContext}\n\n${prompt}`,
@@ -783,6 +947,8 @@ export async function gradeFreeResponseBlock(input: {
   answers: Record<string, string>;
   /** The test creator's instructions for every question in the set; blank for none. */
   gradingInstructions?: string;
+  /** The set's endpoint ID; absent means OpenRouter. */
+  endpoint?: string;
 }) {
   const instructions = input.gradingInstructions?.trim();
   const gradingItems = input.questions.map((question) => ({
@@ -806,6 +972,7 @@ export async function gradeFreeResponseBlock(input: {
   const parsed = await callOpenRouter({
     apiKey: input.apiKey,
     modelId: input.modelId,
+    endpoint: input.endpoint,
     responseSchema: gradingJsonSchema,
     material: input.material,
     prompt: `${

@@ -10,7 +10,7 @@ import { locateEvidence } from "@/lib/evidence";
 import { parseBundle } from "@/lib/code-bundle";
 import { type GenerationMaterial, gradeFreeResponseBlock } from "@/lib/openrouter";
 import { readManuscript } from "@/lib/manuscripts";
-import type { AssessmentResult, PdfEngine, StoredFreeResponseQuestion } from "@/lib/quiz";
+import { type AssessmentResult, endpointOf, type PdfEngine, type StoredFreeResponseQuestion } from "@/lib/quiz";
 
 /**
  * Grades every free-response block, writes the assessment result, and marks the attempt
@@ -71,6 +71,7 @@ export async function finalizeAttempt(
       questions,
       answers: responses,
       gradingInstructions: input.set.gradingInstructions ?? "",
+      endpoint: endpointOf(input.set),
     });
     // Only apply grades for questions actually sent. A model that echoes an ID it was not
     // given must not be able to overwrite a skipped question's score.

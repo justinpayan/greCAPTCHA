@@ -1024,6 +1024,14 @@ textarea.control {
   gap: 8px;
 }
 
+/* "API Access" with the OpenRouter/institution switch right after it. */
+.key-source-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
 .key-source-oauth {
   border-left: 1px solid var(--line);
   padding-left: 16px;
@@ -1066,6 +1074,13 @@ textarea.control {
   margin-top: 8px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
+}
+
+/* Alone in the panel (an institution key has no sign-in button above it): no divider. */
+.key-paste-control:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .key-paste-control label {

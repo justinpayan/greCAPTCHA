@@ -18,7 +18,9 @@ import {
   readStoredAllowlist,
   serializeAllowlist,
 } from "@/lib/allowlist";
+import { assertEndpointAllowedForUserId } from "@/lib/llm-endpoints";
 import {
+  endpointOf,
   generationConfigSchema,
   isInvitationTemplate,
   materialKindOf,
@@ -85,6 +87,14 @@ export async function saveTemplate(
   if (trimmed.length > 120) throw new Error("Template names are limited to 120 characters.");
   if (config.requireSeb && !config.overallTimeLimitSeconds) {
     throw new Error("Safe Exam Browser requires a timed invitation assessment.");
+  }
+  // An institution endpoint is the creator's to pay for: takers may not have keys for it.
+  const endpoint = endpointOf(config);
+  if (endpoint !== "openrouter") {
+    assertEndpointAllowedForUserId(ownerUserId, endpoint);
+    if (apiKeyPayer === "taker") {
+      throw new Error("Tests on an institution endpoint are paid for by their creator, not by takers.");
+    }
   }
 
   const now = new Date().toISOString();

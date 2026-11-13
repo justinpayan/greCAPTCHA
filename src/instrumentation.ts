@@ -12,6 +12,26 @@ export async function register() {
   // substitution of NEXT_RUNTIME leaves `if (false) { … }` behind, and the import is dropped
   // from the Edge bundle instead of failing to resolve in it.
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    // A malformed endpoint configuration stops the server here, at deploy, rather than sending
+    // someone's tests to the wrong place later.
+    const { endpointGroups } = await import("@/lib/llm-endpoints");
+    let groups: ReturnType<typeof endpointGroups>;
+    try {
+      groups = endpointGroups();
+    } catch (error) {
+      // Exits rather than leaving a server that answers nothing, so the deploy visibly fails.
+      console.error(`[endpoints] ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
+    const { endpoints, groupByUser } = groups;
+    if (endpoints.size) {
+      console.log(
+        `[endpoints] ${endpoints.size} institution endpoint(s) for ${groupByUser.size} user(s): ${[
+          ...endpoints.keys(),
+        ].join(", ")}`,
+      );
+    }
+
     const { startJobWorker } = await import("@/lib/jobs");
     await startJobWorker();
     const { startProctoringWorker } = await import("@/lib/proctoring");

@@ -18,6 +18,7 @@ import {
 import {
   orderQuestions,
   type ApiKeyPayer,
+  endpointOf,
   type MaterialKind,
   type MaterialUploader,
   prepareFillQuestions,
@@ -44,6 +45,8 @@ export type GenerationJobPayload = {
   fileName: string;
   /** Absent on jobs queued before codebases were supported, which were all PDFs. */
   materialKind?: MaterialKind;
+  /** Absent on jobs queued before institution endpoints existed, which all used OpenRouter. */
+  endpoint?: string;
   setName: string;
   contributions: string;
   modelId: string;
@@ -101,10 +104,11 @@ export async function executeGeneration(
     return { questionSetId: payload.questionSetId, attemptId: created.attemptId };
   }
 
-  const selectedModel = (await getOpenRouterModels(apiKey)).find(
+  const endpoint = endpointOf(payload);
+  const selectedModel = (await getOpenRouterModels(apiKey, endpoint)).find(
     (model) => model.id === payload.modelId,
   );
-  if (!selectedModel) throw new Error("The selected OpenRouter model is no longer available.");
+  if (!selectedModel) throw new Error("The selected model is no longer available.");
   const materialKind = payload.materialKind ?? "pdf";
   const bytes = readEncryptedFile(payload.filePath, "job-upload");
   let material: GenerationMaterial;
@@ -115,7 +119,9 @@ export async function executeGeneration(
     assertBundleFits(bundle, selectedModel);
     material = { kind: "code", bundle };
   } else {
-    if (payload.pdfEngine === "native" && !selectedModel.inputModalities.includes("file")) {
+    // Only OpenRouter has extraction plugins; elsewhere the model always reads the PDF itself.
+    const nativePdf = payload.pdfEngine === "native" || endpoint !== "openrouter";
+    if (nativePdf && !selectedModel.inputModalities.includes("file")) {
       throw new Error("The selected model does not advertise native PDF support.");
     }
     material = {
@@ -134,6 +140,7 @@ export async function executeGeneration(
       block,
       previousQuestions: questions,
       modelId: payload.modelId,
+      endpoint,
     });
     if (generated.type === "fill_blank") {
       questions.push(
@@ -170,6 +177,7 @@ export async function executeGeneration(
     apiKeyPayer: payload.apiKeyPayer,
     materialUploader: payload.materialUploader,
     materialKind,
+    endpoint,
     schemaVersion: 1,
     name: payload.setName || null,
     paperName: payload.fileName,

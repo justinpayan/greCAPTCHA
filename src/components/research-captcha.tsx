@@ -56,6 +56,7 @@ import {
   activeFixedRubric,
   fixedRubricProblems,
   isInvitationTemplate,
+  endpointOf,
   materialKindOf,
   questionBlockSchema,
   type AssessmentResult,
@@ -73,6 +74,7 @@ import {
   type StudyTemplateConfig,
   type StudyTemplateSummary,
 } from "@/lib/quiz";
+import { useModelEndpoints } from "@/lib/use-model-endpoints";
 import { userFacingMessage } from "@/lib/user-facing-error";
 import { workflowFor } from "@/lib/workflows";
 
@@ -216,6 +218,25 @@ function preferredModel(catalog: CatalogModel[]) {
   );
 }
 
+/**
+ * The model list for an endpoint, before any key is pasted. OpenRouter's is public and gets the
+ * featured models in front; an institution's is read with the creator's stored key for it and
+ * holds only the gateway's own names, so nothing is added to it.
+ */
+async function fetchCatalog(endpoint: string): Promise<CatalogModel[]> {
+  const openRouter = endpoint === "openrouter";
+  try {
+    const response = await fetch(`/api/openrouter/models?endpoint=${encodeURIComponent(endpoint)}`, {
+      cache: "no-store",
+    });
+    const payload = (await response.json()) as { models?: CatalogModel[]; error?: string };
+    if (!response.ok) throw new Error(payload.error ?? "Unable to load models.");
+    return openRouter ? withFeaturedModels(payload.models ?? []) : (payload.models ?? []);
+  } catch {
+    return openRouter ? FEATURED_MODELS : [];
+  }
+}
+
 function ModelPicker({
   models,
   selected,
@@ -225,12 +246,15 @@ function ModelPicker({
   onSearchChange,
   onOpenChange,
   onSelect,
+  providerName,
 }: {
   models: CatalogModel[];
   selected: CatalogModel | null;
   search: string;
   open: boolean;
   loading: boolean;
+  /** Whose catalog this is, for the labels: "OpenRouter" or the institution's name. */
+  providerName: string;
   onSearchChange: (value: string) => void;
   onOpenChange: (open: boolean) => void;
   onSelect: (model: CatalogModel) => void;
@@ -238,25 +262,28 @@ function ModelPicker({
   const [showAll, setShowAll] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const query = search === selected?.name ? "" : search.trim().toLowerCase();
+  const featured = FEATURED_MODEL_IDS.flatMap((id) => {
+    const model = models.find((candidate) => candidate.id === id);
+    return model ? [model] : [];
+  });
+  // An institution's gateway names its models itself, so none of the featured ones may be there;
+  // then the whole list is the starting view.
   const visibleModels = query
     ? models.filter(
         (model) =>
           model.name.toLowerCase().includes(query) ||
           model.id.toLowerCase().includes(query),
       )
-    : showAll
+    : showAll || featured.length === 0
       ? models
-      : FEATURED_MODEL_IDS.flatMap((id) => {
-          const model = models.find((candidate) => candidate.id === id);
-          return model ? [model] : [];
-        });
+      : featured;
 
   return (
     <div className="model-picker">
       <input
         ref={inputRef}
         className="search-control model-search-control"
-        aria-label="Search OpenRouter models"
+        aria-label={`Search ${providerName} models`}
         value={search}
         onChange={(event) => {
           onSearchChange(event.target.value);
@@ -270,7 +297,7 @@ function ModelPicker({
       <button
         className="model-search-button"
         type="button"
-        aria-label="Clear selection and search all OpenRouter models"
+        aria-label={`Clear selection and search all ${providerName} models`}
         title="Search all models"
         disabled={loading}
         onMouseDown={(event) => event.preventDefault()}
@@ -308,7 +335,11 @@ function ModelPicker({
             </li>
           ))}
           {visibleModels.length === 0 && (
-            <li className="model-results-empty">No models match that search.</li>
+            <li className="model-results-empty">
+              {query
+                ? "No models match that search."
+                : `No ${providerName} models yet. Save your ${providerName} API key under API Access.`}
+            </li>
           )}
           {!query && !showAll && models.length > visibleModels.length && (
             <li className="model-results-more">
@@ -318,7 +349,7 @@ function ModelPicker({
                 onClick={() => setShowAll(true)}
               >
                 See more
-                <span>Browse the entire OpenRouter catalog</span>
+                <span>Browse the entire {providerName} catalog</span>
               </button>
             </li>
           )}
@@ -401,6 +432,17 @@ export function ResearchCaptcha({
   const [mode, setMode] = useState<"default" | "custom" | "resume" | "mine">(
     initialMode,
   );
+  const endpoints = useModelEndpoints();
+  /** Where this test's model requests go: "openrouter" or the user's institution group. */
+  const [endpoint, setEndpoint] = useState("openrouter");
+  const institution = endpoint !== "openrouter";
+  const endpointLabel = endpoints?.find((entry) => entry.id === endpoint)?.label ?? "OpenRouter";
+  /** The endpoint whose catalog `models` holds, so a switch knows to load the other one. */
+  const catalogEndpoint = useRef("openrouter");
+  /** A model chosen in a configuration whose endpoint's catalog has not loaded yet. */
+  const pendingModelId = useRef<string | null>(null);
+  /** Set when the restored setup named no endpoint, so a grouped user starts on their institution. */
+  const endpointDefaultPending = useRef(false);
   const [models, setModels] = useState<CatalogModel[]>(FEATURED_MODELS);
   const [selectedModel, setSelectedModel] = useState<CatalogModel | null>(null);
   const [modelSearch, setModelSearch] = useState("");
@@ -503,6 +545,7 @@ export function ResearchCaptcha({
   const currentConfig = useMemo<StudyTemplateConfig>(
     () => ({
       modelId: selectedModel?.id ?? "",
+      endpoint,
       pdfEngine,
       materialKind,
       blocks,
@@ -513,7 +556,7 @@ export function ResearchCaptcha({
       gradingInstructions,
       requireSeb,
     }),
-    [selectedModel, pdfEngine, materialKind, blocks, overallLimitMinutes, gradingInstructions, requireSeb, apiKeyPayer, materialUploader],
+    [selectedModel, endpoint, pdfEngine, materialKind, blocks, overallLimitMinutes, gradingInstructions, requireSeb, apiKeyPayer, materialUploader],
   );
   // Batch applies only where the test creator supplies the manuscripts, and only to PDFs so far.
   const isBatch = batchManuscripts && materialUploader === "creator";
@@ -546,8 +589,32 @@ export function ResearchCaptcha({
           }, so check that their prompts fit it.`,
     );
   }
+  /**
+   * Switches where model requests go. The model list reloads for the new endpoint (its model names
+   * are its own), and API Access shows that endpoint's stored key. Takers never pay on an
+   * institution endpoint, so choosing one makes the creator the payer.
+   */
+  function chooseEndpoint(next: string) {
+    endpointDefaultPending.current = false;
+    if (next === endpoint) return;
+    setKeyError("");
+    setEndpoint(next);
+    const label = endpoints?.find((entry) => entry.id === next)?.label ?? "OpenRouter";
+    if (next !== "openrouter" && apiKeyPayer === "taker") {
+      setApiKeyPayer("creator");
+      setTemplateStatus(
+        `Switched to ${label}. Tests on ${label} are paid for with your key, so you now pay instead of test takers.`,
+      );
+    } else {
+      setTemplateStatus(`Switched to ${label}: models and keys now come from ${label}.`);
+    }
+  }
+
   function applyConfig(config: StudyTemplateConfig, catalog: CatalogModel[]) {
     setRequireSeb(config.requireSeb ?? false);
+    const configEndpoint = endpointOf(config);
+    endpointDefaultPending.current = !config.endpoint;
+    setEndpoint(configEndpoint);
     setPdfEngine(config.pdfEngine);
     setMaterialKind(materialKindOf(config));
     setBlocks(config.blocks);
@@ -559,6 +626,11 @@ export function ResearchCaptcha({
     // A setup saved before grading instructions existed starts from the defaults; one whose box
     // was deliberately emptied stays empty.
     setGradingInstructions(config.gradingInstructions ?? DEFAULT_GRADING_INSTRUCTIONS);
+    if (configEndpoint !== catalogEndpoint.current) {
+      // The other endpoint's catalog loads next; its model is picked once it arrives.
+      pendingModelId.current = config.modelId || null;
+      return true;
+    }
     const match = catalog.find((model) => model.id === config.modelId);
     if (match) {
       setSelectedModel(match);
@@ -582,28 +654,24 @@ export function ResearchCaptcha({
         if (active) reportError(caught, "Unable to connect the OpenRouter key.");
         return null;
       }),
-      fetch("/api/openrouter/models")
-        .then(async (response) => {
-          const payload = (await response.json()) as {
-            models?: CatalogModel[];
-            error?: string;
-          };
-          if (!response.ok) throw new Error(payload.error ?? "Unable to load models.");
-          return withFeaturedModels(payload.models ?? []);
-        })
-        .catch(() => FEATURED_MODELS),
+      fetchCatalog("openrouter"),
     ])
       .then(([stored, connected, catalog]) => {
         if (!active) return;
         setModels(catalog);
-        if (connected && "key" in connected) {
-          void loadModelCatalog(connected.key, "oauth");
-        } else {
-          const browserKey = readBrowserOpenRouterKey(username);
-          if (browserKey) {
-            void loadModelCatalog(browserKey.key, "oauth");
+        // OpenRouter sign-in keys live in the browser. A setup saved for an institution endpoint
+        // has that endpoint's catalog loaded once the configuration is applied.
+        if (endpointOf(stored.draft) === "openrouter") {
+          if (connected && "key" in connected) {
+            void loadModelCatalog(connected.key, "oauth");
+          } else {
+            const browserKey = readBrowserOpenRouterKey(username);
+            if (browserKey) {
+              void loadModelCatalog(browserKey.key, "oauth");
+            }
           }
         }
+        if (!stored.draft) endpointDefaultPending.current = true;
         setTemplates(stored.templates ?? []);
 
         // Preserve real edits, but replace the untouched starter used before the public
@@ -658,13 +726,69 @@ export function ResearchCaptcha({
 
   useEffect(() => {
     if (
+      !institution &&
       pdfEngine === "native" &&
       selectedModel &&
       !selectedModel.inputModalities.includes("file")
     ) {
       setPdfEngine("cloudflare-ai");
     }
-  }, [pdfEngine, selectedModel]);
+  }, [institution, pdfEngine, selectedModel]);
+
+  // A grouped user whose setup names no endpoint starts on their institution; an endpoint the user
+  // may no longer use (removed from their group) falls back to OpenRouter.
+  useEffect(() => {
+    if (!restored || !endpoints) return;
+    if (!endpoints.some((entry) => entry.id === endpoint)) {
+      setEndpoint("openrouter");
+      setTemplateStatus("Your account is no longer set up for that endpoint, so this setup now uses OpenRouter.");
+    } else if (endpointDefaultPending.current && endpoints.length > 1 && apiKeyPayer === "creator") {
+      setEndpoint(endpoints[1].id);
+    }
+    endpointDefaultPending.current = false;
+  }, [restored, endpoints, endpoint, apiKeyPayer]);
+
+  // Loads the chosen endpoint's catalog after a switch, keeping the model a restored setup named.
+  useEffect(() => {
+    if (!restored || catalogEndpoint.current === endpoint) return;
+    const requested = endpoint;
+    catalogEndpoint.current = requested;
+    setLoadingModels(true);
+    void fetchCatalog(requested)
+      .then((catalog) => {
+        // A later switch owns the list now.
+        if (catalogEndpoint.current !== requested) return;
+        setModels(catalog);
+        const wanted = pendingModelId.current;
+        pendingModelId.current = null;
+        const next = (wanted && catalog.find((model) => model.id === wanted)) || preferredModel(catalog);
+        setSelectedModel(next);
+        setModelSearch(next?.name ?? "");
+      })
+      .finally(() => {
+        if (catalogEndpoint.current === requested) setLoadingModels(false);
+      });
+  }, [endpoint, restored]);
+
+  // An institution's catalog is read with the creator's stored key, so it is read again when that
+  // key is saved or removed.
+  useEffect(() => {
+    if (!institution) return;
+    const listener = () => {
+      const requested = endpoint;
+      void fetchCatalog(requested).then((catalog) => {
+        if (catalogEndpoint.current !== requested) return;
+        setModels(catalog);
+        setSelectedModel((current) => {
+          const next = (current && catalog.find((model) => model.id === current.id)) || preferredModel(catalog);
+          setModelSearch(next?.name ?? "");
+          return next;
+        });
+      });
+    };
+    window.addEventListener("grecaptcha:openrouter-credential-changed", listener);
+    return () => window.removeEventListener("grecaptcha:openrouter-credential-changed", listener);
+  }, [institution, endpoint]);
 
   async function loadModelCatalog(
     requestedKey: string,
@@ -688,6 +812,8 @@ export function ResearchCaptcha({
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to load models.");
+      // Browser keys are OpenRouter's; a switch to an institution meanwhile owns the list.
+      if (catalogEndpoint.current !== "openrouter") return;
       const catalog = withFeaturedModels(payload.models as CatalogModel[]);
       setModels(catalog);
       const refreshedSelection = selectedModel
@@ -1246,6 +1372,13 @@ export function ResearchCaptcha({
     if (nextPayer === apiKeyPayer && nextUploader === materialUploader) return;
     setApiKeyPayer(nextPayer);
     setMaterialUploader(nextUploader);
+    // Takers may not have institution keys, so a taker-paid test always uses OpenRouter.
+    if (nextPayer === "taker" && institution) {
+      setEndpoint("openrouter");
+      setTemplateStatus(
+        `Test takers pay with their own OpenRouter keys, so this test now uses OpenRouter instead of ${endpointLabel}.`,
+      );
+    }
   }
 
   async function updateInvitationSharing(
@@ -1289,7 +1422,7 @@ export function ResearchCaptcha({
   ) {
     event.preventDefault();
     if (!setName.trim()) return setError("Give the test set a name.");
-    if (!config.modelId) return setError("Choose an OpenRouter model.");
+    if (!config.modelId) return setError("Choose a model.");
     if (config.blocks.length === 0) return setError("Add at least one question family.");
     setWorking(true);
     setError("");
@@ -1352,7 +1485,7 @@ export function ResearchCaptcha({
   ) {
     event.preventDefault();
     if (!setName.trim()) return setError("Give the test set a name.");
-    if (!config.modelId) return setError("Choose an OpenRouter model.");
+    if (!config.modelId) return setError("Choose a model.");
     if (config.blocks.length === 0) return setError("Add at least one question family.");
     const form = new FormData(event.currentTarget);
     let items: BatchManuscript[];
@@ -1458,6 +1591,7 @@ export function ResearchCaptcha({
     applyConfig(
       {
         ...createDefaultStudyTemplate(model?.id ?? ""),
+        endpoint,
         materialKind,
         blocks: defaults.blocks,
         gradingInstructions: defaults.gradingInstructions,
@@ -1525,6 +1659,7 @@ export function ResearchCaptcha({
   /** The generation settings every question set request carries, beside its manuscript. */
   function setGenerationFields(form: FormData, config: StudyTemplateConfig, name: string) {
     form.set("modelId", config.modelId);
+    form.set("endpoint", endpointOf(config));
     form.set("pdfEngine", config.pdfEngine);
     form.set("materialKind", materialKindOf(config));
     form.set("blocks", JSON.stringify(config.blocks));
@@ -1552,7 +1687,7 @@ export function ResearchCaptcha({
     config: StudyTemplateConfig,
   ) {
     event.preventDefault();
-    if (!config.modelId) return setError("No compatible OpenRouter model is available.");
+    if (!config.modelId) return setError("No compatible model is available.");
     if (config.blocks.length === 0) return setError("Add at least one question family.");
     const form = new FormData(event.currentTarget);
     let items: BatchManuscript[];
@@ -1651,7 +1786,7 @@ export function ResearchCaptcha({
     config: StudyTemplateConfig,
   ) {
     event.preventDefault();
-    if (!config.modelId) return setError("No compatible OpenRouter model is available.");
+    if (!config.modelId) return setError("No compatible model is available.");
     if (config.blocks.length === 0) return setError("Add at least one question family.");
     const form = new FormData(event.currentTarget);
     const oversized = oversizedMaterial(form);
@@ -1976,8 +2111,8 @@ export function ResearchCaptcha({
             <p className="hint">{workflowFor(apiKeyPayer, materialUploader).description}</p>
           </div>
           <div className="workflow-choice">
-            <span className="field-label">Who pays OpenRouter costs?</span>
-            <div className="workflow-toggle" role="radiogroup" aria-label="OpenRouter payer">
+            <span className="field-label">Who pays for model use?</span>
+            <div className="workflow-toggle" role="radiogroup" aria-label="Who pays for model use">
               <button
                 type="button"
                 role="radio"
@@ -2527,7 +2662,14 @@ export function ResearchCaptcha({
               : createInvitationTemplate(event, config);
           }}
         >
-          {apiKeyPayer === "creator" && <ProfessorOpenRouterPanel error={keyError} />}
+          {apiKeyPayer === "creator" && (
+            <ProfessorOpenRouterPanel
+              error={keyError}
+              endpoint={endpoint}
+              endpoints={endpoints}
+              onEndpointChange={chooseEndpoint}
+            />
+          )}
           <div className="form-section">
             <div className="form-grid">
               <div className="field full">
@@ -2687,6 +2829,7 @@ export function ResearchCaptcha({
                 search={modelSearch}
                 open={modelPickerOpen}
                 loading={loadingModels}
+                providerName={endpointLabel}
                 onSearchChange={(value) => {
                   setModelSearch(value);
                   if (value !== selectedModel?.name) setSelectedModel(null);
@@ -2698,12 +2841,13 @@ export function ResearchCaptcha({
                 }}
               />
               <small>
-                Featured models are shown first. Click the magnifying glass to clear the field,
-                open the full catalog, and then type to filter it.
+                {institution
+                  ? `The models ${endpointLabel} offers. Type to filter them.`
+                  : "Featured models are shown first. Click the magnifying glass to clear the field, open the full catalog, and then type to filter it."}
               </small>
             </div>
 
-            {materialKind === "pdf" && (
+            {materialKind === "pdf" && !institution && (
             <div className="field full">
               <label htmlFor="pdfEngine">PDF text extractor</label>
               <select
@@ -3122,6 +3266,7 @@ export function ResearchCaptcha({
                   search={modelSearch}
                   open={modelPickerOpen}
                   loading={loadingModels}
+                  providerName={endpointLabel}
                   onSearchChange={(value) => {
                     setModelSearch(value);
                     if (value !== selectedModel?.name) setSelectedModel(null);
@@ -3133,8 +3278,9 @@ export function ResearchCaptcha({
                   }}
                 />
                   <small>
-                    Featured models are shown first. Click the magnifying glass to clear the field,
-                    open the full catalog, and then type to filter it.
+                    {institution
+                      ? `The models ${endpointLabel} offers. Type to filter them.`
+                      : "Featured models are shown first. Click the magnifying glass to clear the field, open the full catalog, and then type to filter it."}
                   </small>
               </div>
             </div>
