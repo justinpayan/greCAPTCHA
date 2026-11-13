@@ -15,13 +15,22 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (working) return;
+    // Read from the form itself: a password manager can fill the fields without the change events
+    // that update state, and pressing Enter must still sign in with what is shown.
+    const form = new FormData(event.currentTarget);
+    const field = (name: string) => String(form.get(name) ?? "");
     setWorking(true);
     setError("");
     try {
       const response = await fetch(signup ? "/api/signup" : "/api/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, passwordConfirmation }),
+        body: JSON.stringify({
+          username: field("username"),
+          password: field("password"),
+          passwordConfirmation: field("passwordConfirmation"),
+        }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to sign in.");
@@ -50,6 +59,7 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
           <input
             className="control"
             id="username"
+            name="username"
             value={username}
             autoFocus
             autoComplete="username"
@@ -62,6 +72,7 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
           <input
             className="control"
             id="password"
+            name="password"
             type="password"
             value={password}
             autoComplete={signup ? "new-password" : "current-password"}
@@ -76,6 +87,7 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
               <input
                 className="control"
                 id="passwordConfirmation"
+                name="passwordConfirmation"
                 type="password"
                 value={passwordConfirmation}
                 autoComplete="new-password"
@@ -98,7 +110,9 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
               <>Need an account? <Link href={`/signup?next=${encodeURIComponent(next)}`}>Create one</Link>.</>
             )}
           </span>
-          <button className="primary" type="submit" disabled={working || !username || !password}>
+          {/* Enabled whenever not already working: a disabled submit button stops Enter from
+              submitting the form, and the required fields already block an empty submit. */}
+          <button className="primary" type="submit" disabled={working}>
             {working ? "Working…" : signup ? "Create account" : "Sign in"}
           </button>
         </div>
