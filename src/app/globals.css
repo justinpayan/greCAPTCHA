@@ -371,7 +371,7 @@ textarea.control {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px 12px;
 }
 
@@ -392,12 +392,6 @@ textarea.control {
 
 .codebase-token-label {
   margin-top: 12px;
-}
-
-/* Standing alone in a field, as the source-material choice does, rather than in a heading row:
-   the field is a grid, which would stretch it across the form. */
-.field > .manuscript-source {
-  justify-self: start;
 }
 
 .manuscript-source button {

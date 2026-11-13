@@ -2555,29 +2555,31 @@ export function ResearchCaptcha({
                 />
               </div>
               <div className="field full">
-                <span className="field-label field-label-row">
-                  Source material
-                  <FieldHint text="Generate questions from a manuscript PDF, or from a codebase to test whether students understand code they wrote." />
-                </span>
-                <div className="manuscript-source" role="radiogroup" aria-label="Source material">
-                  <button
-                    type="button"
-                    role="radio"
-                    aria-checked={materialKind === "pdf"}
-                    className={materialKind === "pdf" ? "active" : ""}
-                    onClick={() => chooseMaterialKind("pdf")}
-                  >
-                    Manuscript PDF
-                  </button>
-                  <button
-                    type="button"
-                    role="radio"
-                    aria-checked={materialKind === "code"}
-                    className={materialKind === "code" ? "active" : ""}
-                    onClick={() => chooseMaterialKind("code")}
-                  >
-                    Codebase
-                  </button>
+                <div className="manuscript-heading">
+                  <span className="field-label field-label-row">
+                    Source material
+                    <FieldHint text="Generate questions from a manuscript PDF, or from a codebase to test whether students understand code they wrote." />
+                  </span>
+                  <div className="manuscript-source" role="radiogroup" aria-label="Source material">
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={materialKind === "pdf"}
+                      className={materialKind === "pdf" ? "active" : ""}
+                      onClick={() => chooseMaterialKind("pdf")}
+                    >
+                      Manuscript PDF
+                    </button>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={materialKind === "code"}
+                      className={materialKind === "code" ? "active" : ""}
+                      onClick={() => chooseMaterialKind("code")}
+                    >
+                      Codebase
+                    </button>
+                  </div>
                 </div>
               </div>
               {materialUploader === "creator" && (
