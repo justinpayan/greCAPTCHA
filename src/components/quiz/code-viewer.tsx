@@ -48,6 +48,17 @@ function lineCount(text: string): number {
   return text.replace(/\r\n?/g, "\n").replace(/\n$/, "").split("\n").length;
 }
 
+/** A panel with its left sidebar drawn filled while the file list is showing. */
+function SidebarIcon({ open }: { open: boolean }) {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+      <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M6 2.75v10.5" stroke="currentColor" strokeWidth="1.4" />
+      {open && <rect x="2.5" y="3.5" width="3.5" height="9" rx="1" fill="currentColor" opacity="0.35" />}
+    </svg>
+  );
+}
+
 /**
  * The participant's codebase beside the questions: a filterable file list and the selected file
  * with line numbers and syntax highlighting. Read-only, and limited to the files the questions were
@@ -138,18 +149,22 @@ export function CodeViewer({
       <header className="pdf-toolbar">
         <strong title={selected?.path ?? label}>{selected?.path ?? label}</strong>
         <div className="pdf-toolbar-controls">
+          <button
+            type="button"
+            className="code-files-toggle"
+            aria-expanded={showFiles}
+            aria-controls="code-file-list"
+            title={showFiles ? "Hide the file list" : "Show the file list"}
+            onClick={() => setShowFiles((value) => !value)}
+          >
+            <SidebarIcon open={showFiles} />
+            <span className="code-files-label">{showFiles ? "Hide files" : "Show files"}</span>
+          </button>
           {anchorAvailable && (
             <button type="button" onClick={jumpToAnchor} title={`${anchor!.path}, lines ${anchor!.startLine}–${anchor!.endLine}`}>
               Show question&rsquo;s code
             </button>
           )}
-          <button
-            type="button"
-            aria-pressed={showFiles}
-            onClick={() => setShowFiles((value) => !value)}
-          >
-            Files
-          </button>
         </div>
       </header>
       {error ? (
@@ -159,7 +174,7 @@ export function CodeViewer({
       ) : (
         <div className={`code-viewer-body${showFiles ? "" : " files-hidden"}`}>
           {showFiles && (
-            <nav className="code-file-list" aria-label="Files">
+            <nav className="code-file-list" id="code-file-list" aria-label="Files">
               <input
                 className="control"
                 type="search"

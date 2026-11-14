@@ -45,6 +45,16 @@ export const skippedFileSchema = z.object({
 });
 export type SkippedFile = z.infer<typeof skippedFileSchema>;
 
+/** The most characters a submitter may write about one included file. */
+export const MAX_SCOPE_DETAIL_CHARS = 2_000;
+
+export const codeScopeEntrySchema = z.object({
+  path: z.string().min(1).max(1_000),
+  /** Which functions, classes, or parts of the file are theirs; blank means the whole file. */
+  detail: z.string().max(MAX_SCOPE_DETAIL_CHARS).default(""),
+});
+export type CodeScopeEntry = z.infer<typeof codeScopeEntrySchema>;
+
 export const codeBundleSchema = z.object({
   version: z.literal(1),
   /** What to call the submission: the archive's or repository's name. */
@@ -64,6 +74,12 @@ export const codeBundleSchema = z.object({
   skipped: z.array(skippedFileSchema),
   /** How many matches of known token formats were replaced in kept files. */
   redactions: z.number().int().min(0),
+  /**
+   * The files the submitter declared as theirs, each optionally narrowed to the functions or
+   * classes they wrote. Questions are generated only about these; every other file is context.
+   * Absent or empty means the whole codebase is in scope.
+   */
+  scope: z.array(codeScopeEntrySchema).optional(),
 });
 export type CodeBundle = z.infer<typeof codeBundleSchema>;
 
@@ -461,6 +477,19 @@ export function assertBundleFits(
       `Largest folders: ${largestFolders.join(", ")}. Largest files: ${largestFiles.join(", ")}. ` +
       `Remove data, generated, or third-party files, or submit only the code you wrote, and try again.`,
   );
+}
+
+/**
+ * The declared scope as the contribution statement stored with the test: one file per line, with
+ * the functions the submitter named, so reports, exports, and the grader read it as written.
+ */
+export function describeCodeScope(scope: CodeScopeEntry[]): string {
+  return scope
+    .map((entry) => {
+      const detail = entry.detail.trim().replace(/\s*\n\s*/g, "; ");
+      return detail ? `${entry.path}: ${detail}` : `${entry.path} (whole file)`;
+    })
+    .join("\n");
 }
 
 export function serializeBundle(bundle: CodeBundle): Buffer {

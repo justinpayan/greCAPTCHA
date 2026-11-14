@@ -3,6 +3,7 @@ import "server-only";
 import {
   type CodeBundle,
   renderBundleForModel,
+  type CodeScopeEntry,
   resolveLocation,
 } from "@/lib/code-bundle";
 import { type Endpoint, endpointById, OPENROUTER_ENDPOINT } from "@/lib/llm-endpoints";
@@ -575,6 +576,29 @@ function schemaFor(
  * to that file. A wrong path costs the question its place in the ordering, not the whole batch:
  * the questions themselves are still sound, and a regeneration would cost the creator again.
  */
+/**
+ * Leaves out candidates placed outside the files the student declared, so no question tests code
+ * they did not claim. A candidate whose location could not be resolved cannot be shown to be in
+ * scope and is left out too. Fails when too few remain to fill the block, since a quietly short
+ * test would be worse than a regeneration.
+ */
+function keepDeclaredFiles<T extends { path?: string }>(
+  questions: T[],
+  material: GenerationMaterial,
+  block: QuestionBlockConfig,
+): T[] {
+  const scope = material.kind === "code" ? material.bundle.scope : undefined;
+  if (!scope?.length) return questions;
+  const declared = new Set(scope.map((entry) => entry.path));
+  const kept = questions.filter((question) => question.path && declared.has(question.path));
+  if (kept.length < block.count) {
+    throw new Error(
+      `The model placed ${questions.length - kept.length} of ${questions.length} candidate questions outside the files declared as the student's own, leaving too few for this question family. Generate again, or include more files.`,
+    );
+  }
+  return kept;
+}
+
 function resolveLocations<T extends { path?: string; startLine?: number; endLine?: number }>(
   questions: T[],
   material: GenerationMaterial,
@@ -754,7 +778,7 @@ export async function generateQuestionBlock(input: {
   // reads as a truncated prompt and invites the model to guess at a scope nobody declared.
   const sharedContext =
     material.kind === "code"
-      ? codeSharedContext(input.contributions, input.block, previousQuestionContext)
+      ? codeSharedContext(input.contributions, material.bundle.scope, input.block, previousQuestionContext)
       : manuscriptSharedContext(input.contributions, input.block, previousQuestionContext);
 
   const call = (responseSchema: { name: string; strict: boolean; schema: object }, prompt: string) =>
@@ -780,6 +804,7 @@ export async function generateQuestionBlock(input: {
         `The model returned ${validated.questions.length} candidate questions instead of ${input.block.candidatePoolSize}.`,
       );
     }
+    validated.questions = keepDeclaredFiles(validated.questions, material, input.block);
     return { type: "fill_blank" as const, generated: validated };
   }
 
@@ -804,6 +829,7 @@ export async function generateQuestionBlock(input: {
         );
       }
     }
+    validated.questions = keepDeclaredFiles(validated.questions, material, input.block);
     return { type: "multiple_choice" as const, generated: validated };
   }
 
@@ -837,6 +863,7 @@ Generate exactly ${input.block.candidatePoolSize} candidate free-response questi
         );
       }
     }
+    validated.questions = keepDeclaredFiles(validated.questions, material, input.block);
     return { type: "fixed_rubric" as const, generated: validated, rubric };
   }
 
@@ -863,6 +890,7 @@ Generate exactly ${input.block.candidatePoolSize} candidate free-response questi
       );
     }
   }
+  validated.questions = keepDeclaredFiles(validated.questions, material, input.block);
   return { type: "free_response" as const, generated: validated };
 }
 
@@ -910,10 +938,16 @@ ${previousQuestionsSection(previousQuestionContext, "manuscript")}`;
  */
 function codeSharedContext(
   contributions: string,
+  scope: CodeScopeEntry[] | undefined,
   block: QuestionBlockConfig,
   previousQuestionContext: PreviousQuestionContext,
 ): string {
-  const contributionContext = contributions.trim()
+  const contributionContext = scope?.length
+    ? `The student declared writing only these files. Where a file is followed by a note, the note names the functions, classes, or parts of that file they wrote, and only those parts are theirs; a file marked "whole file" is theirs throughout:
+${scope.map((entry) => `- ${entry.path}${entry.detail.trim() ? `: ${entry.detail.trim()}` : " (whole file)"}`).join("\n")}
+
+Ask only about code the student declared. Every question's "path" must be one of the files listed above, and its lines must fall within the declared parts of that file. The rest of the codebase is supplied as context: a question may refer to it to explain how the declared code is called or what it depends on, but must never test it. When spreading questions across the codebase, spread them across the declared code only.`
+    : contributions.trim()
     ? `The student reports writing these parts of the code:
 ${contributions}
 

@@ -208,27 +208,23 @@ export function AssessmentInvitation({
         {template.materialUploader === "taker" && (
           <div className="form-grid">
             {template.materialKind === "code" ? (
-              <CodebaseField id="invitation-codebase" />
+              <CodebaseField id="invitation-codebase" pickContributions />
             ) : (
-              <ManuscriptField id="invitation-paper" />
+              <>
+                <ManuscriptField id="invitation-paper" />
+                <div className="field full">
+                  <label htmlFor="invitation-contributions">
+                    Your contributions to the manuscript PDF
+                  </label>
+                  <textarea
+                    className="control"
+                    id="invitation-contributions"
+                    name="contributions"
+                    placeholder="Describe what sections or aspects of the manuscript PDF you have contributed to."
+                  />
+                </div>
+              </>
             )}
-            <div className="field full">
-              <label htmlFor="invitation-contributions">
-                {template.materialKind === "code"
-                  ? "Which parts of the code did you write?"
-                  : "Your contributions to the manuscript PDF"}
-              </label>
-              <textarea
-                className="control"
-                id="invitation-contributions"
-                name="contributions"
-                placeholder={
-                  template.materialKind === "code"
-                    ? "Name the files, modules, or features that are yours. Leave blank if you wrote all of it."
-                    : "Describe what sections or aspects of the manuscript PDF you have contributed to."
-                }
-              />
-            </div>
           </div>
         )}
         {error && <p className="error" role="alert">{error}</p>}

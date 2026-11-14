@@ -14,7 +14,7 @@ import {
   ManuscriptTooLargeError,
   readManuscriptSource,
 } from "@/lib/manuscript-input";
-import { bundleUpload, loadCodebase, readCodebaseSource } from "@/lib/codebase-input";
+import { applyCodeScope, bundleUpload, loadCodebase, readCodebaseSource } from "@/lib/codebase-input";
 import { errorResponseBody } from "@/lib/openrouter-errors";
 import { MAX_UPLOAD_BYTES, uploadTooLargeMessage } from "@/lib/uploads";
 import { parseAllowlist } from "@/lib/allowlist";
@@ -102,7 +102,7 @@ export async function POST(request: Request) {
     const manuscript = materialKind === "pdf" ? readManuscriptSource(form) : null;
     const codebase = materialKind === "code" ? readCodebaseSource(form) : null;
 
-    const contributions = String(form.get("contributions") ?? "").trim();
+    let contributions = String(form.get("contributions") ?? "").trim();
     const apiKeyPayer = apiKeyPayerSchema.parse(form.get("apiKeyPayer") ?? "creator");
     const materialUploader = materialUploaderSchema.parse(
       form.get("materialUploader") ?? "creator",
@@ -176,9 +176,16 @@ export async function POST(request: Request) {
       .max(20_000, "Grading instructions may be at most 20,000 characters.")
       .parse(String(form.get("gradingInstructions") ?? "").trim());
 
-    const file = codebase
-      ? bundleUpload(await loadCodebase(codebase, modelId, { apiKey, endpoint }))
-      : await loadManuscript(manuscript!);
+    let file: File;
+    if (codebase) {
+      const bundle = await loadCodebase(codebase, modelId, { apiKey, endpoint });
+      // Picked files replace any written statement: they are the declared scope.
+      const scoped = applyCodeScope(bundle, form);
+      if (scoped) contributions = scoped.contributions;
+      file = bundleUpload(scoped?.bundle ?? bundle);
+    } else {
+      file = await loadManuscript(manuscript!);
+    }
     const created = await enqueueGenerationJob(user.id, file, {
       materialKind,
       endpoint,

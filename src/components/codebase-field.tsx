@@ -1,13 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
+import { CodeScopePicker, type ListedCodeFile } from "@/components/code-scope-picker";
 import { FieldHint } from "@/components/field-hint";
 import { MAX_BATCH_MANUSCRIPTS } from "@/lib/batch-manuscripts";
 import { MAX_ZIP_BYTES, MAX_ZIP_LABEL, zipTooLargeMessage } from "@/lib/uploads";
+import { userFacingMessage } from "@/lib/user-facing-error";
 
 const TOKEN_HINT =
-  "Used once to download the code, then discarded; it is never stored. Create one that can only read this repository: on GitHub, a fine-grained token with read-only Contents access to it; on GitLab, a project access token with the read_repository scope. Revoke it afterwards.";
+  "Used only to download the code (to list its files, and again when you submit), then discarded; it is never stored. Create one that can only read this repository: on GitHub, a fine-grained token with read-only Contents access to it; on GitLab, a project access token with the read_repository scope. Revoke it afterwards.";
+
+const SCOPE_HINT =
+  "Move the files you wrote to the right. Questions are generated only about those files, while the whole codebase is still sent to the model as context. For each file you can name the functions or classes you wrote; leave it blank if you wrote the whole file. Pick nothing to test the whole codebase.";
+
+type Listing = { key: number; files: ListedCodeFile[]; commitSha: string | null };
 
 const BATCH_TOKEN_HINT =
   "One token for every repository in the batch, such as a course organisation's or group's. Used once per repository to download the code, then discarded; it is never stored. Give it read-only access to exactly these repositories, and revoke it afterwards.";
@@ -22,6 +29,11 @@ const BATCH_TOKEN_HINT =
  *
  * Given `onBatchChange`, it also offers a batch mode: several ZIPs (`codebase`, repeated) or one
  * repository link per line (`repoUrls`) sharing one token, each of which becomes its own test.
+ *
+ * Given `pickContributions`, a single codebase also offers "Which parts of the code did you
+ * write?": once the code is uploaded or its repository's files are loaded, the files are listed
+ * for the submitter to pick theirs (`codeScope`), and a repository is pinned to the listed commit
+ * (`repoCommit`) so the files submitted are the ones picked from.
  */
 export function CodebaseField({
   id,
@@ -30,6 +42,7 @@ export function CodebaseField({
   onError,
   batch = false,
   onBatchChange,
+  pickContributions = false,
 }: {
   id: string;
   label?: string;
@@ -39,17 +52,72 @@ export function CodebaseField({
   batch?: boolean;
   /** Offers the Single/Batch choice; without it the field always takes one codebase. */
   onBatchChange?: (batch: boolean) => void;
+  /** Offers the file picker for the parts of a single codebase the submitter wrote. */
+  pickContributions?: boolean;
 }) {
   const [source, setSource] = useState<"zip" | "link">("zip");
+  const [repoUrl, setRepoUrl] = useState("");
+  const [repoToken, setRepoToken] = useState("");
+  const [listing, setListing] = useState<Listing | null>(null);
+  const [listingStatus, setListingStatus] = useState<"idle" | "loading">("idle");
+  const [listingError, setListingError] = useState("");
+  /** Counts listing requests, so a slow answer for a replaced file cannot overwrite a newer one. */
+  const requestCount = useRef(0);
+  const picking = pickContributions && !batch;
+
+  function resetListing() {
+    requestCount.current += 1;
+    setListing(null);
+    setListingStatus("idle");
+    setListingError("");
+  }
 
   function choose(next: "zip" | "link") {
     setSource(next);
     onError?.("");
+    resetListing();
   }
 
   function chooseBatch(next: boolean) {
     onBatchChange?.(next);
     onError?.("");
+    resetListing();
+  }
+
+  async function loadListing(body: FormData) {
+    const request = ++requestCount.current;
+    setListing(null);
+    setListingError("");
+    setListingStatus("loading");
+    try {
+      const response = await fetch("/api/codebase/preview", { method: "POST", body });
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        files?: ListedCodeFile[];
+        commitSha?: string | null;
+      };
+      if (request !== requestCount.current) return;
+      if (!response.ok || !payload.files) {
+        throw new Error(payload.error ?? "Unable to list the codebase's files.");
+      }
+      setListing({ key: request, files: payload.files, commitSha: payload.commitSha ?? null });
+    } catch (caught) {
+      if (request !== requestCount.current) return;
+      setListingError(userFacingMessage(caught, "Unable to list the codebase's files."));
+    } finally {
+      if (request === requestCount.current) setListingStatus("idle");
+    }
+  }
+
+  function loadRepoListing() {
+    if (!repoUrl.trim()) {
+      setListingError("Enter the repository link first.");
+      return;
+    }
+    const body = new FormData();
+    body.set("repoUrl", repoUrl.trim());
+    if (repoToken.trim()) body.set("repoToken", repoToken.trim());
+    void loadListing(body);
   }
 
   const hint =
@@ -125,7 +193,8 @@ export function CodebaseField({
           multiple={batch}
           required
           onChange={(event) => {
-            const tooLarge = [...(event.target.files ?? [])].find((picked) => picked.size > MAX_ZIP_BYTES);
+            const picked = [...(event.target.files ?? [])];
+            const tooLarge = picked.find((one) => one.size > MAX_ZIP_BYTES);
             onError?.(
               !tooLarge
                 ? ""
@@ -133,6 +202,11 @@ export function CodebaseField({
                   ? `“${tooLarge.name}”: ${zipTooLargeMessage(tooLarge.size)}`
                   : zipTooLargeMessage(tooLarge.size),
             );
+            if (!picking) return;
+            if (picked.length !== 1 || tooLarge) return resetListing();
+            const body = new FormData();
+            body.set("codebase", picked[0]);
+            void loadListing(body);
           }}
         />
       ) : (
@@ -155,6 +229,12 @@ export function CodebaseField({
               inputMode="url"
               placeholder="https://github.com/owner/repository"
               required
+              value={repoUrl}
+              onChange={(event) => {
+                setRepoUrl(event.target.value);
+                // Files picked from another repository do not belong to this one.
+                if (listing || listingError) resetListing();
+              }}
             />
           )}
           <label className="codebase-token-label" htmlFor={`${id}-token`}>
@@ -172,8 +252,53 @@ export function CodebaseField({
             autoComplete="off"
             spellCheck={false}
             placeholder="github_pat_… or glpat-…"
+            value={repoToken}
+            onChange={(event) => setRepoToken(event.target.value)}
           />
         </>
+      )}
+      {picking && (
+        <div className="scope-section">
+          <div className="scope-heading">
+            <span className="field-label field-label-row">
+              Which parts of the code did you write?
+              <FieldHint text={SCOPE_HINT} />
+            </span>
+            {source === "link" && (
+              <button
+                type="button"
+                className="secondary scope-load"
+                disabled={listingStatus === "loading"}
+                onClick={loadRepoListing}
+              >
+                {listing ? "Reload files" : "Load files"}
+              </button>
+            )}
+          </div>
+          {listingStatus === "loading" ? (
+            <p className="hint scope-status" role="status">
+              {source === "zip" ? "Reading the archive…" : "Downloading the repository…"}
+            </p>
+          ) : listingError ? (
+            <p className="error" role="alert">
+              {listingError}
+            </p>
+          ) : listing ? (
+            <>
+              {source === "link" && listing.commitSha && (
+                <input type="hidden" name="repoCommit" value={listing.commitSha} />
+              )}
+              <CodeScopePicker key={listing.key} files={listing.files} />
+            </>
+          ) : (
+            <p className="hint scope-status">
+              {source === "zip"
+                ? "Choose a ZIP above to list its files and pick the ones you wrote."
+                : "Load the repository's files to pick the ones you wrote."}{" "}
+              Pick nothing to test the whole codebase.
+            </p>
+          )}
+        </div>
       )}
       {error && (
         <p className="error" role="alert">

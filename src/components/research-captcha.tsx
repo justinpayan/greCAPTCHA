@@ -2891,6 +2891,7 @@ export function ResearchCaptcha({
                       onError={setPaperError}
                       batch={batchManuscripts}
                       onBatchChange={setBatchManuscripts}
+                      pickContributions
                     />
                   ) : (
                     <ManuscriptField
@@ -2901,32 +2902,36 @@ export function ResearchCaptcha({
                       onBatchChange={setBatchManuscripts}
                     />
                   )}
-                  <div className="field full">
-                    <label htmlFor="contributions">
-                      {materialKind === "code"
-                        ? "Which parts of the code did you write?"
-                        : "What material can we test on?"}
-                      <FieldHint
-                        text={
+                  {/* A single codebase picks its files inside the codebase field; a batch of
+                      codebases has no one file list, so it keeps a written statement. */}
+                  {(materialKind !== "code" || isBatch) && (
+                    <div className="field full">
+                      <label htmlFor="contributions">
+                        {materialKind === "code"
+                          ? "Which parts of the code did you write?"
+                          : "What material can we test on?"}
+                        <FieldHint
+                          text={
+                            materialKind === "code"
+                              ? "Used for every codebase in the batch. Questions test only the code named here. Leave blank to test the whole codebase."
+                              : "In batch generation, this same statement is used for every manuscript in the batch."
+                          }
+                        />
+                      </label>
+                      {/* No length constraint, blank included: with no statement the generator is told
+                          there is no declared scope and covers the whole manuscript. */}
+                      <textarea
+                        className="control"
+                        id="contributions"
+                        name="contributions"
+                        placeholder={
                           materialKind === "code"
-                            ? "Questions test only the code named here. Leave blank to test the whole codebase."
-                            : "In batch generation, this same statement is used for every manuscript in the batch."
+                            ? "Name the files, modules, or features that are yours, e.g. src/parser/ and the caching layer in api/cache.py."
+                            : "Describe which sections or aspects of the source material the assessment should address."
                         }
                       />
-                    </label>
-                    {/* No length constraint, blank included: with no statement the generator is told
-                        there is no declared scope and covers the whole manuscript. */}
-                    <textarea
-                      className="control"
-                      id="contributions"
-                      name="contributions"
-                      placeholder={
-                        materialKind === "code"
-                          ? "Name the files, modules, or features that are yours, e.g. src/parser/ and the caching layer in api/cache.py."
-                          : "Describe which sections or aspects of the source material the assessment should address."
-                      }
-                    />
-                  </div>
+                    </div>
+                  )}
                 </>
               )}
               {mode === "default" && (

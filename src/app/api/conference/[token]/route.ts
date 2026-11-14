@@ -18,7 +18,7 @@ import {
 } from "@/lib/allowlist";
 import { getTemplateByInvitationToken } from "@/lib/templates";
 import { loadManuscript, readManuscriptSource } from "@/lib/manuscript-input";
-import { bundleUpload, loadCodebase, readCodebaseSource } from "@/lib/codebase-input";
+import { applyCodeScope, bundleUpload, loadCodebase, readCodebaseSource } from "@/lib/codebase-input";
 import { endpointOf, materialKindOf } from "@/lib/quiz";
 import { assertEndpointAllowedForUserId } from "@/lib/llm-endpoints";
 import { publicErrorMessage } from "@/lib/user-facing-error";
@@ -83,7 +83,7 @@ export async function POST(
     }
 
     const form = await request.formData();
-    const contributions =
+    let contributions =
       template.materialUploader === "taker"
         ? String(form.get("contributions") ?? "").trim()
         : template.materialContributions ?? "";
@@ -109,12 +109,19 @@ export async function POST(
       credentialOwnerUserId = template.ownerUserId;
     }
     const materialKind = materialKindOf(template.config);
+    const loadTakerCode = async () => {
+      const bundle = await loadCodebase(readCodebaseSource(form), template.config.modelId, {
+        apiKey,
+        endpoint,
+      });
+      const scoped = applyCodeScope(bundle, form);
+      if (scoped) contributions = scoped.contributions;
+      return bundleUpload(scoped?.bundle ?? bundle);
+    };
     const file =
       template.materialUploader === "taker"
         ? materialKind === "code"
-          ? bundleUpload(
-              await loadCodebase(readCodebaseSource(form), template.config.modelId, { apiKey, endpoint }),
-            )
+          ? await loadTakerCode()
           : await loadManuscript(readManuscriptSource(form))
         : materialKind === "code"
           ? new File(

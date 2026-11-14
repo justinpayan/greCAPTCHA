@@ -418,6 +418,219 @@ textarea.control {
   border-style: dashed;
 }
 
+/* "Which parts of the code did you write?": the codebase's files on the left, the submitter's on
+   the right, and the include/exclude arrows between them. */
+.scope-section {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.scope-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.scope-load {
+  min-height: 36px;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+}
+
+.scope-status {
+  margin: 0;
+}
+
+.scope-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.scope-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 380px;
+  border: 1px solid #cbd5cf;
+  border-radius: 12px;
+  background: white;
+  overflow: hidden;
+}
+
+.scope-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+  font-size: 0.85rem;
+  font-weight: 720;
+}
+
+.scope-filter {
+  min-height: 36px;
+  width: auto;
+  margin: 8px 8px 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.scope-tree,
+.scope-tree ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scope-tree {
+  flex: 1;
+  overflow: auto;
+  padding: 6px 0;
+}
+
+.scope-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 30px;
+  padding-right: 10px;
+  user-select: none;
+}
+
+.scope-row:hover {
+  background: var(--green-soft);
+}
+
+.scope-caret {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border: 0;
+  border-radius: 5px;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.8rem;
+}
+
+.scope-caret:hover {
+  color: var(--ink);
+}
+
+.scope-name {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.field .scope-name {
+  font-weight: 500;
+}
+
+.scope-name input[type="checkbox"] {
+  flex: none;
+  accent-color: var(--green);
+}
+
+.scope-folder,
+.scope-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+}
+
+.scope-folder {
+  font-weight: 700;
+}
+
+.scope-meta {
+  flex: none;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 500;
+}
+
+.scope-select-all {
+  flex: 0 1 auto;
+  font-weight: 720;
+}
+
+.scope-detail {
+  padding: 0 10px 6px;
+}
+
+.scope-detail .control {
+  min-height: 32px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  font-size: 0.8rem;
+}
+
+.scope-empty {
+  margin: 0;
+  padding: 14px;
+}
+
+.scope-arrows {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+
+.scope-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  width: 52px;
+  padding: 0;
+}
+
+.scope-arrow-icon {
+  display: block;
+}
+
+.scope-arrow:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+/* Stacked on narrow screens: the arrows turn to point down (include) and up (exclude). */
+@media (max-width: 720px) {
+  .scope-picker {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .scope-panel {
+    height: 300px;
+  }
+
+  .scope-arrows {
+    flex-direction: row;
+    justify-content: center;
+  }
+
+  .scope-arrow svg {
+    rotate: 90deg;
+  }
+}
+
 .file-control::file-selector-button {
   margin-right: 12px;
   border: 0;
@@ -3358,6 +3571,35 @@ mark.evidence:focus-visible {
   font-weight: 720;
 }
 
+/* The code viewer's file-list toggle: a sidebar icon beside its "Hide files"/"Show files" label. */
+.pdf-toolbar-controls .code-files-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.code-files-toggle svg {
+  flex: none;
+}
+
+/* A narrow pane keeps the file name readable: the toggle shrinks to its icon, and its label stays
+   for screen readers. */
+@container code-viewer (max-width: 480px) {
+  .pdf-toolbar-controls .code-files-toggle {
+    padding-inline: 9px;
+  }
+
+  .code-files-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
 .pdf-toolbar-controls button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
@@ -3404,6 +3646,7 @@ mark.evidence:focus-visible {
 /* The codebase viewer: the PDF viewer's frame, with a file list beside the selected file. */
 .code-viewer {
   --code-line-height: 1.55em;
+  container: code-viewer / inline-size;
   background: var(--surface);
 }
 

@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { studyTemplates } from "@/db/schema";
 import { loadManuscript, ManuscriptTooLargeError, readManuscriptSource } from "@/lib/manuscript-input";
 import { persistTemplateMaterial } from "@/lib/manuscripts";
-import { bundleUpload, loadCodebase, readCodebaseSource } from "@/lib/codebase-input";
+import { applyCodeScope, bundleUpload, loadCodebase, readCodebaseSource } from "@/lib/codebase-input";
 import { endpointOf, materialKindOf } from "@/lib/quiz";
 import { assertSameOrigin } from "@/lib/security";
 import { requireUser } from "@/lib/session";
@@ -28,15 +28,18 @@ export async function POST(
     }
     const form = await request.formData();
     const materialKind = materialKindOf(template.config);
-    const file =
-      materialKind === "code"
-        ? bundleUpload(
-            await loadCodebase(readCodebaseSource(form), template.config.modelId, {
-              endpoint: endpointOf(template.config),
-            }),
-          )
-        : await loadManuscript(readManuscriptSource(form));
-    const contributions = String(form.get("contributions") ?? "");
+    let contributions = String(form.get("contributions") ?? "");
+    let file: File;
+    if (materialKind === "code") {
+      const bundle = await loadCodebase(readCodebaseSource(form), template.config.modelId, {
+        endpoint: endpointOf(template.config),
+      });
+      const scoped = applyCodeScope(bundle, form);
+      if (scoped) contributions = scoped.contributions;
+      file = bundleUpload(scoped?.bundle ?? bundle);
+    } else {
+      file = await loadManuscript(readManuscriptSource(form));
+    }
     await persistTemplateMaterial(file, id, materialKind);
     await db
       .update(studyTemplates)
