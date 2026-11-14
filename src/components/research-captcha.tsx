@@ -36,6 +36,7 @@ import { ProfessorOpenRouterPanel } from "@/components/professor-openrouter-pane
 import { ToastStack, type ToastItem } from "@/components/toast-stack";
 import { PrintableQuestionSet } from "@/components/printable-question-set";
 import { SetOverview } from "@/components/set-overview";
+import { MaterialTag } from "@/components/material-tag";
 import { WorkflowTag } from "@/components/workflow-tag";
 import {
   CreatedTestAllowlistEditor,
@@ -162,6 +163,57 @@ function oversizedMaterial(form: FormData): string {
 }
 
 /** A copy of the form carrying one batch manuscript in place of the whole batch. */
+type CatalogSort = "newest" | "oldest" | "name-asc" | "name-desc" | "attempts" | "score";
+
+/** The sort choices each list offers; the first is its default. */
+const CATALOG_SORTS: Record<"resume" | "mine", Array<{ value: CatalogSort; label: string }>> = {
+  resume: [
+    { value: "newest", label: "Newest first" },
+    { value: "oldest", label: "Oldest first" },
+    { value: "name-asc", label: "Name, A–Z" },
+    { value: "name-desc", label: "Name, Z–A" },
+    { value: "attempts", label: "Most attempts" },
+  ],
+  mine: [
+    { value: "newest", label: "Newest first" },
+    { value: "oldest", label: "Oldest first" },
+    { value: "name-asc", label: "Name, A–Z" },
+    { value: "name-desc", label: "Name, Z–A" },
+    { value: "score", label: "Highest score" },
+  ],
+};
+
+const compareNames = (a: string, b: string) =>
+  a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
+
+/**
+ * A copy of the list in the chosen order. Ties, and choices that do not apply to the list, fall
+ * back to newest first, so the order never depends on how the server happened to return rows.
+ */
+function sortCatalog<T>(
+  rows: T[],
+  sort: CatalogSort,
+  fields: { name: (row: T) => string; date: (row: T) => string; attempts?: (row: T) => number; score?: (row: T) => number | null },
+): T[] {
+  const newest = (a: T, b: T) => fields.date(b).localeCompare(fields.date(a));
+  const order: Record<CatalogSort, (a: T, b: T) => number> = {
+    newest,
+    oldest: (a, b) => -newest(a, b),
+    "name-asc": (a, b) => compareNames(fields.name(a), fields.name(b)) || newest(a, b),
+    "name-desc": (a, b) => compareNames(fields.name(b), fields.name(a)) || newest(a, b),
+    attempts: (a, b) => (fields.attempts ? fields.attempts(b) - fields.attempts(a) : 0) || newest(a, b),
+    // Ungraded rows have no score and go last.
+    score: (a, b) =>
+      (fields.score ? (fields.score(b) ?? -1) - (fields.score(a) ?? -1) : 0) || newest(a, b),
+  };
+  return [...rows].sort(order[sort]);
+}
+
+/** The words a search for a test's source material matches. */
+function materialKindLabel(kind: MaterialKind): string {
+  return kind === "code" ? "codebase code" : "manuscript pdf paper";
+}
+
 function formForManuscript(form: FormData, item: BatchManuscript): FormData {
   const copy = new FormData();
   for (const [key, value] of form.entries()) {
@@ -500,6 +552,7 @@ export function ResearchCaptcha({
   const [attemptList, setAttemptList] = useState<AttemptListEntry[]>([]);
   const [myAssessments, setMyAssessments] = useState<AttemptListEntry[]>([]);
   const [catalogSearch, setCatalogSearch] = useState("");
+  const [catalogSort, setCatalogSort] = useState<CatalogSort>("newest");
   /** Attempt whose link is mid-update, so only that row's button shows a pending state. */
   const [togglingLinkId, setTogglingLinkId] = useState("");
   const [resettingId, setResettingId] = useState("");
@@ -862,15 +915,36 @@ export function ResearchCaptcha({
     void refreshCatalog();
   }, [mode, refreshCatalog]);
 
+  const sortedCreatedTests = useMemo(
+    () =>
+      sortCatalog(createdTests, catalogSort, {
+        name: (test) => test.name,
+        date: (test) => test.createdAt,
+        attempts: (test) => test.attempts.length,
+      }),
+    [createdTests, catalogSort],
+  );
+
+  const sortedMyAssessments = useMemo(
+    () =>
+      sortCatalog(myAssessments, catalogSort, {
+        name: (entry) => entry.setLabel,
+        date: (entry) => entry.completedAt ?? entry.createdAt,
+        score: (entry) => entry.score,
+      }),
+    [myAssessments, catalogSort],
+  );
+
   const visibleCreatedTests = useMemo(() => {
     const query = catalogSearch.trim().toLowerCase();
-    if (!query) return createdTests;
-    return createdTests.filter((test) => {
+    if (!query) return sortedCreatedTests;
+    return sortedCreatedTests.filter((test) => {
       const parentMatches = [
         test.name,
         test.modelId,
         test.apiKeyPayer,
         test.materialUploader,
+        materialKindLabel(test.materialKind),
         test.id,
       ].some((field) => field.toLowerCase().includes(query));
       return (
@@ -886,17 +960,23 @@ export function ResearchCaptcha({
         )
       );
     });
-  }, [catalogSearch, createdTests]);
+  }, [catalogSearch, sortedCreatedTests]);
 
   const visibleMyAssessments = useMemo(() => {
     const query = catalogSearch.trim().toLowerCase();
-    if (!query) return myAssessments;
-    return myAssessments.filter((entry) =>
-      [entry.setLabel, entry.paperName, entry.status, entry.id].some((field) =>
+    if (!query) return sortedMyAssessments;
+    return sortedMyAssessments.filter((entry) =>
+      [
+        entry.setLabel,
+        entry.paperName,
+        entry.status,
+        materialKindLabel(entry.materialKind),
+        entry.id,
+      ].some((field) =>
         field.toLowerCase().includes(query),
       ),
     );
-  }, [catalogSearch, myAssessments]);
+  }, [catalogSearch, sortedMyAssessments]);
 
   async function manageCreatedTestInvitation(test: CreatedTestEntry, revoke = false) {
     setSharingSetId(test.id);
@@ -2433,17 +2513,39 @@ export function ResearchCaptcha({
 
       {mode === "resume" || mode === "mine" ? (
         <section className="card form-card">
-          <div className="field">
-            <label htmlFor="catalogSearch">
-              {mode === "mine" ? "Search tests you’ve taken" : "Search tests you’ve created"}
-            </label>
-            <input
-              className="control"
-              id="catalogSearch"
-              value={catalogSearch}
-              placeholder="Filter by set name, paper, username, or status"
-              onChange={(event) => setCatalogSearch(event.target.value)}
-            />
+          <div className="catalog-search-row">
+            <div className="field">
+              <label htmlFor="catalogSearch">
+                {mode === "mine" ? "Search tests you’ve taken" : "Search tests you’ve created"}
+              </label>
+              <input
+                className="control"
+                id="catalogSearch"
+                value={catalogSearch}
+                placeholder="Filter by set name, paper, username, or status"
+                onChange={(event) => setCatalogSearch(event.target.value)}
+              />
+            </div>
+            <div className="field catalog-sort">
+              <label htmlFor="catalogSort">Sort by</label>
+              <select
+                className="control"
+                id="catalogSort"
+                // A choice only the other tab offers shows, and sorts, as newest first here.
+                value={
+                  CATALOG_SORTS[mode].some((option) => option.value === catalogSort)
+                    ? catalogSort
+                    : "newest"
+                }
+                onChange={(event) => setCatalogSort(event.target.value as CatalogSort)}
+              >
+                {CATALOG_SORTS[mode].map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="catalog-toolbar">
@@ -2517,7 +2619,10 @@ export function ResearchCaptcha({
               {visibleMyAssessments.map((entry) => (
                 <article className="catalog-row" key={entry.id}>
                   <div className="catalog-main">
-                    <strong>{entry.setLabel}</strong>
+                    <div className="catalog-title-row">
+                      <strong>{entry.setLabel}</strong>
+                      <MaterialTag kind={entry.materialKind} />
+                    </div>
                     <span className="catalog-meta">
                       {entry.status === "graded"
                         ? `Graded${entry.score === null ? "" : ` at ${entry.score}%`}`
@@ -2580,6 +2685,7 @@ export function ResearchCaptcha({
                         <div className="catalog-main">
                           <div className="catalog-title-row">
                             <strong>{test.name}</strong>
+                            <MaterialTag kind={test.materialKind} />
                             <WorkflowTag
                               apiKeyPayer={test.apiKeyPayer}
                               materialUploader={test.materialUploader}

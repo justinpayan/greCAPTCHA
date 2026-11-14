@@ -334,6 +334,8 @@ export type AttemptListEntry = {
   questionSetId: string;
   setLabel: string;
   paperName: string;
+  /** Whether the test was generated from a manuscript PDF or a codebase. */
+  materialKind: MaterialKind;
   /** Account taking this independently stored response. */
   takerUsername: string | null;
   status: string;
@@ -351,6 +353,8 @@ export type CreatedTestEntry = {
   id: string;
   apiKeyPayer: ApiKeyPayer;
   materialUploader: MaterialUploader;
+  /** Whether the test is generated from a manuscript PDF or a codebase. */
+  materialKind: MaterialKind;
   name: string;
   modelId: string;
   questionCount: number;

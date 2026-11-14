@@ -9,6 +9,7 @@ import { deleteManuscript } from "@/lib/manuscripts";
 import {
   isWarmup,
   isInvitationTemplate,
+  materialKindOf,
   questionBlockName,
   type ApiKeyPayer,
   type AttemptListEntry,
@@ -331,6 +332,7 @@ export async function listAttempts(ownerUserId: string): Promise<AttemptListEntr
       completedAt: attempts.completedAt,
       setName: questionSets.name,
       paperName: questionSets.paperName,
+      materialKind: questionSets.materialKind,
       takerUsername: attempts.takerUsername,
     })
     .from(attempts)
@@ -351,6 +353,7 @@ export async function listAttempts(ownerUserId: string): Promise<AttemptListEntr
     questionSetId: row.questionSetId,
     setLabel: questionSetLabel(row.setName, row.paperName),
     paperName: row.paperName,
+    materialKind: row.materialKind === "code" ? "code" : "pdf",
     takerUsername: row.takerUsername ?? null,
     status: row.status,
     score: row.score,
@@ -394,6 +397,7 @@ export async function listCreatedTests(ownerUserId: string): Promise<CreatedTest
         completedAt: attempts.completedAt,
         setName: questionSets.name,
         paperName: questionSets.paperName,
+        materialKind: questionSets.materialKind,
         takerUsername: attempts.takerUsername,
         sourceTemplateId: questionSets.sourceTemplateId,
         disqualification: conferenceSubmissions.disqualification,
@@ -419,6 +423,7 @@ export async function listCreatedTests(ownerUserId: string): Promise<CreatedTest
       questionSetId: row.questionSetId,
       setLabel: questionSetLabel(row.setName, row.paperName),
       paperName: row.paperName,
+      materialKind: row.materialKind === "code" ? "code" : "pdf",
       takerUsername: row.takerUsername ?? null,
       status: row.status,
       score: row.score,
@@ -453,6 +458,7 @@ export async function listCreatedTests(ownerUserId: string): Promise<CreatedTest
       id: set.id,
       apiKeyPayer: set.apiKeyPayer === "taker" ? "taker" : "creator",
       materialUploader: set.materialUploader === "taker" ? "taker" : "creator",
+      materialKind: set.materialKind === "code" ? "code" : "pdf",
       name: questionSetLabel(set.name, set.paperName),
       modelId: set.modelId,
       questionCount: (JSON.parse(set.questionsJson) as StoredQuestion[]).length,
@@ -468,6 +474,7 @@ export async function listCreatedTests(ownerUserId: string): Promise<CreatedTest
       id: template.id,
       apiKeyPayer: template.apiKeyPayer === "taker" ? "taker" : "creator",
       materialUploader: template.materialUploader === "taker" ? "taker" : "creator",
+      materialKind: materialKindOf(config),
       name: template.name,
       modelId: config.modelId,
       questionCount: config.blocks.reduce((total, block) => total + block.count, 0),
@@ -500,6 +507,7 @@ export async function listTakerAttempts(takerUserId: string): Promise<AttemptLis
       completedAt: attempts.completedAt,
       setName: questionSets.name,
       paperName: questionSets.paperName,
+      materialKind: questionSets.materialKind,
       takerUsername: attempts.takerUsername,
     })
     .from(attempts)
@@ -530,6 +538,7 @@ export async function listTakerAttempts(takerUserId: string): Promise<AttemptLis
     questionSetId: row.questionSetId,
     setLabel: questionSetLabel(row.setName, row.paperName),
     paperName: row.paperName,
+    materialKind: row.materialKind === "code" ? "code" : "pdf",
     takerUsername: row.takerUsername ?? null,
     status: evaluatingIds.has(row.id) ? "evaluating" : row.status,
     score: row.score,

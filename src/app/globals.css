@@ -2046,6 +2046,40 @@ details.seb-payment-settings {
   gap: 8px;
 }
 
+/* A test's source material beside its name: neutral, so it never reads as a workflow colour. */
+.material-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  border: 1px solid #cbd5cf;
+  border-radius: 999px;
+  padding: 3px 10px 3px 8px;
+  color: #34423b;
+  background: var(--surface);
+  font-size: 0.78rem;
+  font-weight: 720;
+  white-space: nowrap;
+}
+
+.material-tag svg {
+  flex: none;
+}
+
+/* The created/taken lists' search box with the sort choice beside it, stacked on a phone. */
+.catalog-search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(170px, 220px);
+  gap: 12px;
+  align-items: end;
+}
+
+@media (max-width: 560px) {
+  .catalog-search-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .catalog-toolbar {
   display: flex;
   flex-wrap: wrap;
