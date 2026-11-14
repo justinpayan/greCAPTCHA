@@ -367,12 +367,12 @@ textarea.control {
 }
 
 /* The manuscript field's label, with the upload/link switch on the same line. */
+/* A field's label with its source toggles on the line beneath it. */
 .manuscript-heading {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .manuscript-options {
