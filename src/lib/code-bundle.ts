@@ -26,7 +26,7 @@ export const MAX_ARCHIVE_ENTRIES = 50_000;
 /** A single file larger than this is data or generated output, not something a student wrote. */
 export const MAX_SOURCE_FILE_BYTES = 1024 * 1024;
 /** The most source tokens any assessment is generated from, whatever the model's context. */
-export const MAX_BUNDLE_TOKENS = 300_000;
+export const MAX_BUNDLE_TOKENS = 500_000;
 /**
  * Context kept free for everything that is not the code: instructions, the questions made so far,
  * and the model's output, which for a large candidate pool from a reasoning model is substantial.
