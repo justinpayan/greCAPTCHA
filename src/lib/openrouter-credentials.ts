@@ -32,17 +32,18 @@ function encrypt(value: string) {
   };
 }
 
-function decrypt(row: { ciphertext: string; iv: string; authTag: string }) {
-  const decipher = createDecipheriv(
-    "aes-256-gcm",
-    encryptionKey(),
-    Buffer.from(row.iv, "base64"),
-  );
-  decipher.setAuthTag(Buffer.from(row.authTag, "base64"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(row.ciphertext, "base64")),
-    decipher.final(),
-  ]).toString("utf8");
+function decrypt(row: { ciphertext: string; iv: string; authTag: string }, message: string) {
+  const key = encryptionKey();
+  try {
+    const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(row.iv, "base64"));
+    decipher.setAuthTag(Buffer.from(row.authTag, "base64"));
+    return Buffer.concat([
+      decipher.update(Buffer.from(row.ciphertext, "base64")),
+      decipher.final(),
+    ]).toString("utf8");
+  } catch (cause) {
+    throw new OpenRouterError(message, { cause });
+  }
 }
 
 /** Stored keys: one per creator and endpoint, so OpenRouter tests keep grading beside institution ones. */
@@ -122,7 +123,10 @@ export async function requireOpenRouterCredential(
   if (row.expiresAt && new Date(row.expiresAt).getTime() <= Date.now()) {
     throw new OpenRouterError(`The administrator's ${label} key has expired.`);
   }
-  return decrypt(row);
+  return decrypt(
+    row,
+    `greCAPTCHA couldn't read the saved ${label} API key. Reconnect or re-save the key under API Access, then try again.`,
+  );
 }
 
 export async function deleteOpenRouterCredential(
@@ -153,7 +157,10 @@ export function requireConferenceCredential(submissionId: string) {
   if (!row || Date.parse(row.expiresAt) <= Date.now()) {
     throw new OpenRouterError("Reconnect OpenRouter to continue with this assessment.");
   }
-  return decrypt(row);
+  return decrypt(
+    row,
+    "greCAPTCHA couldn't read the saved OpenRouter API key for this assessment. Reconnect OpenRouter and try again.",
+  );
 }
 
 export function deleteConferenceCredential(submissionId: string) {

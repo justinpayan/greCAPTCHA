@@ -14,6 +14,12 @@ const TAG_BYTES = 16;
 
 export type StoredFileKind = "job-upload" | "manuscript" | "template-material";
 
+const unreadableFileMessages: Record<StoredFileKind, string> = {
+  "job-upload": "greCAPTCHA couldn't read the stored upload. Upload the file again and start a new generation.",
+  manuscript: "greCAPTCHA couldn't read the saved source file.",
+  "template-material": "greCAPTCHA couldn't read the template's saved source file.",
+};
+
 /**
  * Production fails closed. Development and tests may opt out so local fixtures and Next's build
  * workers do not need the production secret. The Docker build sets DATA_ENCRYPTION_REQUIRED=false
@@ -94,7 +100,11 @@ export function decryptStoredBytes(bytes: Uint8Array, kind: StoredFileKind): Buf
   const ivStart = ENVELOPE_MAGIC.length;
   const tagStart = ivStart + IV_BYTES;
   const ciphertextStart = tagStart + TAG_BYTES;
-  if (value.length < ciphertextStart) throw new Error(`Encrypted ${kind} file is truncated.`);
+  if (value.length < ciphertextStart) {
+    throw new Error(unreadableFileMessages[kind], {
+      cause: new Error(`Encrypted ${kind} file is truncated.`),
+    });
+  }
   const decipher = createDecipheriv(
     "aes-256-gcm",
     key,
@@ -102,10 +112,12 @@ export function decryptStoredBytes(bytes: Uint8Array, kind: StoredFileKind): Buf
   );
   decipher.setAAD(aad(kind));
   decipher.setAuthTag(value.subarray(tagStart, ciphertextStart));
-  return Buffer.concat([
-    decipher.update(value.subarray(ciphertextStart)),
-    decipher.final(),
-  ]);
+  const plaintext = decipher.update(value.subarray(ciphertextStart));
+  try {
+    return Buffer.concat([plaintext, decipher.final()]);
+  } catch (cause) {
+    throw new Error(unreadableFileMessages[kind], { cause });
+  }
 }
 
 export function readEncryptedFile(filePath: string, kind: StoredFileKind): Buffer {

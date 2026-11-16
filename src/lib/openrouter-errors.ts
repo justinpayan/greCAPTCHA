@@ -14,8 +14,8 @@ export const OPENROUTER_ERROR_SOURCE = "openrouter";
 
 /** A problem with an OpenRouter key or credential, or a failure reported by OpenRouter itself. */
 export class OpenRouterError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "OpenRouterError";
   }
 }
