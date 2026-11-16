@@ -66,7 +66,7 @@ export const fixedRubricSchema = z.preprocess(
     criteria: z
       .array(
         z.object({
-          criterion: z.string().max(200).default(""),
+          criterion: z.string().default(""),
           description: z.string().max(1_000).default(""),
           points: z.number().min(0).max(100),
           /** One per level, in the same order as `levels`. */
@@ -107,8 +107,6 @@ export function levelPoints(rubric: Pick<FixedRubric, "levels">, points: number)
 /** What stops a fixed rubric from generating questions; empty when it is ready. */
 export function fixedRubricProblems(rubric: FixedRubric): string[] {
   const problems: string[] = [];
-  if (!rubric.summary.trim()) problems.push("Write the summary shown to the participant.");
-  if (rubric.levels.some((level) => !level.label.trim())) problems.push("Name every level.");
   const percents = rubric.levels.map((level) => level.percent);
   if (new Set(percents).size !== percents.length) {
     problems.push("Give every level a different share of the points.");
@@ -123,15 +121,6 @@ export function fixedRubricProblems(rubric: FixedRubric): string[] {
   const total = rubric.criteria.reduce((sum, criterion) => sum + criterion.points, 0);
   if (Math.abs(total - 100) > 1e-9) {
     problems.push(`The criteria must total 100 points; they total ${total}.`);
-  }
-  if (
-    rubric.criteria.some(
-      (criterion) =>
-        criterion.descriptions.length !== rubric.levels.length ||
-        criterion.descriptions.some((text) => !text.trim()),
-    )
-  ) {
-    problems.push("Describe every level of every criterion.");
   }
   return problems;
 }
@@ -1057,10 +1046,12 @@ export function fixedCriterionGuidance(
   const points = levelPoints(rubric, criterion.points);
   return [
     criterion.description,
-    ...rubric.levels.map(
-      (level, index) =>
-        `${level.label} (${points[index]} points): ${criterion.descriptions[index] ?? ""}`,
-    ),
+    ...rubric.levels.map((level, index) => {
+      const pointLabel = `${points[index]} points`;
+      const heading = level.label.trim() ? `${level.label} (${pointLabel})` : pointLabel;
+      const description = criterion.descriptions[index]?.trim();
+      return description ? `${heading}: ${description}` : heading;
+    }),
     `For this question: ${note.trim()}`,
   ]
     .filter(Boolean)
@@ -1071,14 +1062,15 @@ export function fixedCriterionGuidance(
 export const GRADING_SUMMARY_SEPARATOR = "\n\nHow your answer is graded: ";
 
 /**
- * Questions from a fixed-rubric card. Each carries the fixed summary in its text, so the
- * participant knows how it is graded, and the fixed criteria with this question's notes.
+ * Questions from a fixed-rubric card carry the summary when supplied and the fixed criteria
+ * with this question's notes.
  */
 export function prepareFixedRubricQuestions(
   generated: GeneratedFixedRubricSet,
   block: QuestionBlockConfig,
   rubric: FixedRubric,
 ): StoredFreeResponseQuestion[] {
+  const summary = rubric.summary.trim() ? rubric.summary : "";
   return generated.questions.map((question) => ({
     type: "free_response",
     id: globalThis.crypto.randomUUID(),
@@ -1088,9 +1080,9 @@ export function prepareFixedRubricQuestions(
     description: question.description.trim(),
     sourcePage: question.page,
     sourceLocation: locationOf(question),
-    prompt: `${question.prompt.trim()}${GRADING_SUMMARY_SEPARATOR}${rubric.summary}`,
+    prompt: question.prompt.trim() + (summary ? GRADING_SUMMARY_SEPARATOR + summary : ""),
     rubric: {
-      summary: rubric.summary,
+      summary,
       criteria: rubric.criteria.map((criterion, index) => ({
         criterion: criterion.criterion,
         points: criterion.points,

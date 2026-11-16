@@ -838,12 +838,12 @@ export async function generateQuestionBlock(input: {
     const validated = generatedFixedRubricSetSchema.parse(
       await call(
         fixedRubricQuestionsJsonSchema,
-        `This card uses the fixed rubric below for every question. Its summary, criteria, points, and levels are final. Do not write criteria, points, performance levels, or a rubric summary of your own, and do not put a rubric summary in the question text: the fixed summary is added to every question automatically. Where the rubric generation instructions above ask you to create those, follow the fixed rubric instead, and use the rest of those instructions to design each question, its notes, and its sample answers.
+        `This card uses the fixed rubric below for every question. Its criteria, points, and levels are final. Blank level labels and descriptions are allowed. Do not write criteria, points, performance levels, or a rubric summary of your own, and do not put a rubric summary in the question text. The fixed summary, when provided, is added automatically. Where the rubric generation instructions above ask you to create those, follow the fixed rubric instead, and use the rest of those instructions to design each question, its notes, and its sample answers.
 
 Fixed rubric:
 ${JSON.stringify(rubric)}
 
-Design every question so that the fixed summary fits it. For every question also supply:
+Design every question to fit the fixed criteria and any supplied summary. For every question also supply:
 - criterionNotes: exactly ${rubric.criteria.length} notes, one per fixed criterion in the order given. Each is one or two sentences saying what earns full and half credit on that criterion for this particular question, such as which elements or which feature of the ${material.kind === "code" ? "code" : "paper"} count. Never give away the answer in a way that could be shown to the participant before they answer.
 - sampleAnswers: a "partial" answer that earns partial credit and a "full" answer that earns full credit under the fixed rubric. They are never shown in the question.
 

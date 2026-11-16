@@ -81,11 +81,8 @@ describe("fixed rubrics", () => {
       criteria: [{ ...rubric.criteria[0], points: 90 }],
     };
     expect(fixedRubricProblems(unfinished)).toEqual([
-      "Write the summary shown to the participant.",
-      "Name every level.",
       "Give every level a different share of the points.",
       "The criteria must total 100 points; they total 90.",
-      "Describe every level of every criterion.",
     ]);
     // Still a valid card, so it autosaves; only generation refuses it.
     const card = { ...block, fixedRubric: unfinished };
@@ -94,16 +91,34 @@ describe("fixed rubrics", () => {
     expect(generationConfigSchema.safeParse([block]).success).toBe(true);
   });
 
+  it("generates with a blank summary, level label, and scoring description", () => {
+    const partialRubric: FixedRubric = {
+      ...rubric,
+      summary: " ",
+      levels: rubric.levels.map((level, index) => index === 1 ? { ...level, label: "" } : level),
+      criteria: rubric.criteria.map((criterion) => ({
+        ...criterion,
+        descriptions: [criterion.descriptions[0], "", criterion.descriptions[2]],
+      })),
+    };
+    expect(generationConfigSchema.safeParse([{ ...block, fixedRubric: partialRubric }]).success).toBe(true);
+    const [question] = prepareFixedRubricQuestions({ questions: [generatedQuestion] }, block, partialRubric);
+    expect(question.prompt).toBe(generatedQuestion.prompt);
+    expect(question.rubric.summary).toBe("");
+    expect(question.rubric.criteria[0].guidance.split("\n")).toContain("15 points");
+    expect(question.rubric.criteria[0].allowedPoints).toEqual([0, 15, 30]);
+  });
+
   it("sets a fixed rubric aside for model-written rubrics and keeps it to switch back to", async () => {
     const setAside = questionBlockSchema.parse({
       ...block,
-      fixedRubric: { ...rubric, summary: "" },
+      fixedRubric: { ...rubric, criteria: [{ ...rubric.criteria[0], criterion: "" }] },
       modelWrittenRubric: true,
     });
     expect(activeFixedRubric(setAside)).toBeUndefined();
     // Set aside, an unfinished rubric no longer blocks generation, and is kept as it was.
     expect(generationConfigSchema.safeParse([setAside]).success).toBe(true);
-    expect(setAside.type === "free_response" && setAside.fixedRubric?.summary).toBe("");
+    expect(setAside.type === "free_response" && setAside.fixedRubric?.criteria[0].criterion).toBe("");
     const sent = stubProvider({
       questions: [{
         prompt: "Q?",
