@@ -2362,10 +2362,12 @@ export function ResearchCaptcha({
         <section className="card form-card">
           <h2>{mfaEnrolled ? "Verify your sign-in to continue" : "Set up passkeys or MFA"}</h2>
           <p className="lede">Multifactor authentication is required to create and manage tests, including private PDFs, answers, and grades. You can still access Tests You&apos;ve Taken.</p>
-          {!mfaEnrolled && <Link className="secondary button-link" href="/account/mfa#passkey">Set up a passkey</Link>}
-          <Link className="primary button-link" href={mfaEnrolled ? "/login?next=%2F" : "/account/mfa#authenticator"}>
-            {mfaEnrolled ? "Sign in with MFA" : "Set up authenticator"}
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {!mfaEnrolled && <Link className="primary button-link" href="/account/mfa#passkey">Set up a passkey</Link>}
+            <Link className="primary button-link" href={mfaEnrolled ? "/login?next=%2F" : "/account/mfa#authenticator"}>
+              {mfaEnrolled ? "Sign in with MFA" : "Set up authenticator"}
+            </Link>
+          </div>
         </section>
       ) : <>
       {(mode === "default" || mode === "custom") && (
