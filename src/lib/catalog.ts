@@ -5,7 +5,8 @@ import { and, count, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import { db } from "@/db";
 import { attemptAnswers, attempts, conferenceSubmissions, jobs, questionSets, studyTemplates } from "@/db/schema";
 import { readStoredAllowlist, serializeAllowlist } from "@/lib/allowlist";
-import { deleteManuscript } from "@/lib/manuscripts";
+import { manuscriptPath } from "@/lib/manuscripts";
+import { queueFileDeletions, queueJobFileDeletions, runFileCleanup } from "@/lib/account-deletion";
 import {
   isWarmup,
   isInvitationTemplate,
@@ -208,12 +209,25 @@ export async function setQuestionSetAllowlist(
  *
  */
 export async function deleteQuestionSet(id: string, ownerUserId: string) {
-  const owned = await db.select({ id: questionSets.id }).from(questionSets)
-    .where(and(eq(questionSets.id, id), eq(questionSets.ownerUserId, ownerUserId))).get();
-  if (!owned) throw new Error("Question set not found.");
-  const result = await db.delete(questionSets).where(and(eq(questionSets.id, id), eq(questionSets.ownerUserId, ownerUserId))).run();
-  if (result.changes !== 1) throw new Error("Question set not found.");
-  deleteManuscript(id);
+  db.transaction(() => {
+    const owned = db.select({ id: questionSets.id }).from(questionSets)
+      .where(and(eq(questionSets.id, id), eq(questionSets.ownerUserId, ownerUserId))).get();
+    if (!owned) throw new Error("Question set not found.");
+    const children = db.select().from(attempts).where(eq(attempts.questionSetId, id)).all();
+    const childIds = new Set(children.map((attempt) => attempt.id));
+    const submitted = db.select().from(conferenceSubmissions).where(eq(conferenceSubmissions.questionSetId, id)).all();
+    const generationIds = new Set(submitted.map((entry) => entry.generationJobId));
+    const relatedJobs = db.select().from(jobs).all().filter((job) =>
+      childIds.has(job.attemptId ?? "") || generationIds.has(job.id) || JSON.parse(job.payloadJson).questionSetId === id,
+    );
+    queueJobFileDeletions(relatedJobs);
+    if (relatedJobs.length) db.delete(jobs).where(inArray(jobs.id, relatedJobs.map((job) => job.id))).run();
+    db.delete(conferenceSubmissions).where(eq(conferenceSubmissions.questionSetId, id)).run();
+    queueFileDeletions([manuscriptPath(id, "pdf"), manuscriptPath(id, "code")]);
+    const result = db.delete(questionSets).where(and(eq(questionSets.id, id), eq(questionSets.ownerUserId, ownerUserId))).run();
+    if (result.changes !== 1) throw new Error("Question set not found.");
+  });
+  runFileCleanup();
 }
 
 /**
@@ -246,8 +260,17 @@ export async function setAttemptLinkEnabled(id: string, enabled: boolean, ownerU
  */
 export async function deleteAttempt(id: string, ownerUserId: string) {
   await requireOwnedAttempt(id, ownerUserId);
-  const result = await db.delete(attempts).where(eq(attempts.id, id)).run();
-  if (result.changes !== 1) throw new Error("Attempt not found.");
+  db.transaction(() => {
+    const submitted = db.select().from(conferenceSubmissions).where(eq(conferenceSubmissions.attemptId, id)).all();
+    const generationIds = new Set(submitted.map((entry) => entry.generationJobId));
+    const relatedJobs = db.select().from(jobs).all().filter((job) => job.attemptId === id || generationIds.has(job.id));
+    queueJobFileDeletions(relatedJobs);
+    if (relatedJobs.length) db.delete(jobs).where(inArray(jobs.id, relatedJobs.map((job) => job.id))).run();
+    db.delete(conferenceSubmissions).where(eq(conferenceSubmissions.attemptId, id)).run();
+    const result = db.delete(attempts).where(eq(attempts.id, id)).run();
+    if (result.changes !== 1) throw new Error("Attempt not found.");
+  });
+  runFileCleanup();
 }
 
 /**

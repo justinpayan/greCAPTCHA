@@ -3,7 +3,7 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
-import { attempts, conferenceSubmissions, questionSets } from "@/db/schema";
+import { attempts, conferenceSubmissions, jobs, questionSets, users } from "@/db/schema";
 import { createAttempt } from "@/lib/attempts";
 import { assertBundleFits, parseBundle } from "@/lib/code-bundle";
 import { readEncryptedFile } from "@/lib/data-encryption";
@@ -64,6 +64,7 @@ export async function executeGeneration(
   payload: GenerationJobPayload,
   apiKey: string,
   onProgress: (current: number, total: number) => Promise<void>,
+  jobId?: string,
 ) {
   ownerUserId = payload.questionSetOwnerUserId ?? ownerUserId;
   const existingSet = await db
@@ -167,31 +168,38 @@ export async function executeGeneration(
 
   // The job upload is temporary. Preserve the exact manuscript used for generation before the
   // question set becomes visible, so every attempt can display the same source document.
-  persistManuscript(payload.filePath, payload.questionSetId, materialKind);
   // Read once here rather than on every attempt load; null when the PDF declares no usable title.
   const paperTitle = materialKind === "pdf" ? await extractPdfTitle(bytes) : null;
-  await db.insert(questionSets).values({
-    id: payload.questionSetId,
-    ownerUserId,
-    sourceTemplateId: payload.sourceTemplateId ?? null,
-    apiKeyPayer: payload.apiKeyPayer,
-    materialUploader: payload.materialUploader,
-    materialKind,
-    endpoint,
-    schemaVersion: 1,
-    name: payload.setName || null,
-    paperName: payload.fileName,
-    paperTitle,
-    contributions: payload.contributions,
-    modelId: payload.modelId,
-    pdfEngine: payload.pdfEngine,
-    overallTimeLimitSeconds: payload.overallTimeLimitSeconds,
-    randomize: false,
-    configJson: JSON.stringify(payload.blocks),
-    questionsJson: JSON.stringify(orderQuestions(questions)),
-    takerAllowlistJson: serializeAllowlist(payload.takerAllowlist ?? null),
-    gradingInstructions: payload.gradingInstructions?.trim() || null,
-    createdAt: new Date().toISOString(),
+  db.transaction(() => {
+    if (!db.select().from(users).where(eq(users.id, ownerUserId)).get() ||
+        (payload.taker && !db.select().from(users).where(eq(users.id, payload.taker.id)).get()) ||
+        (jobId && db.select().from(jobs).where(eq(jobs.id, jobId)).get()?.status !== "running")) {
+      throw new Error("This generation was cancelled because its account or submission was deleted.");
+    }
+    persistManuscript(payload.filePath, payload.questionSetId, materialKind);
+    db.insert(questionSets).values({
+      id: payload.questionSetId,
+      ownerUserId,
+      sourceTemplateId: payload.sourceTemplateId ?? null,
+      apiKeyPayer: payload.apiKeyPayer,
+      materialUploader: payload.materialUploader,
+      materialKind,
+      endpoint,
+      schemaVersion: 1,
+      name: payload.setName || null,
+      paperName: payload.fileName,
+      paperTitle,
+      contributions: payload.contributions,
+      modelId: payload.modelId,
+      pdfEngine: payload.pdfEngine,
+      overallTimeLimitSeconds: payload.overallTimeLimitSeconds,
+      randomize: false,
+      configJson: JSON.stringify(payload.blocks),
+      questionsJson: JSON.stringify(orderQuestions(questions)),
+      takerAllowlistJson: serializeAllowlist(payload.takerAllowlist ?? null),
+      gradingInstructions: payload.gradingInstructions?.trim() || null,
+      createdAt: new Date().toISOString(),
+    }).run();
   });
   if (!payload.taker) return { questionSetId: payload.questionSetId };
   const created = await createAttempt({

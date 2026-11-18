@@ -4,7 +4,7 @@ import { retryOwnedJob } from "@/lib/jobs";
 import { validateOpenRouterKey } from "@/lib/openrouter";
 import { errorResponseBody } from "@/lib/openrouter-errors";
 import { assertSameOrigin } from "@/lib/security";
-import { requireUser } from "@/lib/session";
+import { requireTestAdministrator } from "@/lib/session";
 
 export const runtime = "nodejs";
 
@@ -14,7 +14,7 @@ export async function POST(
 ) {
   try {
     assertSameOrigin(request);
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const { id } = await context.params;
     const body = (await request.json()) as {
       openrouterApiKey?: unknown;

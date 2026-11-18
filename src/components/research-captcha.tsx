@@ -460,8 +460,12 @@ export function ResearchCaptcha({
   username,
   initialGetStartedHidden = false,
   initialMode = "default",
+  canAdministerTests,
+  mfaEnrolled,
 }: {
   username: string;
+  canAdministerTests: boolean;
+  mfaEnrolled: boolean;
   /** The account's saved choice to hide the Get started guide, read on the server. */
   initialGetStartedHidden?: boolean;
   initialMode?: "default" | "mine";
@@ -704,6 +708,7 @@ export function ResearchCaptcha({
   }
 
   useEffect(() => {
+    if (!canAdministerTests) return;
     let active = true;
     Promise.all([
       fetch("/api/templates").then(async (response) => {
@@ -771,11 +776,11 @@ export function ResearchCaptcha({
     return () => {
       active = false;
     };
-  }, []);
+  }, [canAdministerTests]);
 
   // Autosave the working configuration so a reload or a server restart resumes it.
   useEffect(() => {
-    if (!restored) return;
+    if (!canAdministerTests || !restored) return;
     const timer = window.setTimeout(() => {
       void fetch("/api/templates", {
         method: "PUT",
@@ -786,7 +791,7 @@ export function ResearchCaptcha({
       });
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [currentConfig, restored]);
+  }, [currentConfig, restored, canAdministerTests]);
 
   useEffect(() => {
     if (
@@ -894,20 +899,20 @@ export function ResearchCaptcha({
 
   const refreshCatalog = useCallback(async () => {
     const [createdResult, attemptsResult, mineResult] = await Promise.allSettled([
-      fetch("/api/created-tests").then((response) => response.json()),
-      fetch("/api/attempts").then((response) => response.json()),
+      canAdministerTests ? fetch("/api/created-tests").then((response) => response.json()) : Promise.resolve(null),
+      canAdministerTests ? fetch("/api/attempts").then((response) => response.json()) : Promise.resolve(null),
       fetch("/api/attempts/mine").then((response) => response.json()),
     ]);
-    if (createdResult.status === "fulfilled" && createdResult.value.tests) {
-      setCreatedTests(createdResult.value.tests as CreatedTestEntry[]);
+    if (createdResult.status === "fulfilled" && createdResult.value?.tests) {
+      setCreatedTests(createdResult.value?.tests as CreatedTestEntry[]);
     }
-    if (attemptsResult.status === "fulfilled" && attemptsResult.value.attempts) {
-      setAttemptList(attemptsResult.value.attempts as AttemptListEntry[]);
+    if (attemptsResult.status === "fulfilled" && attemptsResult.value?.attempts) {
+      setAttemptList(attemptsResult.value?.attempts as AttemptListEntry[]);
     }
     if (mineResult.status === "fulfilled" && mineResult.value.attempts) {
       setMyAssessments(mineResult.value.attempts as AttemptListEntry[]);
     }
-  }, []);
+  }, [canAdministerTests]);
 
   // Reload the lists whenever a browsing tab is opened, so a set generated moments ago and
   // an attempt just answered on this laptop both appear without a page refresh.
@@ -2281,8 +2286,8 @@ export function ResearchCaptcha({
         <Link className="sign-out account-action account-link" href="/about">
           About
         </Link>
-        <Link className="sign-out account-action account-link" href="/account/password">
-          Change password
+        <Link className="sign-out account-action account-link" href="/account/settings">
+          Settings
         </Link>
         <button
           className="sign-out account-action"
@@ -2353,6 +2358,16 @@ export function ResearchCaptcha({
           </button>
         </div>
       </div>
+      {!canAdministerTests && mode !== "mine" ? (
+        <section className="card form-card">
+          <h2>{mfaEnrolled ? "Verify your sign-in to continue" : "Set up passkeys or MFA"}</h2>
+          <p className="lede">Multifactor authentication is required to create and manage tests, including private PDFs, answers, and grades. You can still access Tests You&apos;ve Taken.</p>
+          {!mfaEnrolled && <Link className="secondary button-link" href="/account/mfa#passkey">Set up a passkey</Link>}
+          <Link className="primary button-link" href={mfaEnrolled ? "/login?next=%2F" : "/account/mfa#authenticator"}>
+            {mfaEnrolled ? "Sign in with MFA" : "Set up authenticator"}
+          </Link>
+        </section>
+      ) : <>
       {(mode === "default" || mode === "custom") && (
         <section
           className={`dashboard-workflow workflow-${
@@ -3596,6 +3611,7 @@ export function ResearchCaptcha({
           </div>
         </form>
       )}
+      </>}
       </div>
       {/* Straight into <body>, so printing can hide the whole dashboard and keep only these. */}
       {printBatch &&

@@ -8,7 +8,7 @@ import { persistTemplateMaterial } from "@/lib/manuscripts";
 import { applyCodeScope, bundleUpload, loadCodebase, readCodebaseSource } from "@/lib/codebase-input";
 import { endpointOf, materialKindOf } from "@/lib/quiz";
 import { assertSameOrigin } from "@/lib/security";
-import { requireUser } from "@/lib/session";
+import { requireTestAdministrator } from "@/lib/session";
 import { getTemplate } from "@/lib/templates";
 import { publicErrorMessage } from "@/lib/user-facing-error";
 
@@ -20,7 +20,7 @@ export async function POST(
 ) {
   try {
     assertSameOrigin(request);
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const { id } = await context.params;
     const template = await getTemplate(id, user.id);
     if (template.materialUploader !== "creator") {

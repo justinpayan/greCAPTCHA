@@ -12,6 +12,10 @@ export async function register() {
   // substitution of NEXT_RUNTIME leaves `if (false) { … }` behind, and the import is dropped
   // from the Edge bundle instead of failing to resolve in it.
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    const { runFileCleanup } = await import("@/lib/account-deletion");
+    runFileCleanup();
+    const cleanupTimer = setInterval(runFileCleanup, 60_000);
+    cleanupTimer.unref();
     // A malformed endpoint configuration stops the server here, at deploy, rather than sending
     // someone's tests to the wrong place later.
     const { endpointGroups } = await import("@/lib/llm-endpoints");

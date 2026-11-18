@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { AdministratorContact } from "@/components/quiz/administrator-contact";
 import { Brand } from "@/components/brand";
 import { OpenRouterKeyPanel } from "@/components/openrouter-key-panel";
 import { completeOpenRouterOAuth, validateBrowserOpenRouterKey, type KeySource } from "@/lib/openrouter-browser-key";
@@ -20,13 +21,14 @@ async function requestAction(id: string, action: string, fields = {}) {
   return payload;
 }
 
-export function SebLaunch({ id, authorPays, closed, score, disqualification, feedbackPending }: {
+export function SebLaunch({ id, authorPays, closed, score, disqualification, feedbackPending, administratorEmail }: {
   id: string;
   authorPays: boolean;
   closed: boolean;
   score: number | null;
   disqualification: string | null;
   feedbackPending: boolean;
+  administratorEmail?: string | null;
 }) {
   const [confirmed, setConfirmed] = useState(false);
   const [launch, setLaunch] = useState<{ link: string; download: string; code: string }>();
@@ -102,6 +104,7 @@ export function SebLaunch({ id, authorPays, closed, score, disqualification, fee
       </header>
 
       {disqualification && <p className="seb-launch-notice error" role="status">Disqualified · {disqualification}</p>}
+      {closed && <AdministratorContact email={administratorEmail} />}
       {score !== null && <p className="seb-launch-notice" role="status">Assessment score {score}%</p>}
       {message && <p className="seb-launch-notice" role="status">{message}</p>}
       {error && <p className="seb-launch-notice error" role="alert">{error}</p>}

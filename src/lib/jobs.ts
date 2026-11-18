@@ -350,6 +350,8 @@ export async function getAttemptGradingJob(attemptId: string) {
 }
 
 function publicJob(job: typeof jobs.$inferSelect) {
+  const stored = job.resultJson ? JSON.parse(job.resultJson) : null;
+  const result = job.type === "grading" && stored ? hydrateAssessmentResult(stored, {}) : stored;
   return {
     id: job.id,
     type: job.type,
@@ -357,7 +359,7 @@ function publicJob(job: typeof jobs.$inferSelect) {
     progressCurrent: job.progressCurrent,
     progressTotal: job.progressTotal,
     ...decodeJobError(job.status === "failed" ? job.error : null),
-    result: job.resultJson ? JSON.parse(job.resultJson) : null,
+    result,
   };
 }
 
@@ -408,7 +410,7 @@ async function executeJob(job: typeof jobs.$inferSelect & { runCount: number }) 
           .set({ progressCurrent: current, progressTotal: total })
           .where(eq(jobs.id, job.id))
           .run();
-      });
+      }, job.id);
       fs.rmSync(payload.filePath, { force: true });
     } else if (job.type === "grading") {
       const { attemptId, credentialOwnerUserId, conferenceCredentialId } = JSON.parse(job.payloadJson) as {
@@ -427,6 +429,10 @@ async function executeJob(job: typeof jobs.$inferSelect & { runCount: number }) 
     } else {
       throw new Error("Unknown job type.");
     }
+    if (db.select().from(jobs).where(eq(jobs.id, job.id)).get()?.status !== "running") {
+      deleteJobKey(job.id);
+      return;
+    }
     await db
       .update(jobs)
       .set({
@@ -440,6 +446,10 @@ async function executeJob(job: typeof jobs.$inferSelect & { runCount: number }) 
       .run();
     deleteJobKey(job.id);
   } catch (error) {
+    if (db.select().from(jobs).where(eq(jobs.id, job.id)).get()?.status !== "running") {
+      deleteJobKey(job.id);
+      return;
+    }
     // Shown to the person who started the job, so a library's internal text (a validation dump
     // of malformed model output, a database error) is replaced by a plain explanation.
     const message = publicErrorMessage(

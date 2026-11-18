@@ -10,7 +10,7 @@ import {
   rateLimitResponse,
   RateLimitError,
 } from "@/lib/security";
-import { requireUser } from "@/lib/session";
+import { requireTestAdministrator } from "@/lib/session";
 import { proctoredAttempt } from "@/lib/seb";
 import { requireConferenceCredential } from "@/lib/openrouter-credentials";
 
@@ -28,7 +28,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const { id } = await context.params;
     await requireAttemptOwner(id, user.id);
     return NextResponse.json({ outline: await getAttemptOutline(id) });
@@ -47,7 +47,7 @@ export async function POST(
 ) {
   try {
     assertSameOrigin(request);
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const { id } = await context.params;
     await requireAttemptOwner(id, user.id);
     await enforceRateLimit(request, "evaluation", user.id, 20, 60 * 60);

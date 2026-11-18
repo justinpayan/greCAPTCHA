@@ -18,7 +18,7 @@ import { applyCodeScope, bundleUpload, loadCodebase, readCodebaseSource } from "
 import { errorResponseBody } from "@/lib/openrouter-errors";
 import { MAX_UPLOAD_BYTES, uploadTooLargeMessage } from "@/lib/uploads";
 import { parseAllowlist } from "@/lib/allowlist";
-import { requireUser } from "@/lib/session";
+import { requireTestAdministrator } from "@/lib/session";
 import { assertSameOrigin } from "@/lib/security";
 import {
   apiKeyPayerSchema,
@@ -37,7 +37,7 @@ export const maxDuration = 300;
 /** Saved sets for the start screen's searchable list. */
 export async function GET() {
   try {
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     return NextResponse.json({ sets: await listQuestionSets(user.id) });
   } catch (error) {
     const message = publicErrorMessage(error, "Unable to list question sets.");
@@ -91,7 +91,7 @@ async function readUploadForm(request: Request): Promise<FormData> {
 export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const form = await readUploadForm(request);
 
     // The PDF is checked first, ahead of every other field. A manuscript that is too big is the

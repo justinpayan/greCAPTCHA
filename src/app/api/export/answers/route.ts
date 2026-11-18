@@ -1,5 +1,5 @@
 import { buildAnswerCsv } from "@/lib/export";
-import { requireUser } from "@/lib/session";
+import { requireTestAdministrator } from "@/lib/session";
 import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
@@ -17,7 +17,7 @@ const MAX_SELECTED_SETS = 1_000;
 
 export async function GET(request: Request) {
   try {
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     // `?sets=id1,id2` exports only those question sets (the dashboard's "Export selected").
     const raw = new URL(request.url).searchParams.get("sets");
     const selected =

@@ -8,7 +8,7 @@ import {
 } from "@/lib/openrouter-credentials";
 import { endpointIdSchema } from "@/lib/quiz";
 import { assertSameOrigin } from "@/lib/security";
-import { requireUser } from "@/lib/session";
+import { requireTestAdministrator } from "@/lib/session";
 import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
@@ -28,7 +28,7 @@ const queryEndpoint = (request: Request) =>
 
 export async function GET(request: Request) {
   try {
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     return NextResponse.json(
       await credentialStatus(user.id, endpointFor(user.username, queryEndpoint(request))),
     );
@@ -41,7 +41,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const body = (await request.json()) as { openrouterApiKey?: unknown; endpoint?: unknown };
     const status = await saveOpenRouterCredential(
       user.id,
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     assertSameOrigin(request);
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     await deleteOpenRouterCredential(user.id, endpointFor(user.username, queryEndpoint(request)));
     return NextResponse.json({ connected: false });
   } catch (error) {

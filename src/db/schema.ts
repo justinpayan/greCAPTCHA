@@ -17,11 +17,16 @@ export const users = sqliteTable(
     usernameNormalized: text("username_normalized").notNull(),
     passwordHash: text("password_hash").notNull(),
     passwordSalt: text("password_salt").notNull(),
+    verifiedEmail: text("verified_email"),
+    authVersion: integer("auth_version").notNull().default(0),
+    mfaSecret: text("mfa_secret"),
+    mfaLastStep: integer("mfa_last_step").notNull().default(-1),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
     uniqueIndex("users_username_normalized_unique").on(table.usernameNormalized),
+    uniqueIndex("users_verified_email_unique").on(table.verifiedEmail),
   ],
 );
 
@@ -29,6 +34,9 @@ export const sessions = sqliteTable(
   "sessions",
   {
     tokenHash: text("token_hash").primaryKey(),
+    authVersion: integer("auth_version").notNull().default(0),
+    mfaVerified: integer("mfa_verified", { mode: "boolean" }).notNull().default(false),
+    trustedDeviceId: text("trusted_device_id"),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -252,8 +260,7 @@ export const conferenceSubmissions = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     takerUserId: text("taker_user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "set null" }),
     generationJobId: text("generation_job_id").references(() => jobs.id, {
       onDelete: "set null",
     }),
@@ -307,8 +314,7 @@ export const attemptFeedback = sqliteTable(
       .primaryKey()
       .references(() => attempts.id, { onDelete: "cascade" }),
     submitterUserId: text("submitter_user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "set null" }),
     submittedAt: text("submitted_at").notNull(),
     generalComment: text("general_comment"),
   },
@@ -380,3 +386,46 @@ export type ConferenceSubmissionRecord = typeof conferenceSubmissions.$inferSele
 export type AttemptFeedbackRecord = typeof attemptFeedback.$inferSelect;
 export type AttemptQuestionFeedbackRecord = typeof attemptQuestionFeedback.$inferSelect;
 export type AttemptAnswerRecord = typeof attemptAnswers.$inferSelect;
+
+/** Short-lived, hashed bearer tokens, bound to an account authentication version. */
+export const accountTokens = sqliteTable("account_tokens", {
+  tokenHash: text("token_hash").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  purpose: text("purpose").notNull(),
+  authVersion: integer("auth_version").notNull(),
+  payload: text("payload"),
+  attempts: integer("attempts").notNull().default(0),
+  expiresAt: text("expires_at").notNull(),
+}, (table) => [index("account_tokens_user_idx").on(table.userId)]);
+
+export const backupCodes = sqliteTable("backup_codes", {
+  codeHash: text("code_hash").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+});
+
+export const trustedDevices = sqliteTable("trusted_devices", {
+  id: text("id").primaryKey(),
+  tokenHash: text("token_hash").notNull().unique(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  authVersion: integer("auth_version").notNull(),
+  label: text("label").notNull(),
+  createdAt: text("created_at").notNull(),
+  lastUsedAt: text("last_used_at").notNull(),
+  expiresAt: text("expires_at").notNull(),
+});
+
+/** Survives account deletion and retries disk cleanup after worker leases have expired. */
+export const fileDeletions = sqliteTable("file_deletions", {
+  path: text("path").primaryKey(),
+  notBefore: text("not_before").notNull(),
+});
+
+export const passkeys = sqliteTable("passkeys", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  publicKey: text("public_key").notNull(),
+  counter: integer("counter").notNull(),
+  name: text("name").notNull(),
+  createdAt: text("created_at").notNull(),
+  lastUsedAt: text("last_used_at"),
+}, (table) => [index("passkeys_user_idx").on(table.userId)]);

@@ -6,7 +6,7 @@ import {
   materialUploaderSchema,
   studyTemplateConfigSchema,
 } from "@/lib/quiz";
-import { requireUser } from "@/lib/session";
+import { requireTestAdministrator } from "@/lib/session";
 import { getDraft, listTemplates, saveDraft, saveTemplate } from "@/lib/templates";
 import { publicErrorMessage } from "@/lib/user-facing-error";
 
@@ -15,7 +15,7 @@ export const runtime = "nodejs";
 /** One call for the start screen: every saved template plus the autosaved draft. */
 export async function GET() {
   try {
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const [templates, draft] = await Promise.all([listTemplates(user.id), getDraft(user.id)]);
     return NextResponse.json({ templates, draft });
   } catch (error) {
@@ -27,7 +27,7 @@ export async function GET() {
 /** Creates a named template or updates the explicitly selected one. */
 export async function POST(request: Request) {
   try {
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const body = (await request.json()) as {
       name?: unknown;
       config?: unknown;
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
 /** Autosave the working config. Overwrites the single stored draft. */
 export async function PUT(request: Request) {
   try {
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const body = (await request.json()) as { config?: unknown };
     await saveDraft(user.id, studyTemplateConfigSchema.parse(body.config));
     return NextResponse.json({ saved: true });
