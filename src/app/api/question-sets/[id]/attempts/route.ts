@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { createAttempt } from "@/lib/attempts";
-import { requireUser } from "@/lib/session";
+import { requireTestAdministrator } from "@/lib/session";
 import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
@@ -15,7 +15,7 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const { id } = await context.params;
     await request.json().catch(() => ({}));
     const created = await createAttempt({

@@ -13,7 +13,8 @@ import {
   questionSets,
   studyTemplates,
 } from "@/db/schema";
-import { deleteManuscript, deleteTemplateMaterial, templateMaterialPath } from "@/lib/manuscripts";
+import { deleteTemplateMaterial, manuscriptPath, templateMaterialPath } from "@/lib/manuscripts";
+import { queueFileDeletions, queueJobFileDeletions, runFileCleanup } from "@/lib/account-deletion";
 import {
   readStoredAllowlist,
   serializeAllowlist,
@@ -345,6 +346,14 @@ export async function deleteTemplate(id: string, ownerUserId: string) {
     const generationJobIds = submissions.flatMap((submission) =>
       submission.generationJobId ? [submission.generationJobId] : [],
     );
+    const relatedJobs = tx.select().from(jobs).all().filter((job) =>
+      attemptIds.includes(job.attemptId ?? "") || generationJobIds.includes(job.id),
+    );
+    queueJobFileDeletions(relatedJobs);
+    queueFileDeletions([
+      ...setIds.flatMap((setId) => [manuscriptPath(setId, "pdf"), manuscriptPath(setId, "code")]),
+      templateMaterialPath(id, "pdf"), templateMaterialPath(id, "code"),
+    ]);
 
     tx.delete(conferenceSubmissions)
       .where(
@@ -371,8 +380,7 @@ export async function deleteTemplate(id: string, ownerUserId: string) {
     return { setIds, attemptIds };
   });
 
-  for (const setId of deleted.setIds) deleteManuscript(setId);
-  deleteTemplateMaterial(id);
+  runFileCleanup();
   return {
     deletedQuestionSets: deleted.setIds.length,
     deletedAttempts: deleted.attemptIds.length,

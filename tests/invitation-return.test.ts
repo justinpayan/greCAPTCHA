@@ -20,7 +20,7 @@ describe.each([
   it("redirects to the assigned attempt before estimating or generating another test", async () => {
     vi.mocked(currentUser).mockResolvedValue({
       id: "taker", username: "author", usernameNormalized: "author", passwordHash: "test",
-      passwordSalt: "test", createdAt: "2026-01-01", updatedAt: "2026-01-01",
+      passwordSalt: "test", verifiedEmail: "author@example.org", authVersion: 0, mfaSecret: null, mfaLastStep: -1, mfaVerified: false, createdAt: "2026-01-01", updatedAt: "2026-01-01",
     });
     vi.mocked(getTemplateByInvitationToken).mockResolvedValue({ id: "template" } as Awaited<ReturnType<typeof getTemplateByInvitationToken>>);
     vi.mocked(getInvitationAttempt).mockResolvedValue({ attemptId: "completed-attempt" });

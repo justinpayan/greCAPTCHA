@@ -4912,3 +4912,54 @@ mark.evidence:focus-visible {
     break-before: page;
   }
 }
+
+/* Account security uses the existing form controls and spacing. */
+.backup-codes {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.8;
+}
+.setup-key,
+.device-label {
+  overflow-wrap: anywhere;
+}
+
+/* Account forms share the dashboard's paper, green accents, and card layout. */
+.account-shell { max-width: 1120px; }
+.account-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 42px; }
+.account-header .brand { margin-bottom: 0; }
+.account-navigation { display: flex; flex-wrap: wrap; gap: 10px; }
+.account-heading h1 { font-size: clamp(2rem, 4vw, 3.25rem); line-height: 1.1; }
+.account-heading .lede { margin-bottom: 28px; }
+.account-content { display: grid; gap: 22px; max-width: 700px; }
+.account-card { display: grid; gap: 20px; width: 100%; max-width: 700px; border-top: 4px solid var(--green); }
+.account-card p { margin-bottom: 0; color: var(--muted); line-height: 1.65; }
+.account-card h2 { margin: 0; font-size: 1.25rem; }
+.account-card .field { gap: 7px; }
+.account-card > label:not(.account-checkbox) { margin-bottom: -12px; font-weight: 650; }
+.account-card .button-link, .account-card button { justify-content: center; }
+.account-card .secondary { background: var(--surface); }
+.account-notice { margin: 0; padding: 18px 22px; border: 1px solid var(--green); border-radius: 14px; background: var(--green-soft); color: var(--green-dark); line-height: 1.6; }
+.account-checkbox { display: flex; align-items: flex-start; gap: 10px; line-height: 1.5; cursor: pointer; }
+.account-checkbox input { width: 18px; height: 18px; margin-top: 3px; flex: none; accent-color: var(--green); }
+.account-steps { margin: 0; padding-left: 22px; color: var(--muted); line-height: 1.7; }
+.account-steps li + li { margin-top: 8px; }
+.account-qr { max-width: 100%; height: auto; justify-self: center; border: 1px solid var(--line); border-radius: 16px; }
+.account-card .setup-key, .account-card .backup-codes { padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); color: var(--ink); font-family: var(--font-geist-mono), monospace; text-align: center; }
+.account-device { display: grid; gap: 12px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; }
+.account-card .device-label { font-weight: 700; color: var(--ink); }
+.account-warning { display: grid; gap: 14px; padding: 18px; border: 1px solid var(--danger); border-radius: 12px; }
+.account-auth-alternative { display: flex; flex-wrap: wrap; gap: 10px; }
+.auth-shell > .button-link { margin-top: 20px; }
+.account-shell a:focus-visible, .account-shell button:focus-visible { outline: 3px solid var(--green); outline-offset: 4px; }
+@media (max-width: 640px) {
+  .account-header { align-items: flex-start; flex-direction: column; margin-bottom: 28px; }
+  .account-navigation { width: 100%; }
+  .account-navigation > * { flex: 1; justify-content: center; }
+  .account-card { padding: 22px; }
+}
+
+.account-option { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 20px; padding-top: 20px; border-top: 1px solid var(--line); }
+.account-option h3 { margin: 0 0 6px; font-size: 1rem; }
+.account-option p { font-size: .9rem; overflow-wrap: anywhere; }
+@media (max-width: 640px) { .account-option { grid-template-columns: 1fr; gap: 14px; } }

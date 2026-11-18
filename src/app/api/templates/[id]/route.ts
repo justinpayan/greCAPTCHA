@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { parseAllowlist } from "@/lib/allowlist";
 import { assertSameOrigin } from "@/lib/security";
-import { requireUser } from "@/lib/session";
+import { requireTestAdministrator } from "@/lib/session";
 import { deleteTemplate, getTemplate, setTemplateAllowlist, setTemplateProctoring } from "@/lib/templates";
 import { publicErrorMessage } from "@/lib/user-facing-error";
 
@@ -21,7 +21,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const { id } = await context.params;
     return NextResponse.json({ template: await getTemplate(id, user.id) });
   } catch (error) {
@@ -35,7 +35,7 @@ export async function PATCH(
 ) {
   try {
     assertSameOrigin(request);
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const { id } = await context.params;
     const body = (await request.json()) as { allowlist?: unknown; requireSeb?: unknown };
     if ("requireSeb" in body) {
@@ -56,7 +56,7 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const { id } = await context.params;
     const deleted = await deleteTemplate(id, user.id);
     return NextResponse.json({ deleted: true, ...deleted });

@@ -188,6 +188,7 @@ export async function requireAttemptOwner(attemptId: string, ownerUserId: string
       status: attempts.status,
       takerUserId: attempts.takerUserId,
       ownerUsername: users.username,
+      takerUsername: attempts.takerUsername,
     })
     .from(attempts)
     .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
@@ -197,7 +198,7 @@ export async function requireAttemptOwner(attemptId: string, ownerUserId: string
   if (!row) throw new Error("Attempt not found.");
   // Attempts completed by their owner before taker tracking was introduced have no recorded
   // taker. Opening their researcher summary is enough to backfill the only identifiable account.
-  if (row.status === "graded" && !row.takerUserId) {
+  if (row.status === "graded" && !row.takerUserId && !row.takerUsername) {
     await db
       .update(attempts)
       .set({ takerUserId: ownerUserId, takerUsername: row.ownerUsername })
@@ -378,6 +379,7 @@ export async function getAttemptIntro(attemptId: string): Promise<AttemptIntro> 
   return {
     attemptId,
     totalQuestions: quiz.order.length,
+    administratorEmail: administratorEmailForSet(quiz.set.id),
     overallTimeLimitSeconds: quiz.attempt.overallTimeLimitSeconds,
     started: served.length > 0,
     status: quiz.attempt.status,
@@ -543,9 +545,16 @@ export function hydrateAssessmentResult(
 ): AssessmentResult {
   return {
     ...result,
+    administratorEmail: administratorEmailForSet(result.questionSetId),
     takerUsername: result.takerUsername ?? extras.takerUsername ?? null,
     contributions: result.contributions ?? extras.contributions ?? "",
   };
+}
+
+function administratorEmailForSet(questionSetId: string): string | null {
+  return db.select({ email: users.verifiedEmail }).from(questionSets)
+    .innerJoin(users, eq(users.id, questionSets.ownerUserId))
+    .where(eq(questionSets.id, questionSetId)).get()?.email ?? null;
 }
 
 export function buildResult(input: {
@@ -631,6 +640,7 @@ export function buildResult(input: {
   return {
     attemptId: input.attemptId,
     questionSetId: input.questionSetId,
+    administratorEmail: administratorEmailForSet(input.questionSetId),
     takerUsername: input.takerUsername,
     paperName: input.paperName,
     ...(input.materialKind === "code" ? { materialKind: "code" as const } : {}),

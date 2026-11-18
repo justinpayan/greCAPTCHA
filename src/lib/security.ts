@@ -6,9 +6,18 @@ import { eq, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { rateLimits } from "@/db/schema";
 
+function formatWait(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  const remaining = seconds % 60;
+  return [
+    minutes && `${minutes} minute${minutes === 1 ? "" : "s"}`,
+    remaining && `${remaining} second${remaining === 1 ? "" : "s"}`,
+  ].filter(Boolean).join(" and ");
+}
+
 export class RateLimitError extends Error {
   constructor(public readonly retryAfterSeconds: number) {
-    super("Too many requests. Try again later.");
+    super(`Too many requests. Try again in ${formatWait(retryAfterSeconds)}.`);
   }
 }
 
@@ -33,18 +42,19 @@ export async function enforceRateLimit(
   identifier: string,
   limit: number,
   windowSeconds: number,
+  globalIdentifier = false,
 ) {
   const now = new Date();
   const cutoff = new Date(now.getTime() - windowSeconds * 1000).toISOString();
-  const key = opaqueKey([scope, clientAddress(request), identifier.trim().toLowerCase()]);
+  const key = opaqueKey([scope, globalIdentifier ? "all" : clientAddress(request), identifier.trim().toLowerCase()]);
   await db
     .insert(rateLimits)
     .values({ key, windowStartedAt: now.toISOString(), count: 1 })
     .onConflictDoUpdate({
       target: rateLimits.key,
       set: {
-        count: sql`CASE WHEN ${rateLimits.windowStartedAt} < ${cutoff} THEN 1 ELSE ${rateLimits.count} + 1 END`,
-        windowStartedAt: sql`CASE WHEN ${rateLimits.windowStartedAt} < ${cutoff} THEN ${now.toISOString()} ELSE ${rateLimits.windowStartedAt} END`,
+        count: sql`CASE WHEN ${rateLimits.windowStartedAt} <= ${cutoff} THEN 1 ELSE ${rateLimits.count} + 1 END`,
+        windowStartedAt: sql`CASE WHEN ${rateLimits.windowStartedAt} <= ${cutoff} THEN ${now.toISOString()} ELSE ${rateLimits.windowStartedAt} END`,
       },
     })
     .run();

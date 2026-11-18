@@ -8,7 +8,7 @@ import {
   setQuestionSetAllowlist,
   setQuestionSetOverallLimit,
 } from "@/lib/catalog";
-import { requireUser } from "@/lib/session";
+import { requireTestAdministrator } from "@/lib/session";
 import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
@@ -22,7 +22,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const { id } = await context.params;
     return NextResponse.json({ overview: await getQuestionSetOverview(id, user.id) });
   } catch (error) {
@@ -46,7 +46,7 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const { id } = await context.params;
     const body = (await request.json()) as {
       name?: unknown;
@@ -96,7 +96,7 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const { id } = await context.params;
     await deleteQuestionSet(id, user.id);
     return NextResponse.json({ deleted: true });

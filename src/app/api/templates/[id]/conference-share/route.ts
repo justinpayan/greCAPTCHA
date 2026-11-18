@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { assertSameOrigin } from "@/lib/security";
-import { requireUser } from "@/lib/session";
+import { requireTestAdministrator } from "@/lib/session";
 import { setTemplateSharing } from "@/lib/templates";
 import { publicErrorMessage } from "@/lib/user-facing-error";
 
@@ -13,7 +13,7 @@ export async function POST(
 ) {
   try {
     assertSameOrigin(request);
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const { id } = await context.params;
     const body = (await request.json()) as { enabled?: unknown };
     const result = await setTemplateSharing(id, user.id, body.enabled === true);

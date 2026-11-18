@@ -7,10 +7,10 @@ import {
   scrypt as scryptCallback,
   timingSafeEqual,
 } from "node:crypto";
-import { and, eq, gt, lt } from "drizzle-orm";
+import { and, eq, gt, lt, sql } from "drizzle-orm";
 
 import { db } from "@/db";
-import { sessions, users } from "@/db/schema";
+import { accountTokens, sessions, trustedDevices, users } from "@/db/schema";
 import { normalizeUsername, validateUsername } from "@/lib/usernames";
 
 const SCRYPT_KEY_LENGTH = 64;
@@ -27,6 +27,13 @@ function scrypt(password: string, salt: Buffer): Promise<Buffer> {
       else resolve(derivedKey);
     });
   });
+}
+
+export async function passwordFields(password: string) {
+  validatePassword(password);
+  const salt = randomBytes(16);
+  const hash = await scrypt(password, salt);
+  return { passwordSalt: salt.toString("base64"), passwordHash: hash.toString("base64") };
 }
 
 export async function registerAccount(input: {
@@ -107,11 +114,14 @@ export async function changeAccountPassword(
         passwordHash: newHash.toString("base64"),
         passwordSalt: newSalt.toString("base64"),
         updatedAt: new Date().toISOString(),
+        authVersion: sql`${users.authVersion} + 1`,
       })
-      .where(eq(users.id, userId))
+      .where(and(eq(users.id, userId), eq(users.passwordHash, user.passwordHash)))
       .run();
     if (updated.changes !== 1) throw new Error("Account not found.");
     tx.delete(sessions).where(eq(sessions.userId, userId)).run();
+    tx.delete(trustedDevices).where(eq(trustedDevices.userId, userId)).run();
+    tx.delete(accountTokens).where(eq(accountTokens.userId, userId)).run();
   });
 }
 
@@ -119,28 +129,48 @@ function tokenHash(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
-export async function createAccountSession(userId: string) {
+export async function createAccountSession(
+  userId: string,
+  options: { mfaVerified?: boolean; trustedDeviceId?: string; authVersion?: number } = {},
+) {
   const token = randomBytes(32).toString("base64url");
   const now = new Date();
   await db.delete(sessions).where(lt(sessions.expiresAt, now.toISOString())).run();
-  await db.insert(sessions).values({
+  const user = db.select().from(users).where(eq(users.id, userId)).get();
+  if (!user || (options.authVersion !== undefined && user.authVersion !== options.authVersion)) {
+    throw new Error("Your account security changed. Sign in again.");
+  }
+  db.insert(sessions).values({
     tokenHash: tokenHash(token),
     userId,
+    authVersion: user.authVersion,
+    mfaVerified: options.mfaVerified ?? false,
+    trustedDeviceId: options.trustedDeviceId ?? null,
     createdAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-  });
+  }).run();
   return token;
 }
 
 export async function accountForSession(token: string) {
   if (!token) return null;
   const row = await db
-    .select({ user: users })
+    .select({ user: users, session: sessions })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
     .where(and(eq(sessions.tokenHash, tokenHash(token)), gt(sessions.expiresAt, new Date().toISOString())))
     .get();
-  return row?.user ?? null;
+  if (!row || row.session.authVersion !== row.user.authVersion) return null;
+  if (row.session.trustedDeviceId) {
+    const device = db.select().from(trustedDevices).where(and(
+      eq(trustedDevices.id, row.session.trustedDeviceId),
+      eq(trustedDevices.userId, row.user.id),
+      eq(trustedDevices.authVersion, row.user.authVersion),
+      gt(trustedDevices.expiresAt, new Date().toISOString()),
+    )).get();
+    if (!device) return null;
+  }
+  return { ...row.user, mfaVerified: row.session.mfaVerified };
 }
 
 export async function deleteAccountSession(token: string) {

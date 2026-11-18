@@ -3,7 +3,9 @@ import "server-only";
 import fs from "node:fs";
 import path from "node:path";
 
-import { databaseFile } from "@/db";
+import { db, databaseFile } from "@/db";
+import { eq } from "drizzle-orm";
+import { studyTemplates } from "@/db/schema";
 import { readEncryptedFile, writeEncryptedFile } from "@/lib/data-encryption";
 import type { MaterialKind } from "@/lib/quiz";
 
@@ -73,11 +75,13 @@ export async function persistTemplateMaterial(
   fs.mkdirSync(root, { recursive: true });
   fs.rmSync(templateMaterialPath(templateId, kind === "pdf" ? "code" : "pdf"), { force: true });
   const destination = templateMaterialPath(templateId, kind);
-  writeEncryptedFile(
-    destination,
-    Buffer.from(await source.arrayBuffer()),
-    "template-material",
-  );
+  const bytes = Buffer.from(await source.arrayBuffer());
+  db.transaction(() => {
+    if (!db.select().from(studyTemplates).where(eq(studyTemplates.id, templateId)).get()) {
+      throw new Error("Template no longer exists.");
+    }
+    writeEncryptedFile(destination, bytes, "template-material");
+  });
 }
 
 export function readTemplateMaterial(templateId: string, kind: MaterialKind = "pdf"): Buffer {

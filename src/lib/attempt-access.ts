@@ -9,7 +9,7 @@ import {
   isUsernameAllowed,
   readStoredAllowlist,
 } from "@/lib/allowlist";
-import { currentUser } from "@/lib/session";
+import { currentUser, requireTestAdministrator } from "@/lib/session";
 import { proctoredAttempt, sebRequest, verifiedSebSession } from "@/lib/seb";
 
 /**
@@ -71,6 +71,9 @@ export async function requireOpenAttempt(
 ) {
   const user = await currentUser();
   const proctored = proctoredAttempt(attemptId);
+  if (proctored && user?.id === proctored.administratorUserId && user.id !== proctored.takerUserId) {
+    await requireTestAdministrator();
+  }
   if (proctored) {
     const attempt = db.select({ status: attempts.status, takerUserId: attempts.takerUserId }).from(attempts)
       .where(eq(attempts.id, attemptId)).get();
@@ -96,6 +99,7 @@ export async function requireOpenAttempt(
       linkEnabled: attempts.linkEnabled,
       takerUserId: attempts.takerUserId,
       currentIndex: attempts.currentIndex,
+      takerUsername: attempts.takerUsername,
     })
     .from(attempts)
     .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
@@ -103,7 +107,8 @@ export async function requireOpenAttempt(
     .get();
   if (!attempt) throw new Error("Attempt not found.");
   if (attempt.ownerUserId === user.id) {
-    if (options.claim && !attempt.takerUserId) {
+    await requireTestAdministrator();
+    if (options.claim && !attempt.takerUserId && !attempt.takerUsername) {
       await db
         .update(attempts)
         .set({ takerUserId: user.id, takerUsername: user.username })
@@ -122,7 +127,7 @@ export async function requireOpenAttempt(
   if (!attempt.linkEnabled) {
     throw new AttemptClosedError(attempt.currentIndex > 0);
   }
-  if (attempt.takerUserId) {
+  if (attempt.takerUserId || attempt.takerUsername) {
     throw new AttemptClosedError(attempt.currentIndex > 0, false, true);
   }
   if (options.allowUnclaimed) return;

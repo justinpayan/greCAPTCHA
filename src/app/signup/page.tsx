@@ -1,14 +1,15 @@
 import { redirect } from "next/navigation";
 
 import { LoginForm } from "@/components/login-form";
-import { currentUser } from "@/lib/session";
+import { currentAccount } from "@/lib/session";
 
 export default async function SignupPage({
   searchParams,
 }: {
   searchParams: Promise<{ next?: string }>;
 }) {
-  if (await currentUser()) redirect("/");
+  const account = await currentAccount();
+  if (account) redirect(account.verifiedEmail ? "/" : "/account/email");
   const { next } = await searchParams;
   const target = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
   return <LoginForm next={target} signup />;

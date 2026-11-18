@@ -12,6 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 
+import { AdministratorContact } from "@/components/quiz/administrator-contact";
 import { Brand } from "@/components/brand";
 import { CostEstimateNotice, useGradingCostEstimate } from "@/components/cost-estimate-notice";
 import { GradedFreeResponse } from "@/components/quiz/graded-response";
@@ -689,6 +690,7 @@ export function ResultView({
       materialKind={result.materialKind}
     >
       <main className="app-shell">
+        <AdministratorContact email={result.administratorEmail} />
         {collectFeedback ? (
           <ExamineeFeedbackReview result={result} onBack={onBack} onFinish={onFinish} />
         ) : (

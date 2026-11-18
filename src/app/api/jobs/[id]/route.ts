@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getOwnedJob } from "@/lib/jobs";
-import { requireUser } from "@/lib/session";
+import { requireTestAdministrator } from "@/lib/session";
 import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
@@ -11,7 +11,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const { id } = await context.params;
     return NextResponse.json({ job: await getOwnedJob(id, user.id) });
   } catch (error) {

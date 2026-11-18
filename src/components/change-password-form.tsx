@@ -38,23 +38,22 @@ export function ChangePasswordForm() {
   }
 
   return (
-    <main className="app-shell auth-shell">
+    <main className="app-shell dashboard-shell account-shell">
       <Brand href="/" />
-      <section>
-        <p className="eyebrow">Account security</p>
+      <section className="account-heading">
         <h1>Change your password.</h1>
         <p className="lede">
           Confirm your current password, then choose a new one with at least 10 characters.
         </p>
       </section>
-      <form className="card form-card login-card" onSubmit={submit}>
+      <form className="card form-card account-card" onSubmit={submit}>
         {changed ? (
           <>
             <p className="template-status" role="status">
               Your password was changed. Other signed-in sessions have been revoked.
             </p>
-            <Link className="primary button-link" href="/">
-              Return to dashboard
+            <Link className="primary button-link" href="/account/settings">
+              Return to Settings
             </Link>
           </>
         ) : (
@@ -106,7 +105,7 @@ export function ChangePasswordForm() {
               </p>
             )}
             <div className="submit-row">
-              <Link className="secondary button-link" href="/">
+              <Link className="secondary button-link" href="/account/settings">
                 Cancel
               </Link>
               <button

@@ -1,4 +1,9 @@
 import { NextResponse } from "next/server";
+import { accountById, limitEmail, normalizeEmail, requestEmail } from "@/lib/account-security";
+import { mailConfiguration } from "@/lib/account-mail";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { users } from "@/db/schema";
 
 import { createAccountSession, registerAccount } from "@/lib/accounts";
 import { SESSION_COOKIE, SESSION_MAX_AGE_SECONDS } from "@/lib/auth";
@@ -20,16 +25,27 @@ export async function POST(request: Request) {
       username?: unknown;
       password?: unknown;
       passwordConfirmation?: unknown;
+      email?: unknown;
     };
     const password = String(body.password ?? "");
     if (password !== String(body.passwordConfirmation ?? "")) {
       throw new Error("Passwords do not match.");
     }
+    const email = normalizeEmail(String(body.email ?? ""));
+    mailConfiguration();
+    await limitEmail(request, email);
+    if (db.select().from(users).where(eq(users.verifiedEmail, email)).get()) {
+      throw new Error("That email address is already in use.");
+    }
     const user = await registerAccount({
       username: String(body.username ?? ""),
       password,
     });
-    const response = NextResponse.json({ ok: true }, { status: 201 });
+    // Preserve a retry path if SMTP delivery fails after the account is created.
+    let emailSent = true;
+    try { await requestEmail(accountById(user.id), email, password, ""); }
+    catch { emailSent = false; }
+    const response = NextResponse.json({ ok: true, next: `/account/email?${emailSent ? "sent=1" : "retry=1"}` }, { status: 201 });
     response.cookies.set(SESSION_COOKIE, await createAccountSession(user.id), {
       httpOnly: true,
       sameSite: "lax",

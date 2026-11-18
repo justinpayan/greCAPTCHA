@@ -8,6 +8,7 @@ import { userFacingMessage } from "@/lib/user-facing-error";
 
 export function LoginForm({ next, signup = false }: { next: string; signup?: boolean }) {
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [working, setWorking] = useState(false);
@@ -28,6 +29,7 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username: field("username"),
+          email: field("email"),
           password: field("password"),
           passwordConfirmation: field("passwordConfirmation"),
         }),
@@ -35,7 +37,9 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Unable to sign in.");
       // A full navigation, so the new cookie is present for the next request.
-      window.location.href = next;
+      window.location.href = payload.next
+        ? `${payload.next}${payload.next.includes("?") ? "&" : "?"}next=${encodeURIComponent(next)}`
+        : next;
     } catch (caught) {
       setError(userFacingMessage(caught, "Unable to sign in."));
       setWorking(false);
@@ -54,6 +58,11 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
         </p>
       </section>
       <form className="card form-card login-card" onSubmit={submit}>
+        {signup && <div className="field">
+          <label htmlFor="email">Email</label>
+          <input className="control" id="email" name="email" type="email" autoComplete="email" required
+            value={email} onChange={(event) => setEmail(event.target.value)} />
+        </div>}
         <div className="field">
           <label htmlFor="username">Username</label>
           <input
@@ -103,13 +112,13 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
           </p>
         )}
         <div className="submit-row">
-          <span className="hint">
+          <div className="account-auth-alternative">
             {signup ? (
-              <>Already registered? <Link href={`/login?next=${encodeURIComponent(next)}`}>Sign in</Link>.</>
+              <><Link className="secondary button-link" href={`/login?next=${encodeURIComponent(next)}`}>Sign in</Link></>
             ) : (
-              <>Need an account? <Link href={`/signup?next=${encodeURIComponent(next)}`}>Create one</Link>.</>
+              <><Link className="secondary button-link" href={`/signup?next=${encodeURIComponent(next)}`}>Create account</Link></>
             )}
-          </span>
+          </div>
           {/* Enabled whenever not already working: a disabled submit button stops Enter from
               submitting the form, and the required fields already block an empty submit. */}
           <button className="primary" type="submit" disabled={working}>
@@ -117,6 +126,7 @@ export function LoginForm({ next, signup = false }: { next: string; signup?: boo
           </button>
         </div>
       </form>
+      {!signup && <Link className="secondary button-link" href="/account/forgot-password">Forgot password?</Link>}
     </main>
   );
 }

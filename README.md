@@ -349,3 +349,43 @@ automatic handoff and download-and-code fallback, PDF rendering, early and
 automatic countdown completion, answer autosave during an interruption, flagged
 grading, and SEB exit after feedback. Verify that an author can retry grading
 from the regular browser after an OpenRouter credential failure.
+
+### Account security
+
+Accounts require a verified email address. MFA enrollment can be skipped during setup, and an
+MFA-verified session is required for all test administration. The dashboard's Settings page
+provides password changes, recovery email changes, passkeys, authenticator enrollment, backup codes,
+trusted browser management, and permanent account deletion.
+
+Before deploying account security, configure `PUBLIC_BASE_URL` to the public HTTPS origin,
+`DATA_ENCRYPTION_KEY` to a stable 32-byte base64 key, and these SMTP settings:
+`SMTP_HOST`, `SMTP_PORT` (587 for STARTTLS or 465 for implicit TLS), `SMTP_USER`,
+`SMTP_PASSWORD`, and `SMTP_FROM`. Both SMTP modes require TLS and authentication. The sender
+must be permitted by your relay. Keep these credentials in deployment secrets. Development
+also needs `DATA_ENCRYPTION_KEY` for authenticator enrollment. See `.env.example` for fields.
+
+Passkeys use the origin and hostname of `PUBLIC_BASE_URL` for WebAuthn verification. Use HTTPS in production or HTTP on localhost for development. Startup applies `0036_passkeys` before serving requests. Before rollout, use a disposable account and a real device to enroll and sign in on the intended HTTPS hostname.
+
+The normal application startup applies migration `0033_account_security`. It revokes existing
+account sessions once so existing users verify an email at their next sign-in. Rehearse the
+migration against a backup before production rollout. Smoke-test signup, delivery and resend
+of verification mail, authenticator enrollment, backup-code acknowledgement, remembered-browser
+sign-in, password reset, and deletion using a disposable account and a real mailbox. SMTP
+credentials and mailbox access are needed for this deployment check.
+
+Remembered browsers expire after 30 days. Security credential changes revoke browser trust.
+Password recovery for MFA-enrolled accounts requires both the email reset link and a
+passkey, authenticator code, or backup code. Save the ten backup codes when enrolling. Email alone recovers
+accounts that deferred MFA.
+
+Account deletion requires explicitly deleting every owned test (including invitation tests) first. Saved reusable templates and their uploaded materials are removed automatically with the account. Test
+administrators can delete an entire test or a single submission from the dashboard. Deleting an
+account removes its login, credentials, and sessions while preserving submissions, uploaded
+materials, answers, grades, and feedback on other administrators' tests, including recorded
+submission usernames. Participants must contact each test administrator to request deletion of
+those submissions. The administrator's current verified email appears with test results.
+Pending submitted generation is stopped when its submitter deletes their account, and its
+material and job history are retained under the test administrator's ownership. Running workers
+check that their job and accounts still exist before publishing generated data. Disk deletions are recorded transactionally
+and retried at startup and every minute. Existing backups age out through `BACKUP_KEEP` and
+`BACKUP_INTERVAL_MINUTES`; restore procedures must account for deletions made after a backup.

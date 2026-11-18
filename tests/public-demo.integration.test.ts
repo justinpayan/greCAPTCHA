@@ -32,7 +32,7 @@ import {
 import {
   accountForSession,
   authenticateAccount,
-  createAccountSession,
+  createAccountSession as createSession,
   deleteAccountSession,
   registerAccount,
 } from "@/lib/accounts";
@@ -1449,3 +1449,10 @@ describe("public demo account-to-grade flow", () => {
     }
   });
 });
+
+/** Existing workflow fixtures represent users who completed verification and MFA. */
+async function createAccountSession(userId: string) {
+  const { users } = await import("@/db/schema");
+  db.update(users).set({ verifiedEmail: `${userId}@example.org`, mfaSecret: "enrolled-fixture" }).where(eq(users.id, userId)).run();
+  return createSession(userId, { mfaVerified: true });
+}

@@ -30,7 +30,7 @@ export default async function AttemptPage({
       if (attempt?.status === "graded") return <ParticipantSession attemptId={id} />;
       const feedback = db.select({ id: attemptFeedback.attemptId }).from(attemptFeedback)
         .where(eq(attemptFeedback.attemptId, id)).get();
-      return <SebLaunch id={id} authorPays={proctored.apiKeyPayer === "taker" && attempt?.status !== "graded"}
+      return <SebLaunch administratorEmail={(await getAttemptIntro(id)).administratorEmail} id={id} authorPays={proctored.apiKeyPayer === "taker" && attempt?.status !== "graded"}
         closed={attempt?.status !== "active"} score={attempt?.score ?? null}
         disqualification={proctored.disqualification} feedbackPending={!feedback} />;
     }

@@ -617,6 +617,7 @@ export type PublicQuestion =
  * of card names, item descriptions and warm-up flags — it is participant-facing.
  */
 export type AttemptIntro = {
+  administratorEmail?: string | null;
   attemptId: string;
   totalQuestions: number;
   /** Budget for the whole set in seconds, or null. Enforced once spent. */
@@ -857,6 +858,8 @@ export type QuestionReview = FillReview | FreeResponseReview | MultipleChoiceRev
 export type AssessmentResult = {
   attemptId: string;
   questionSetId: string;
+  /** Current verified contact address for questions and submission deletion requests. */
+  administratorEmail?: string | null;
   /** Username of the account that completed the attempt, when applicable. */
   takerUsername: string | null;
   paperName: string;

@@ -14,7 +14,7 @@ vi.mock("next/headers", () => ({
 
 import { db } from "@/db";
 import { questionSets } from "@/db/schema";
-import { createAccountSession, registerAccount } from "@/lib/accounts";
+import { createAccountSession as createSession, registerAccount } from "@/lib/accounts";
 import { requireOpenAttempt } from "@/lib/attempt-access";
 import {
   createQuestionSetShareLink,
@@ -255,3 +255,10 @@ describe("an assessment generated from a codebase", () => {
     expect(sentPrompts.length).toBe(before);
   });
 });
+
+/** Existing workflow fixtures represent users who completed verification and MFA. */
+async function createAccountSession(userId: string) {
+  const { users } = await import("@/db/schema");
+  db.update(users).set({ verifiedEmail: `${userId}@example.org`, mfaSecret: "enrolled-fixture" }).where(eq(users.id, userId)).run();
+  return createSession(userId, { mfaVerified: true });
+}

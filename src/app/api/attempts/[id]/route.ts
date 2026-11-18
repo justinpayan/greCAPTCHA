@@ -5,7 +5,7 @@ import { AttemptClosedError, requireOpenAttempt } from "@/lib/attempt-access";
 import { closeForTimeout, overallBudget } from "@/lib/attempt-close";
 import { getAttemptState } from "@/lib/attempts";
 import { deleteAttempt, setAttemptLinkEnabled } from "@/lib/catalog";
-import { requireUser } from "@/lib/session";
+import { requireTestAdministrator } from "@/lib/session";
 import { publicErrorMessage } from "@/lib/user-facing-error";
 
 export const runtime = "nodejs";
@@ -70,7 +70,7 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const { id } = await context.params;
     const body = (await request.json().catch(() => ({}))) as { linkEnabled?: unknown };
     if (typeof body.linkEnabled !== "boolean") {
@@ -90,7 +90,7 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const user = await requireUser();
+    const user = await requireTestAdministrator();
     const { id } = await context.params;
     await deleteAttempt(id, user.id);
     return NextResponse.json({ deleted: true });

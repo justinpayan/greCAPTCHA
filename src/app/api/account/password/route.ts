@@ -31,7 +31,9 @@ export async function POST(request: Request) {
 
     await changeAccountPassword(user.id, currentPassword, newPassword);
     const response = NextResponse.json({ ok: true });
-    response.cookies.set(SESSION_COOKIE, await createAccountSession(user.id), {
+    response.cookies.set(SESSION_COOKIE, await createAccountSession(user.id, {
+      authVersion: user.authVersion + 1, mfaVerified: user.mfaVerified,
+    }), {
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
