@@ -104,7 +104,6 @@ export function SebLaunch({ id, authorPays, closed, score, disqualification, fee
       </header>
 
       {disqualification && <p className="seb-launch-notice error" role="status">Disqualified · {disqualification}</p>}
-      {closed && <AdministratorContact email={administratorEmail} />}
       {score !== null && <p className="seb-launch-notice" role="status">Assessment score {score}%</p>}
       {message && <p className="seb-launch-notice" role="status">{message}</p>}
       {error && <p className="seb-launch-notice error" role="alert">{error}</p>}
@@ -207,6 +206,7 @@ export function SebLaunch({ id, authorPays, closed, score, disqualification, fee
           </div>
         </details>
       )}
+      {closed && <AdministratorContact email={administratorEmail} />}
     </main>
   );
 }

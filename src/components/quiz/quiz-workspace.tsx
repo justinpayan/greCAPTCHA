@@ -690,7 +690,6 @@ export function ResultView({
       materialKind={result.materialKind}
     >
       <main className="app-shell">
-        <AdministratorContact email={result.administratorEmail} />
         {collectFeedback ? (
           <ExamineeFeedbackReview result={result} onBack={onBack} onFinish={onFinish} />
         ) : (
@@ -717,6 +716,7 @@ export function ResultView({
             </button>
           </div>
         )}
+        <AdministratorContact email={result.administratorEmail} />
       </main>
     </PdfAssessmentSplit>
   );
