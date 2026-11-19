@@ -1127,14 +1127,18 @@ export function ResearchCaptcha({
     }
   }
 
-  async function deleteAttemptRow(entry: AttemptListEntry) {
+  async function deleteAttemptRow(entry: CreatedTestEntry["attempts"][number]) {
     const state =
       entry.status === "graded"
         ? `It is graded${entry.score === null ? "" : ` at ${entry.score}%`}.`
         : `${entry.answeredCount} of ${entry.totalQuestions} questions are answered.`;
+    const material = entry.materialKind === "code" ? "code archive" : "PDF";
+    const sourceMessage = entry.deletesSet
+      ? `This is the last attempt using this question set. Its generated questions and uploaded ${material} will also be deleted.`
+      : `The question set and its ${material} will be kept.`;
     if (
       !window.confirm(
-        `Delete this attempt of “${entry.setLabel}”?\n\n${state} Its answers and timings will be removed. The question set itself is kept.\n\nThis cannot be undone.`,
+        `Delete this attempt of “${entry.setLabel}”?\n\n${state} Its answers, timings, grades, and feedback will be deleted. ${sourceMessage}\n\nThis cannot be undone.`,
       )
     ) {
       return;

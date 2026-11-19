@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { manuscriptPath, readManuscript } from "@/lib/manuscripts";
 import { File } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -987,6 +989,12 @@ describe("public demo account-to-grade flow", () => {
         materialUploader: "creator" as const,
       },
       {
+        name: "Taker uploads and pays",
+        requireSeb: false,
+        apiKeyPayer: "taker" as const,
+        materialUploader: "taker" as const,
+      },
+      {
         name: "Taker uploads creator pays",
         requireSeb: false,
         apiKeyPayer: "creator" as const,
@@ -1117,6 +1125,38 @@ describe("public demo account-to-grade flow", () => {
       db.update(attempts).set({ status: "graded" }).where(eq(attempts.id, attemptId)).run();
       expect(await getInvitationAttempt(template.id, bob.id)).toEqual({ attemptId });
       expect(await getInvitationAttempt(randomUUID(), bob.id)).toBeUndefined();
+      if (dimensions.materialUploader === "taker" && !dimensions.requireSeb) {
+        const token = sharing.invitationShareToken;
+        async function submitFreshUpload(userId: string, contents: string) {
+          sessionState.token = await createAccountSession(userId);
+          form.set("paper", new Blob([contents], { type: "application/pdf" }), "fresh.pdf");
+          const response = await createInvitationAssessment(
+            new Request("http://localhost/api/invitations/token", { method: "POST", body: form }),
+            { params: Promise.resolve({ token }) },
+          );
+          expect(response.status).toBe(202);
+          const queued = await response.json();
+          const completed = await waitForJob(queued.jobId, userId);
+          return completed.result as { attemptId: string; questionSetId: string };
+        }
+        const other = await submitFreshUpload(alice.id, "%PDF-1.7 other taker");
+        await expect(deleteAttempt(attemptId, bob.id)).rejects.toThrow("Attempt not found");
+        const dashboard = (await listCreatedTests(alice.id)).find(test => test.id === template.id);
+        expect(dashboard?.attempts.find(entry => entry.id === attemptId)?.deletesSet).toBe(true);
+        await deleteAttempt(attemptId, alice.id);
+        const removedId = generated!.set.id;
+        expect(db.select().from(questionSets).where(eq(questionSets.id, removedId)).get()).toBeUndefined();
+        expect(db.select().from(jobs).where(eq(jobs.id, jobId)).get()).toBeUndefined();
+        expect(db.select().from(conferenceSubmissions).where(eq(conferenceSubmissions.attemptId, attemptId)).get()).toBeUndefined();
+        expect(existsSync(manuscriptPath(removedId))).toBe(false);
+        expect(await getInvitationAttempt(template.id, bob.id)).toBeUndefined();
+        expect(await getInvitationAttempt(template.id, alice.id)).toEqual({ attemptId: other.attemptId });
+        expect((await loadAttemptContext(other.attemptId)).attempt.id).toBe(other.attemptId);
+        expect(readManuscript(other.questionSetId).toString()).toBe("%PDF-1.7 other taker");
+        const fresh = await submitFreshUpload(bob.id, "%PDF-1.7 replacement");
+        expect(fresh.questionSetId).not.toBe(removedId);
+        expect(readManuscript(fresh.questionSetId).toString()).toBe("%PDF-1.7 replacement");
+      }
       await deleteTemplate(template.id, alice.id);
     }
     await deleteTemplate(directOnly.id, alice.id);

@@ -25,7 +25,7 @@ import { POST as securityAction } from "@/app/api/account/security/route";
 import { GET as createdTests } from "@/app/api/created-tests/route";
 import { GET as templatesRoute } from "@/app/api/templates/route";
 import { GET as exportsRoute } from "@/app/api/export/answers/route";
-import { deleteAttempt, deleteQuestionSet } from "@/lib/catalog";
+import { deleteAttempt, deleteQuestionSet, listCreatedTests } from "@/lib/catalog";
 import { hydrateAssessmentResult, requireAttemptOwner } from "@/lib/attempts";
 import { AdministratorContact } from "@/components/quiz/administrator-contact";
 import { createElement } from "react";
@@ -380,7 +380,40 @@ describe("account security", () => {
     await deleteAttempt(attemptId, administrator.id);
     expect(db.select().from(attempts).where(eq(attempts.id, attemptId)).get()).toBeUndefined();
     expect(db.select().from(questionSets).where(eq(questionSets.id, setId)).get()).toBeDefined();
+    expect(fs.existsSync(manuscriptPath(setId))).toBe(true);
     expect(db.select().from(jobs).where(eq(jobs.id, gradingJobId)).get()).toBeUndefined();
+  });
+
+  it("keeps a shared taker upload until its last attempt and retries interrupted file cleanup", async () => {
+    const owner = await account();
+    const taker = await account();
+    const setId = await seedSet(owner.id);
+    db.update(questionSets).set({ materialUploader: "taker", materialKind: "code" }).where(eq(questionSets.id, setId)).run();
+    const file = manuscriptPath(setId, "code");
+    fs.renameSync(manuscriptPath(setId), file);
+    const first = seedAttempt(setId, taker.id);
+    const second = seedAttempt(setId, owner.id);
+    const dashboardSet = () => listCreatedTests(owner.id).then(rows => rows.find(row => row.id === setId));
+    expect((await dashboardSet())?.attempts.map(row => row.deletesSet)).toEqual([false, false]);
+    await deleteAttempt(first, owner.id);
+    expect(fs.existsSync(file)).toBe(true);
+    expect((await dashboardSet())?.attempts).toMatchObject([{ id: second, deletesSet: true }]);
+
+    const remove = fs.rmSync;
+    const busy = vi.spyOn(fs, "rmSync").mockImplementation((target, options) => {
+      if (target === file) throw new Error("file temporarily busy");
+      remove(target, options);
+    });
+    try {
+      await deleteAttempt(second, owner.id);
+    } finally {
+      busy.mockRestore();
+    }
+    expect(await dashboardSet()).toBeUndefined();
+    expect(db.select().from(fileDeletions).where(eq(fileDeletions.path, file)).get()).toBeDefined();
+    runFileCleanup();
+    expect(fs.existsSync(file)).toBe(false);
+    expect(db.select().from(fileDeletions).where(eq(fileDeletions.path, file)).get()).toBeUndefined();
   });
 
   it("keeps pending submissions and uploads for the administrator after account deletion", async () => {

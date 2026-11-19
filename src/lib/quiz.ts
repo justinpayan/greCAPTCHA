@@ -351,7 +351,7 @@ export type CreatedTestEntry = {
   invitationPath: string | null;
   createdAt: string;
   takerAllowlist: string[] | null;
-  attempts: AttemptListEntry[];
+  attempts: (AttemptListEntry & { deletesSet: boolean })[];
 };
 
 /**

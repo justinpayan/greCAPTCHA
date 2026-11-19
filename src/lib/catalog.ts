@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, count, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { attemptAnswers, attempts, conferenceSubmissions, jobs, questionSets, studyTemplates } from "@/db/schema";
@@ -208,25 +208,27 @@ export async function setQuestionSetAllowlist(
  * from question_sets through attempts to attempt_answers.
  *
  */
+function removeQuestionSet(id: string, ownerUserId: string) {
+  const owned = db.select({ id: questionSets.id }).from(questionSets)
+    .where(and(eq(questionSets.id, id), eq(questionSets.ownerUserId, ownerUserId))).get();
+  if (!owned) throw new Error("Question set not found.");
+  const children = db.select().from(attempts).where(eq(attempts.questionSetId, id)).all();
+  const childIds = new Set(children.map((attempt) => attempt.id));
+  const submitted = db.select().from(conferenceSubmissions).where(eq(conferenceSubmissions.questionSetId, id)).all();
+  const generationIds = new Set(submitted.map((entry) => entry.generationJobId));
+  const relatedJobs = db.select().from(jobs).all().filter((job) =>
+    childIds.has(job.attemptId ?? "") || generationIds.has(job.id) || JSON.parse(job.payloadJson).questionSetId === id,
+  );
+  queueJobFileDeletions(relatedJobs);
+  if (relatedJobs.length) db.delete(jobs).where(inArray(jobs.id, relatedJobs.map((job) => job.id))).run();
+  db.delete(conferenceSubmissions).where(eq(conferenceSubmissions.questionSetId, id)).run();
+  queueFileDeletions([manuscriptPath(id, "pdf"), manuscriptPath(id, "code")]);
+  const result = db.delete(questionSets).where(and(eq(questionSets.id, id), eq(questionSets.ownerUserId, ownerUserId))).run();
+  if (result.changes !== 1) throw new Error("Question set not found.");
+}
+
 export async function deleteQuestionSet(id: string, ownerUserId: string) {
-  db.transaction(() => {
-    const owned = db.select({ id: questionSets.id }).from(questionSets)
-      .where(and(eq(questionSets.id, id), eq(questionSets.ownerUserId, ownerUserId))).get();
-    if (!owned) throw new Error("Question set not found.");
-    const children = db.select().from(attempts).where(eq(attempts.questionSetId, id)).all();
-    const childIds = new Set(children.map((attempt) => attempt.id));
-    const submitted = db.select().from(conferenceSubmissions).where(eq(conferenceSubmissions.questionSetId, id)).all();
-    const generationIds = new Set(submitted.map((entry) => entry.generationJobId));
-    const relatedJobs = db.select().from(jobs).all().filter((job) =>
-      childIds.has(job.attemptId ?? "") || generationIds.has(job.id) || JSON.parse(job.payloadJson).questionSetId === id,
-    );
-    queueJobFileDeletions(relatedJobs);
-    if (relatedJobs.length) db.delete(jobs).where(inArray(jobs.id, relatedJobs.map((job) => job.id))).run();
-    db.delete(conferenceSubmissions).where(eq(conferenceSubmissions.questionSetId, id)).run();
-    queueFileDeletions([manuscriptPath(id, "pdf"), manuscriptPath(id, "code")]);
-    const result = db.delete(questionSets).where(and(eq(questionSets.id, id), eq(questionSets.ownerUserId, ownerUserId))).run();
-    if (result.changes !== 1) throw new Error("Question set not found.");
-  });
+  db.transaction(() => removeQuestionSet(id, ownerUserId));
   runFileCleanup();
 }
 
@@ -236,15 +238,16 @@ export async function deleteQuestionSet(id: string, ownerUserId: string) {
  * Deliberately allowed on an attempt that is already under way: closing one halts it at the
  * next request, which is how a session that has run out of time is stopped.
  */
-async function requireOwnedAttempt(id: string, ownerUserId: string) {
-  const row = await db.select({ id: attempts.id }).from(attempts)
+function requireOwnedAttempt(id: string, ownerUserId: string) {
+  const row = db.select({ questionSetId: attempts.questionSetId, materialUploader: questionSets.materialUploader }).from(attempts)
     .innerJoin(questionSets, eq(questionSets.id, attempts.questionSetId))
     .where(and(eq(attempts.id, id), eq(questionSets.ownerUserId, ownerUserId))).get();
   if (!row) throw new Error("Attempt not found.");
+  return row;
 }
 
 export async function setAttemptLinkEnabled(id: string, enabled: boolean, ownerUserId: string) {
-  await requireOwnedAttempt(id, ownerUserId);
+  requireOwnedAttempt(id, ownerUserId);
   const result = await db
     .update(attempts)
     .set({ linkEnabled: enabled })
@@ -254,13 +257,17 @@ export async function setAttemptLinkEnabled(id: string, enabled: boolean, ownerU
   return enabled;
 }
 
-/**
- * Deletes one attempt and its answers, leaving the question set intact.
- *
- */
 export async function deleteAttempt(id: string, ownerUserId: string) {
-  await requireOwnedAttempt(id, ownerUserId);
   db.transaction(() => {
+    const set = requireOwnedAttempt(id, ownerUserId);
+    if (set.materialUploader === "taker") {
+      const otherAttempt = db.select({ id: attempts.id }).from(attempts)
+        .where(and(eq(attempts.questionSetId, set.questionSetId), ne(attempts.id, id))).get();
+      if (!otherAttempt) {
+        removeQuestionSet(set.questionSetId, ownerUserId);
+        return;
+      }
+    }
     const submitted = db.select().from(conferenceSubmissions).where(eq(conferenceSubmissions.attemptId, id)).all();
     const generationIds = new Set(submitted.map((entry) => entry.generationJobId));
     const relatedJobs = db.select().from(jobs).all().filter((job) => job.attemptId === id || generationIds.has(job.id));
@@ -269,7 +276,7 @@ export async function deleteAttempt(id: string, ownerUserId: string) {
     db.delete(conferenceSubmissions).where(eq(conferenceSubmissions.attemptId, id)).run();
     const result = db.delete(attempts).where(eq(attempts.id, id)).run();
     if (result.changes !== 1) throw new Error("Attempt not found.");
-  });
+  }, { behavior: "immediate" });
   runFileCleanup();
 }
 
@@ -295,7 +302,7 @@ export async function resetAttempt(id: string, ownerUserId: string): Promise<{
   answersCleared: number;
   overallTimeLimitSeconds: number | null;
 }> {
-  await requireOwnedAttempt(id, ownerUserId);
+  requireOwnedAttempt(id, ownerUserId);
   const attempt = await db
     .select({
       questionSetId: attempts.questionSetId,
@@ -423,6 +430,7 @@ export async function listCreatedTests(ownerUserId: string): Promise<CreatedTest
         materialKind: questionSets.materialKind,
         takerUsername: attempts.takerUsername,
         sourceTemplateId: questionSets.sourceTemplateId,
+        deletesSet: sql<number>`(${questionSets.materialUploader} = 'taker' AND count(*) OVER (PARTITION BY ${attempts.questionSetId}) = 1)`,
         disqualification: conferenceSubmissions.disqualification,
       })
       .from(attempts)
@@ -437,11 +445,12 @@ export async function listCreatedTests(ownerUserId: string): Promise<CreatedTest
       .groupBy(attemptAnswers.attemptId),
   ]);
   const answeredByAttempt = new Map(answered.map((row) => [row.attemptId, row.total]));
-  const attemptsBySet = new Map<string, AttemptListEntry[]>();
-  const attemptsByTemplate = new Map<string, AttemptListEntry[]>();
+  const attemptsBySet = new Map<string, CreatedTestEntry["attempts"]>();
+  const attemptsByTemplate = new Map<string, CreatedTestEntry["attempts"]>();
 
   for (const row of rows) {
-    const entry: AttemptListEntry = {
+    const entry = {
+      deletesSet: Boolean(row.deletesSet),
       id: row.id,
       questionSetId: row.questionSetId,
       setLabel: questionSetLabel(row.setName, row.paperName),
@@ -457,7 +466,7 @@ export async function listCreatedTests(ownerUserId: string): Promise<CreatedTest
       createdAt: row.createdAt,
       completedAt: row.completedAt,
       ...(row.disqualification ? { disqualification: row.disqualification } : {}),
-    };
+    } satisfies CreatedTestEntry["attempts"][number];
     const bySet = attemptsBySet.get(row.questionSetId) ?? [];
     bySet.push(entry);
     attemptsBySet.set(row.questionSetId, bySet);
