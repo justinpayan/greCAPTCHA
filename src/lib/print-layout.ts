@@ -3,9 +3,9 @@
  *
  * Multiple-choice questions are short and need no writing space, so a run of them flows across as
  * many pages as it needs, several to a page. Questions answered by hand get a fixed share of a
- * page instead: a free response shares its page with at most one other, the spare height becoming
- * writing space; a fill-in-the-blank question, with its word bank and a line per blank, has a page
- * to itself. A page holds one kind of question only, so those limits hold on every page.
+ * page instead. A student free response uses its own page for writing space. Keyed free
+ * responses can share a page, and fill-in-the-blank questions each have a page to themselves.
+ * A page holds one kind of question only.
  */
 
 export type PrintPage<T> = {
@@ -23,11 +23,17 @@ export const WRITTEN_QUESTIONS_PER_PAGE: Record<string, number> = {
 };
 const DEFAULT_WRITTEN_PER_PAGE = 1;
 
-export function paginateForPrint<T extends { type: string }>(items: T[]): PrintPage<T>[] {
+export function paginateForPrint<T extends { type: string }>(
+  items: T[],
+  withKey = false,
+): PrintPage<T>[] {
   const pages: PrintPage<T>[] = [];
   for (const item of items) {
     const kind = item.type === "multiple_choice" ? "flow" : "paired";
-    const capacity = WRITTEN_QUESTIONS_PER_PAGE[item.type] ?? DEFAULT_WRITTEN_PER_PAGE;
+    const capacity =
+      item.type === "free_response" && !withKey
+        ? 1
+        : (WRITTEN_QUESTIONS_PER_PAGE[item.type] ?? DEFAULT_WRITTEN_PER_PAGE);
     const current = pages.at(-1);
     const fits =
       current?.type === item.type && (kind === "flow" || current.items.length < capacity);

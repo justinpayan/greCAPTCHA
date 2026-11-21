@@ -5,15 +5,9 @@ import { Fragment } from "react";
 import { MathText } from "@/components/quiz/math-text";
 import { QuestionPrompt } from "@/components/quiz/question-prompt";
 import { paginateForPrint } from "@/lib/print-layout";
-import type { QuestionSetOverview, QuestionSetOverviewItem, StoredQuestion } from "@/lib/quiz";
+import type { QuestionSetOverviewItem, StoredQuestion } from "@/lib/quiz";
 
 const OPTION_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
-function formatLimit(seconds: number | null) {
-  if (seconds === null) return "No time limit";
-  const minutes = Math.round(seconds / 60);
-  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
-}
 
 /** Blank numbers in the order they appear in the sentence, so the key can refer to them. */
 function blankNumbers(question: Extract<StoredQuestion, { type: "fill_blank" }>) {
@@ -183,20 +177,19 @@ function PrintedFill({
 
 /**
  * The question set laid out for paper: shown only when printing (`@media print`), hidden on
- * screen. Multiple-choice questions flow several to a page; any other question shares its page
- * with at most one other, and free responses get the page's spare height as writing space. With
- * `withKey`, each question also shows its answer, rationale, or rubric, for marking.
+ * screen. Free responses get the page's spare height as writing space on student copies.
+ * With `withKey`, each question shows its answer, rationale, or rubric for marking.
  */
 export function PrintableQuestionSet({
-  overview,
+  items,
   title,
   withKey,
 }: {
-  overview: QuestionSetOverview;
+  items: QuestionSetOverviewItem[];
   title: string;
   withKey: boolean;
 }) {
-  const pages = paginateForPrint(overview.items);
+  const pages = paginateForPrint(items, withKey);
   return (
     <div className={`print-sheet${withKey ? " print-with-key" : ""}`}>
       {pages.map((page, index) => (
@@ -204,20 +197,16 @@ export function PrintableQuestionSet({
           {index === 0 && (
             <header className="print-cover">
               <div>
-                <p className="print-eyebrow">{withKey ? "Answer key" : "greCAPTCHA assessment"}</p>
+                {withKey && <p className="print-eyebrow">Answer key</p>}
                 <h1>{title}</h1>
                 <p className="print-meta">
-                  {overview.items.length} question{overview.items.length === 1 ? "" : "s"} ·{" "}
-                  {formatLimit(overview.overallTimeLimitSeconds)}
+                  {items.length} question{items.length === 1 ? "" : "s"}
                 </p>
               </div>
               {!withKey && (
                 <div className="print-taker">
                   <span>
                     Name <span className="print-answer-line" aria-hidden="true" />
-                  </span>
-                  <span>
-                    Date <span className="print-answer-line" aria-hidden="true" />
                   </span>
                 </div>
               )}

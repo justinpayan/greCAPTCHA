@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal, flushSync } from "react-dom";
 import Link from "next/link";
 
 import {
@@ -16,6 +15,7 @@ import {
   type BatchManuscript,
 } from "@/lib/batch-manuscripts";
 import { errorFromPayload, isOpenRouterError } from "@/lib/openrouter-errors";
+import { downloadQuestionPdfs } from "@/lib/download-question-pdfs";
 import { MAX_PDF_BYTES, MAX_ZIP_BYTES, pdfTooLargeMessage, zipTooLargeMessage } from "@/lib/uploads";
 import {
   completeOpenRouterOAuth,
@@ -34,7 +34,6 @@ import { FieldHint } from "@/components/field-hint";
 import { ManuscriptField } from "@/components/manuscript-field";
 import { ProfessorOpenRouterPanel } from "@/components/professor-openrouter-panel";
 import { ToastStack, type ToastItem } from "@/components/toast-stack";
-import { PrintableQuestionSet } from "@/components/printable-question-set";
 import { SetOverview } from "@/components/set-overview";
 import { MaterialTag } from "@/components/material-tag";
 import { WorkflowTag } from "@/components/workflow-tag";
@@ -540,11 +539,9 @@ export function ResearchCaptcha({
   const [setName, setSetName] = useState("");
   const [takerAllowlistText, setTakerAllowlistText] = useState("");
   const [createdTests, setCreatedTests] = useState<CreatedTestEntry[]>([]);
-  // Tests ticked in Tests You've Created; export and print act on these and are off until one is.
+  // Tests ticked in Tests You've Created for CSV and PDF downloads.
   const [selectedTestIds, setSelectedTestIds] = useState<ReadonlySet<string>>(() => new Set());
-  // Question sets rendered for a batch print, only while the print dialog is being prepared.
-  const [printBatch, setPrintBatch] = useState<QuestionSetOverview[] | null>(null);
-  const [preparingPrint, setPreparingPrint] = useState(false);
+  const [preparingPdfs, setPreparingPdfs] = useState(false);
   // A deleted test leaves the selection, so "Print selected" never counts a test that is gone.
   useEffect(() => {
     setSelectedTestIds((current) => {
@@ -1332,7 +1329,7 @@ export function ResearchCaptcha({
     return [...new Set(test.attempts.map((entry) => entry.questionSetId))];
   }
 
-  /** The selected tests, which export and print act on. */
+  /** The selected tests for CSV and PDF downloads. */
   function testsToActOn() {
     return createdTests.filter((test) => selectedTestIds.has(test.id));
   }
@@ -1350,35 +1347,23 @@ export function ResearchCaptcha({
     window.location.href = `/api/export/answers?sets=${encodeURIComponent(sets.join(","))}`;
   }
 
-  /** Prints the question sets of the selected tests, each starting on a new page. */
-  async function printTests() {
+  async function downloadSelectedPdfs() {
     const ids = [...new Set(testsToActOn().flatMap(questionSetIdsFor))];
     setShareError("");
     if (ids.length === 0) {
       setShareError(
-        "Nothing to print yet. A test where takers upload their own paper has no questions " +
+        "Nothing to download yet. A test where takers upload their own paper has no questions " +
           "until someone starts it.",
       );
       return;
     }
-    setPreparingPrint(true);
+    setPreparingPdfs(true);
     try {
-      const overviews = await Promise.all(
-        ids.map(async (id) => {
-          const response = await fetch(`/api/question-sets/${encodeURIComponent(id)}`);
-          const payload = await response.json();
-          if (!response.ok) throw new Error(payload.error ?? "Unable to load a question set.");
-          return payload.overview as QuestionSetOverview;
-        }),
-      );
-      // Rendered before the dialog opens, since the dialog snapshots the page as it is.
-      flushSync(() => setPrintBatch(overviews));
-      window.print();
+      await downloadQuestionPdfs({ format: "zip", ids });
     } catch (caught) {
-      setShareError(userFacingMessage(caught, "Unable to prepare the tests for printing."));
+      setShareError(userFacingMessage(caught, "Unable to download the question PDFs."));
     } finally {
-      setPrintBatch(null);
-      setPreparingPrint(false);
+      setPreparingPdfs(false);
     }
   }
 
@@ -2618,11 +2603,11 @@ export function ResearchCaptcha({
                 <button
                   className="secondary"
                   type="button"
-                  disabled={selectedTestIds.size === 0 || preparingPrint}
-                  title={selectedTestIds.size ? undefined : "Select one or more tests to print."}
-                  onClick={() => void printTests()}
+                  disabled={selectedTestIds.size === 0 || preparingPdfs}
+                  title={selectedTestIds.size ? undefined : "Select one or more tests to download."}
+                  onClick={() => void downloadSelectedPdfs()}
                 >
-                  {preparingPrint ? "Preparing…" : "Print selected"}
+                  {preparingPdfs ? "Preparing PDFs…" : "Download selected PDFs"}
                 </button>
               </div>
             )}
@@ -3619,21 +3604,6 @@ export function ResearchCaptcha({
       )}
       </>}
       </div>
-      {/* Straight into <body>, so printing can hide the whole dashboard and keep only these. */}
-      {printBatch &&
-        createPortal(
-          <div className="print-root">
-            {printBatch.map((overview) => (
-              <PrintableQuestionSet
-                key={overview.id}
-                overview={overview}
-                title={overview.label || overview.paperName}
-                withKey={false}
-              />
-            ))}
-          </div>,
-          document.body,
-        )}
       <ToastStack items={toasts} />
     </main>
   );

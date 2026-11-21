@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { flushSync } from "react-dom";
 
 import { Brand } from "@/components/brand";
 import { PrintableQuestionSet } from "@/components/printable-question-set";
@@ -10,6 +9,7 @@ import { WorkflowTag } from "@/components/workflow-tag";
 import { MathText } from "@/components/quiz/math-text";
 import { QuestionPrompt } from "@/components/quiz/question-prompt";
 import { formatAllowlist } from "@/lib/allowlist";
+import { downloadQuestionPdfs } from "@/lib/download-question-pdfs";
 import type { QuestionSetOverview, StoredQuestion } from "@/lib/quiz";
 import { userFacingMessage } from "@/lib/user-facing-error";
 
@@ -164,14 +164,19 @@ export function SetOverview({
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
-  /** Whether the printed copy carries the answer key; Ctrl+P alone prints the questions only. */
-  const [printWithKey, setPrintWithKey] = useState(false);
+  const [downloading, setDownloading] = useState<"questions" | "key" | null>(null);
+  const [downloadError, setDownloadError] = useState("");
 
-  function printSet(withKey: boolean) {
-    // Rendered in the chosen mode before the dialog opens, since the dialog snapshots the page.
-    flushSync(() => setPrintWithKey(withKey));
-    window.print();
-    setPrintWithKey(false);
+  async function downloadSet(withKey: boolean) {
+    setDownloadError("");
+    setDownloading(withKey ? "key" : "questions");
+    try {
+      await downloadQuestionPdfs({ format: "pdf", ids: [overview.id], withKey });
+    } catch (caught) {
+      setDownloadError(userFacingMessage(caught, "Unable to download the question PDF."));
+    } finally {
+      setDownloading(null);
+    }
   }
 
   /** Items whose full text is showing. Several at once, since checking a bank means reading it. */
@@ -383,18 +388,18 @@ export function SetOverview({
           <button
             className="secondary"
             type="button"
-            disabled={overview.items.length === 0}
-            onClick={() => printSet(false)}
+            disabled={overview.items.length === 0 || downloading !== null}
+            onClick={() => void downloadSet(false)}
           >
-            Print question set
+            {downloading === "questions" ? "Preparing PDF…" : "Download question set"}
           </button>
           <button
             className="secondary"
             type="button"
-            disabled={overview.items.length === 0}
-            onClick={() => printSet(true)}
+            disabled={overview.items.length === 0 || downloading !== null}
+            onClick={() => void downloadSet(true)}
           >
-            Print with answer key
+            {downloading === "key" ? "Preparing PDF…" : "Download with answer key"}
           </button>
           <button
             className="secondary"
@@ -408,6 +413,8 @@ export function SetOverview({
           </button>
         </div>
       </div>
+
+      {downloadError && <p className="error" role="alert">{downloadError}</p>}
 
       <section className="summary-list">
         {overview.items.map((item) => {
@@ -456,9 +463,9 @@ export function SetOverview({
       </div>
 
       <PrintableQuestionSet
-        overview={overview}
+        items={overview.items}
         title={name.trim() || overview.label || overview.paperName}
-        withKey={printWithKey}
+        withKey={false}
       />
     </main>
   );

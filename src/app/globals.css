@@ -4564,6 +4564,10 @@ mark.evidence:focus-visible {
     background: white !important;
   }
 
+  body {
+    min-height: 0;
+  }
+
   /* Only the printable sheet: the dashboard page around it, and the dev-tools badge, stay off paper. */
   .set-overview-shell > :not(.print-sheet),
   nextjs-portal {
@@ -4588,10 +4592,7 @@ mark.evidence:focus-visible {
     break-before: page;
   }
 
-  /* Up to two written questions: each takes half the page, the rest of it writing space. The
-     height is set to fit both A4 and US Letter inside the page margins. */
-  /* A minimum, not a fixed height: a question longer than its share pushes the page longer
-     instead of running over the question below it. */
+  /* The minimum fills a sheet on both A4 and US Letter and lets long prompts flow. */
   .print-page-paired {
     display: flex;
     flex-direction: column;
@@ -4599,8 +4600,10 @@ mark.evidence:focus-visible {
     min-height: 245mm;
   }
 
-  /* Each question takes an equal share; a long one grows past it at the expense of its writing
-     space, never by overlapping the next question. */
+  .print-sheet:not(.print-with-key) .print-page-paired:has(> .print-free_response) {
+    gap: 0;
+  }
+
   .print-page-paired .print-question {
     display: flex;
     flex: 1 1 0;
@@ -4782,10 +4785,11 @@ mark.evidence:focus-visible {
     gap: 2mm;
   }
 
-  /* Ruled writing space filling whatever height the question leaves on its half of the page. */
+  /* Ruled writing space filling whatever height the question leaves on the page. */
   .print-answer-space {
     flex: 1 1 auto;
-    min-height: 40mm;
+    min-height: 80mm;
+    break-inside: avoid;
     border: 0.75pt solid #777;
     /* One 8 mm tile with its rule at the bottom, repeated: renders evenly where a striped
        gradient lands on fractional pixels and drops or doubles lines. */
@@ -4899,18 +4903,6 @@ mark.evidence:focus-visible {
 .created-test-parent > .test-select {
   align-self: center;
   margin-right: 2px;
-}
-
-/* A batch print from Tests You've Created: only the sheets rendered into .print-root reach the
-   paper, each question set starting on a page of its own. Hidden on screen like any sheet. */
-@media print {
-  body:has(> .print-root) > :not(.print-root) {
-    display: none !important;
-  }
-
-  .print-root .print-sheet + .print-sheet {
-    break-before: page;
-  }
 }
 
 /* Account security uses the existing form controls and spacing. */

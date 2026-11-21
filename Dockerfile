@@ -15,7 +15,10 @@ FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 COPY --from=build /app ./
+RUN node node_modules/playwright-core/cli.js install --with-deps --only-shell chromium \
+  && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /app/data && chown -R node:node /app
 USER node
 EXPOSE 3000

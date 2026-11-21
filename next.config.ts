@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // pdfjs-dist loads its worker from a file at runtime, which bundling would break.
-  serverExternalPackages: ["better-sqlite3", "pdfjs-dist"],
+  // Keep the PDF parser's worker and Playwright's browser tooling on disk at runtime.
+  serverExternalPackages: ["better-sqlite3", "pdfjs-dist", "playwright-core"],
   async headers() {
     return [
       {

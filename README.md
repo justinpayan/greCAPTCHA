@@ -37,6 +37,10 @@ Open <http://localhost:3000>. Signed-out visitors see the project landing page
 (`src/components/landing-page.tsx`); signed-in accounts see their dashboard. The database is created under `data/`, and
 checked-in Drizzle migrations run automatically on startup.
 
+For question-set PDF downloads, install headless Chromium with
+`npx playwright-core install --only-shell chromium` or set `CHROME_PATH` to a
+local Chromium or Chrome executable. The production Docker image includes Chromium.
+
 Minimum `.env.local` configuration:
 
 ```dotenv
@@ -75,6 +79,8 @@ public demo.
    template also deletes every generated manuscript, attempt, grade, and
    feedback record created from that invitation.
 8. Export responses with **Export all attempts as CSV**.
+9. Select tests and use **Download selected PDFs** to get a ZIP with one
+   question PDF per set. Open a set to download its question paper or answer key.
 
 Test names are unique per creator, case-insensitively, across generated sets
 and saved invitation templates.
