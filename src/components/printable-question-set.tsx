@@ -5,7 +5,8 @@ import { Fragment } from "react";
 import { MathText } from "@/components/quiz/math-text";
 import { QuestionPrompt } from "@/components/quiz/question-prompt";
 import { paginateForPrint } from "@/lib/print-layout";
-import type { QuestionSetOverviewItem, StoredQuestion } from "@/lib/quiz";
+import { questionPdfSourceName } from "@/lib/question-pdf-filenames";
+import type { QuestionSetOverview, QuestionSetOverviewItem, StoredQuestion } from "@/lib/quiz";
 
 const OPTION_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
@@ -181,14 +182,13 @@ function PrintedFill({
  * With `withKey`, each question shows its answer, rationale, or rubric for marking.
  */
 export function PrintableQuestionSet({
-  items,
-  title,
+  overview,
   withKey,
 }: {
-  items: QuestionSetOverviewItem[];
-  title: string;
+  overview: Pick<QuestionSetOverview, "items" | "paperName" | "materialKind">;
   withKey: boolean;
 }) {
+  const { items } = overview;
   const pages = paginateForPrint(items, withKey);
   return (
     <div className={`print-sheet${withKey ? " print-with-key" : ""}`}>
@@ -198,7 +198,7 @@ export function PrintableQuestionSet({
             <header className="print-cover">
               <div>
                 {withKey && <p className="print-eyebrow">Answer key</p>}
-                <h1>{title}</h1>
+                <h1>{questionPdfSourceName(overview).trim() || overview.paperName}</h1>
                 <p className="print-meta">
                   {items.length} question{items.length === 1 ? "" : "s"}
                 </p>

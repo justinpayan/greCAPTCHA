@@ -462,11 +462,7 @@ export function SetOverview({
         </button>
       </div>
 
-      <PrintableQuestionSet
-        items={overview.items}
-        title={name.trim() || overview.label || overview.paperName}
-        withKey={false}
-      />
+      <PrintableQuestionSet overview={overview} withKey={false} />
     </main>
   );
 }

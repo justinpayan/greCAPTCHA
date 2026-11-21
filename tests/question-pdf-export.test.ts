@@ -1,5 +1,6 @@
 import { unzipSync } from "fflate";
 import { eq } from "drizzle-orm";
+import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -14,6 +15,7 @@ vi.mock("next/headers", () => ({
 vi.mock("@/lib/question-pdf-renderer", () => ({ renderQuestionPdfs: mocks.renderQuestionPdfs }));
 
 import { POST } from "@/app/api/export/questions/route";
+import QuestionSetPrintPage from "@/app/question-sets/[id]/print/page";
 import { db } from "@/db";
 import { questionSets, users } from "@/db/schema";
 import { createAccountSession, registerAccount } from "@/lib/accounts";
@@ -36,7 +38,14 @@ describe("question PDF export", () => {
       modelId: "test",
       pdfEngine: "test",
       configJson: "{}",
-      questionsJson: JSON.stringify([{ id: "q1", type: "multiple_choice", prompt: "Example" }]),
+      questionsJson: JSON.stringify([{
+        id: "q1",
+        type: "multiple_choice",
+        prompt: "Example",
+        options: [{ id: "a", label: "First option" }],
+        correctOptionId: "a",
+        rationale: "The first option is correct.",
+      }]),
       createdAt: new Date().toISOString(),
     };
     db.insert(questionSets).values([
@@ -82,6 +91,18 @@ describe("question PDF export", () => {
     expect(mocks.renderQuestionPdfs).toHaveBeenCalledWith(
       ["own-1"], true, "rc_session=" + adminToken, expect.any(AbortSignal),
     );
+  });
+
+  it("prints the source filename stem as the title on student and keyed copies", async () => {
+    for (const key of [undefined, "1"]) {
+      const page = await QuestionSetPrintPage({
+        params: Promise.resolve({ id: "own-1" }),
+        searchParams: Promise.resolve({ key }),
+      });
+      const html = renderToStaticMarkup(page);
+      expect(html).toContain("<h1>Étude.v2</h1>");
+      expect(html).not.toContain("Batch - test");
+    }
   });
 
   it("rejects non-administrators and mixed-ownership exports before rendering", async () => {

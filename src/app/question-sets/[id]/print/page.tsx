@@ -21,5 +21,6 @@ export default async function QuestionSetPrintPage({
   });
   if (overview.items.length === 0) notFound();
 
-  return <PrintableQuestionSet items={overview.items} title={overview.label} withKey={key === "1"} />;
+  const { items, paperName, materialKind } = overview;
+  return <PrintableQuestionSet overview={{ items, paperName, materialKind }} withKey={key === "1"} />;
 }
