@@ -3,6 +3,12 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Keep the PDF parser's worker and Playwright's browser tooling on disk at runtime.
   serverExternalPackages: ["better-sqlite3", "pdfjs-dist", "playwright-core"],
+  turbopack: {
+    resolveAlias: {
+      // React-PDF imports this entry point. Older Safari needs PDF.js's polyfilled build.
+      "pdfjs-dist": { browser: "pdfjs-dist/legacy/build/pdf.mjs" },
+    },
+  },
   async headers() {
     return [
       {
