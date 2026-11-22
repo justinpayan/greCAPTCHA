@@ -8,6 +8,7 @@ import {
   fixedRubricSchema,
   generationConfigSchema,
   prepareFixedRubricQuestions,
+  withoutGeneratedFixedRubricAdditions,
   questionBlockSchema,
   type FixedRubric,
   type QuestionBlockConfig,
@@ -48,8 +49,6 @@ const generatedQuestion = {
   prompt: "Under which condition would the method degrade?",
   description: "Probes the method's limits.",
   page: 4,
-  criterionNotes: ["Any condition tied to the sampler.", "Must pass through the sampler."],
-  sampleAnswers: { partial: "Small data.", full: "Small data starves the sampler, so…" },
 };
 
 /** Stubs the provider with one reply and records the prompt it was sent. */
@@ -181,25 +180,11 @@ describe("fixed rubrics", () => {
     });
     expect(sent[0]).toBe("research_captcha_fixed_rubric_questions");
     expect(sent[1]).toContain(JSON.stringify(fixedRubricSchema.parse(rubric)));
-    expect(sent[1]).toContain("exactly 2 notes, one per fixed criterion");
+    expect(sent[1]).toContain("State any question-specific requirements directly in the question text");
     expect(result.type).toBe("fixed_rubric");
   });
 
-  it("refuses a question whose notes do not match the criteria", async () => {
-    stubProvider({ questions: [{ ...generatedQuestion, criterionNotes: ["Only one."] }] });
-    await expect(
-      generateQuestionBlock({
-        apiKey: "sk-or-test",
-        material: { kind: "pdf", file: new File([new Uint8Array([37, 80, 68, 70])], "paper.pdf"), pdfEngine: "native" },
-        contributions: "",
-        block,
-        previousQuestions: [],
-        modelId: "test/model",
-      }),
-    ).rejects.toThrow(/1 rubric notes instead of 2/);
-  });
-
-  it("stores the fixed criteria with each question's notes, and shows the summary in the question", () => {
+  it("stores only the fixed rubric and shows its summary in the question", () => {
     const [question] = prepareFixedRubricQuestions({ questions: [generatedQuestion] }, block, rubric);
     expect(question.prompt).toBe(
       "Under which condition would the method degrade?\n\nHow your answer is graded: Name the condition (30). Explain the mechanism (70).",
@@ -208,17 +193,23 @@ describe("fixed rubrics", () => {
       summary: rubric.summary,
       fixed: true,
       gradingNote: "A stated limitation scores 0.",
-      sampleAnswers: generatedQuestion.sampleAnswers,
     });
+    expect(question.rubric).not.toHaveProperty("sampleAnswers");
     expect(question.rubric.criteria.map((criterion) => criterion.points)).toEqual([30, 70]);
     expect(question.rubric.criteria[1].allowedPoints).toEqual([0, 35, 70]);
     expect(question.rubric.criteria[1].guidance).toBe(
-      "How it interacts with the work.\nFull (70 points): Causal path.\nHalf (35 points): Generic path.\nNone (0 points): No path.\nFor this question: Must pass through the sampler.",
+      "How it interacts with the work.\nFull (70 points): Causal path.\nHalf (35 points): Generic path.\nNone (0 points): No path.",
     );
   });
 
-  it("holds the grader to the None, Half, and Full levels", async () => {
+  it("holds the grader to the fixed levels and omits saved model guidance and sample answers", async () => {
     const [question] = prepareFixedRubricQuestions({ questions: [generatedQuestion] }, block, rubric);
+    const authoredGuidance = question.rubric.criteria[0].guidance + "\nFor this question: Creator instruction.";
+    question.rubric.criteria[0].guidance = authoredGuidance + "\nFor this question: Legacy model instruction.";
+    question.rubric.sampleAnswers = { partial: "Legacy partial answer.", full: "Legacy full answer." };
+    const cleaned = withoutGeneratedFixedRubricAdditions(question.rubric);
+    expect(cleaned.criteria[0].guidance).toBe(authoredGuidance);
+    expect(cleaned).not.toHaveProperty("sampleAnswers");
     const sent = stubProvider({
       grades: [{
         questionId: question.id,
@@ -239,7 +230,13 @@ describe("fixed rubrics", () => {
       answers: { [question.id]: "Small data." },
     });
     expect(sent[1]).toContain('"allowedPoints":[0,15,30]');
+    expect(sent[1]).toContain('"fixed":true');
+    expect(sent[1]).toContain("grade only against the requirements stated in the question and the supplied rubric");
     expect(sent[1]).toContain('"gradingNote":"A stated limitation scores 0."');
+    expect(sent[1]).toContain("Creator instruction.");
+    expect(sent[1]).not.toContain("Legacy model instruction.");
+    expect(sent[1]).not.toContain("Legacy partial answer.");
+    expect(sent[1]).not.toContain("Legacy full answer.");
     expect(graded.grades[0].criteria.map((entry) => entry.pointsAwarded)).toEqual([15, 35]);
   });
 

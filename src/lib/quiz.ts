@@ -49,8 +49,7 @@ Each question presents a specific claim about the paper's methods, results, or d
 /**
  * A rubric fixed in advance for every question a free-response card generates: the summary shown
  * to the participant, its performance levels (the table's columns, each worth a share of a
- * criterion's points), and its criteria (the rows, with one description per level). The generator
- * only adds a note per criterion for each question, plus sample answers.
+ * criterion's points), and its criteria (the rows, with one description per level).
  *
  * Deliberately permissive, so a rubric mid-edit still autosaves; `fixedRubricProblems` says what
  * must be fixed before it can generate questions.
@@ -480,7 +479,7 @@ export const freeResponseGradesSchema = z.object({
 export type GeneratedFillSet = z.infer<typeof generatedFillSetSchema>;
 export type GeneratedFreeResponseSet = z.infer<typeof generatedFreeResponseSetSchema>;
 
-/** What the generator returns for a card with a fixed rubric: no criteria, only notes on them. */
+/** What the generator returns for a card with a fixed rubric. */
 export const generatedFixedRubricSetSchema = z.object({
   questions: z.array(
     z.object({
@@ -492,9 +491,6 @@ export const generatedFixedRubricSetSchema = z.object({
       path: z.string().optional(),
       startLine: z.number().int().min(1).optional(),
       endLine: z.number().int().min(1).optional(),
-      /** One per fixed criterion, in order: what earns full and half credit on this question. */
-      criterionNotes: z.array(z.string().min(1)).min(1),
-      sampleAnswers: z.object({ partial: z.string().min(1), full: z.string().min(1) }),
     }),
   ),
 });
@@ -1040,11 +1036,10 @@ export function fixedLevelPoints(points: number): [number, number, number] {
   return [0, points / 2, points];
 }
 
-/** A fixed criterion's levels and this question's note on them, as one block of guidance. */
+/** A fixed criterion's description and levels as one block of guidance. */
 export function fixedCriterionGuidance(
   rubric: FixedRubric,
   criterion: FixedRubric["criteria"][number],
-  note: string,
 ): string {
   const points = levelPoints(rubric, criterion.points);
   return [
@@ -1055,18 +1050,29 @@ export function fixedCriterionGuidance(
       const description = criterion.descriptions[index]?.trim();
       return description ? `${heading}: ${description}` : heading;
     }),
-    `For this question: ${note.trim()}`,
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+/** Older fixed rubrics had a generated guidance suffix and a pair of sample answers. */
+export function withoutGeneratedFixedRubricAdditions(rubric: Rubric): Rubric {
+  if (!rubric.fixed || !rubric.sampleAnswers) return rubric;
+  const { sampleAnswers: _sampleAnswers, ...fixedRubric } = rubric;
+  return {
+    ...fixedRubric,
+    criteria: rubric.criteria.map((criterion) => {
+      const noteAt = criterion.guidance.lastIndexOf("\nFor this question: ");
+      return noteAt < 0 ? criterion : { ...criterion, guidance: criterion.guidance.slice(0, noteAt) };
+    }),
+  };
 }
 
 /** Joins a fixed-rubric question to its rubric summary; displays split on it to set the summary apart. */
 export const GRADING_SUMMARY_SEPARATOR = "\n\nHow your answer is graded: ";
 
 /**
- * Questions from a fixed-rubric card carry the summary when supplied and the fixed criteria
- * with this question's notes.
+ * Questions from a fixed-rubric card carry its summary when supplied and its fixed criteria.
  */
 export function prepareFixedRubricQuestions(
   generated: GeneratedFixedRubricSet,
@@ -1086,18 +1092,14 @@ export function prepareFixedRubricQuestions(
     prompt: question.prompt.trim() + (summary ? GRADING_SUMMARY_SEPARATOR + summary : ""),
     rubric: {
       summary,
-      criteria: rubric.criteria.map((criterion, index) => ({
+      criteria: rubric.criteria.map((criterion) => ({
         criterion: criterion.criterion,
         points: criterion.points,
-        guidance: fixedCriterionGuidance(rubric, criterion, question.criterionNotes[index] ?? ""),
+        guidance: fixedCriterionGuidance(rubric, criterion),
         allowedPoints: [...new Set(levelPoints(rubric, criterion.points))].sort((x, y) => x - y),
       })),
       fixed: true,
       ...(rubric.gradingNote.trim() ? { gradingNote: rubric.gradingNote.trim() } : {}),
-      sampleAnswers: {
-        partial: question.sampleAnswers.partial.trim(),
-        full: question.sampleAnswers.full.trim(),
-      },
     },
   }));
 }

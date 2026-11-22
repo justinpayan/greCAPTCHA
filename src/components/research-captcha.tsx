@@ -3463,7 +3463,7 @@ export function ResearchCaptcha({
                                 <FieldHint
                                   text={
                                     activeFixedRubric(block)
-                                      ? "Every question from this card is graded on this rubric: each criterion awards only the points of one of its levels. The summary is added to each question. The generator writes only a note per criterion for each question, and two sample answers."
+                                      ? "This rubric grades every question from the card. Each criterion awards the points of one of its levels. Any rubric summary you provide appears with each question."
                                       : "The model writes a rubric for each question, following the rubric generation prompt."
                                   }
                                 />

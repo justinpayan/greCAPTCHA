@@ -193,10 +193,11 @@ export function verifyLoginChallenge(token: string, code: Factor, remember: bool
     if (remember && method !== "backup") {
       deviceToken = randomToken();
       trustedDeviceId = randomUUID();
-      const now = new Date().toISOString();
+      const now = new Date();
+      const createdAt = now.toISOString();
       db.insert(trustedDevices).values({ id: trustedDeviceId, tokenHash: secretHash(deviceToken), userId: account.id,
-        authVersion: account.authVersion, label: label.slice(0, 160) || "Remembered browser", createdAt: now,
-        lastUsedAt: now, expiresAt: new Date(Date.now() + DEVICE_SECONDS * 1000).toISOString() }).run();
+        authVersion: account.authVersion, label: label.slice(0, 160) || "Remembered browser", createdAt,
+        lastUsedAt: createdAt, expiresAt: new Date(now.getTime() + DEVICE_SECONDS * 1000).toISOString() }).run();
     }
     return { account, deviceToken, trustedDeviceId };
   });

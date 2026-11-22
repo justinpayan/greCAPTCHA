@@ -12,6 +12,7 @@ import {
   isInvitationTemplate,
   materialKindOf,
   questionBlockName,
+  withoutGeneratedFixedRubricAdditions,
   type ApiKeyPayer,
   type AttemptListEntry,
   type CreatedTestEntry,
@@ -119,7 +120,9 @@ export async function getQuestionSetOverview(id: string, ownerUserId: string): P
       blockName: questionBlockName(question),
       description: question.description?.trim() ?? "",
       warmup: isWarmup(question),
-      question,
+      question: question.type === "free_response"
+        ? { ...question, rubric: withoutGeneratedFixedRubricAdditions(question.rubric) }
+        : question,
     })),
   };
 }

@@ -178,7 +178,7 @@ const FAILURE_CONDITIONS_RUBRIC: FixedRubric = {
 /** Applied to every free-response grading request of the default code template. */
 export const DEFAULT_CODE_GRADING_INSTRUCTIONS = `- **Content only:** no points for fluency, length, hedging, confidence, command of English, or restating the question.
 - **Any valid wording:** accept references to code by name, by paraphrase, or as a short snippet. Exact identifiers, line numbers, and the code's own terms are not required.
-- **Check against the code:** verify every technical claim against the submitted code. Credit what is true of the code even where it differs from the question's notes or sample answers, and give no credit for claims the code contradicts.
+- **Check against the code:** verify every technical claim against the submitted code. Credit claims supported by the code even when they differ from the rubric's guidance, and give no credit for claims the code contradicts.
 - **This code, not code in general:** give no credit for general programming knowledge that is not connected to this code.
 - **Minimum is enough:** full credit means the minimum sufficient answer. Extra examples, alternatives, or fixes are never required unless the question asks for them.
 - **Implied steps count:** credit a step that the answer clearly entails, even if it is not stated separately, but do not infer reasoning the answer does not support.`;

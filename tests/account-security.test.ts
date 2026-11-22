@@ -260,15 +260,23 @@ describe("account security", () => {
 
   it("trusts only the correct account's browser and revokes linked sessions", async () => {
     const user = await account(true, true); const other = await account(true, true);
-    const result = verifyLoginChallenge(issueToken(user, "login", 600), currentCode(), true, "Test browser");
-    const browser = trustedBrowser(accountById(user.id), result.deviceToken!)!;
-    expect(trustedBrowser(other, result.deviceToken!)).toBeUndefined();
-    const session = await createAccountSession(user.id, { mfaVerified: true, trustedDeviceId: browser.id });
-    expect((await accountForSession(session))?.mfaVerified).toBe(true);
-    expect(new Date(browser.expiresAt).getTime() - new Date(browser.createdAt).getTime()).toBe(30 * 86400000);
-    revokeDevices(user.id);
-    expect(await accountForSession(session)).toBeNull();
-    expect(trustedBrowser(accountById(user.id), result.deviceToken!)).toBeUndefined();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // Simulate separate clock reads landing on adjacent milliseconds.
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 1);
+    try {
+      const result = verifyLoginChallenge(issueToken(user, "login", 600), currentCode(), true, "Test browser");
+      const browser = trustedBrowser(accountById(user.id), result.deviceToken!)!;
+      expect(trustedBrowser(other, result.deviceToken!)).toBeUndefined();
+      const session = await createAccountSession(user.id, { mfaVerified: true, trustedDeviceId: browser.id });
+      expect((await accountForSession(session))?.mfaVerified).toBe(true);
+      expect(new Date(browser.expiresAt).getTime() - new Date(browser.createdAt).getTime()).toBe(30 * 86400000);
+      revokeDevices(user.id);
+      expect(await accountForSession(session)).toBeNull();
+      expect(trustedBrowser(accountById(user.id), result.deviceToken!)).toBeUndefined();
+    } finally {
+      clock.mockRestore();
+      vi.useRealTimers();
+    }
   });
 
   it("rejects expired device trust and never creates trust from a backup code", async () => {

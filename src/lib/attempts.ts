@@ -21,6 +21,7 @@ import {
   questionBlockName,
   orderQuestions,
   toPublicQuestion,
+  withoutGeneratedFixedRubricAdditions,
   type AssessmentResult,
   type AttemptIntro,
   type AttemptOutline,
@@ -538,7 +539,7 @@ function criterionGradesFor(
   });
 }
 
-/** Fills fields that older stored grade payloads may omit. */
+/** Brings older stored grade payloads up to date for review. */
 export function hydrateAssessmentResult(
   result: AssessmentResult,
   extras: { takerUsername?: string | null; contributions?: string | null },
@@ -548,6 +549,11 @@ export function hydrateAssessmentResult(
     administratorEmail: administratorEmailForSet(result.questionSetId),
     takerUsername: result.takerUsername ?? extras.takerUsername ?? null,
     contributions: result.contributions ?? extras.contributions ?? "",
+    questions: (result.questions ?? []).map((question) =>
+      question.type === "free_response"
+        ? { ...question, rubric: withoutGeneratedFixedRubricAdditions(question.rubric) }
+        : question,
+    ),
   };
 }
 
@@ -624,7 +630,7 @@ export function buildResult(input: {
       questionId,
       prompt: question.prompt,
       response: (JSON.parse(answer.answerJson ?? "{}") as { response?: string }).response ?? "",
-      rubric: question.rubric,
+      rubric: withoutGeneratedFixedRubricAdditions(question.rubric),
       score: answer.score,
       feedback: stored.feedback ?? "",
       criterionGrades: criterionGradesFor(question.rubric, stored.criteria),
